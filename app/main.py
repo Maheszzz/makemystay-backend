@@ -8,8 +8,6 @@ from slowapi.util import get_remote_address
 from slowapi.errors import RateLimitExceeded
 
 from app.api.realty import realty_router
-from app.middleware.monitoring import PrometheusMiddleware
-from app.monitoring.prometheus import metrics_router
 import os
 import logging
 
@@ -47,8 +45,6 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-app.add_middleware(PrometheusMiddleware)
-
 
 @app.exception_handler(Exception)
 async def global_exception_handler(request: Request, exc: Exception):
@@ -81,7 +77,7 @@ async def health_check():
 
 # Include routers
 app.include_router(realty_router, prefix="/api/v1")
-app.include_router(metrics_router)
+
 
 
 if __name__ == "__main__":
