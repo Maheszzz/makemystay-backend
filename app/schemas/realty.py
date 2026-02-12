@@ -108,14 +108,23 @@ class PropertyBase(BaseModel):
     phone: str = Field(..., min_length=10, max_length=15)
     map_link: Optional[str] = Field(None, max_length=500)
     description: Optional[str] = None
-    property_type: PropertyType
+    property_type: str = Field(..., min_length=1, max_length=50)
     furnishing: Optional[Furnishing] = Furnishing.unfurnished
     private_price: Optional[float] = Field(None, ge=0)
     single_price: Optional[float] = Field(None, ge=0)
     double_price: Optional[float] = Field(None, ge=0)
     triple_price: Optional[float] = Field(None, ge=0)
+    starting_price: Optional[float] = Field(None, ge=0)
     listing_type: ListingType = ListingType.rent
     is_available: Optional[bool] = True
+
+    @field_validator('property_name', 'location')
+    @classmethod
+    def validate_non_empty_string(cls, v: str) -> str:
+        """Ensure string is not just whitespace."""
+        if not v or not v.strip():
+            raise ValueError('Must provide a non-empty value')
+        return v.strip()
 
     @field_validator('map_link')
     @classmethod
@@ -138,14 +147,25 @@ class PropertyUpdate(BaseModel):
     phone: Optional[str] = Field(None, min_length=10, max_length=15)
     map_link: Optional[str] = Field(None, max_length=500)
     description: Optional[str] = None
-    property_type: Optional[PropertyType] = None
+    property_type: Optional[str] = Field(None, min_length=1, max_length=50)
     furnishing: Optional[Furnishing] = None
     private_price: Optional[float] = Field(None, ge=0)
     single_price: Optional[float] = Field(None, ge=0)
     double_price: Optional[float] = Field(None, ge=0)
     triple_price: Optional[float] = Field(None, ge=0)
+    starting_price: Optional[float] = Field(None, ge=0)
     listing_type: Optional[ListingType] = None
     is_available: Optional[bool] = None
+
+    @field_validator('property_name', 'location')
+    @classmethod
+    def validate_non_empty_string(cls, v: Optional[str]) -> Optional[str]:
+        """Ensure string is not just whitespace if provided."""
+        if v is not None:
+            if not v or not v.strip():
+                raise ValueError('Must provide a non-empty value')
+            return v.strip()
+        return v
 
     @field_validator('map_link')
     @classmethod
@@ -156,9 +176,23 @@ class PropertyUpdate(BaseModel):
         return v
 
 
-class PropertyResponse(PropertyBase):
+class PropertyResponse(BaseModel):
     """Schema for property response with ID, timestamps, and images."""
     id: int
+    property_name: str
+    location: str
+    phone: Optional[str] = None
+    map_link: Optional[str] = None
+    description: Optional[str] = None
+    property_type: str
+    furnishing: Optional[str] = None
+    private_price: Optional[float] = None
+    single_price: Optional[float] = None
+    double_price: Optional[float] = None
+    triple_price: Optional[float] = None
+    starting_price: Optional[float] = None
+    listing_type: str
+    is_available: Optional[bool] = None
     created_at: datetime
     updated_at: datetime
     images: List[PropertyImageResponse] = []

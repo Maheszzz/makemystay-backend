@@ -57,127 +57,128 @@ curl -X POST http://localhost:8000/api/v1/realty/properties \
 
 ---
 
-## Endpoint Categories Tested
+## Tested Endpoints & Curl Examples
 
-### ✅ Health Check Endpoints (2/2)
-- `GET /` - Root health check
-- `GET /health` - Detailed health check
+Below are the `curl` commands used to verify each endpoint. You can use these to test the API yourself.
 
-### ✅ Contact Endpoints (8/8)
-- `GET /api/v1/realty/contacts` - List all contacts
-- `GET /api/v1/realty/contacts?skip=0&limit=10` - Pagination
-- `GET /api/v1/realty/contacts?status=new` - Filter by status
-- `GET /api/v1/realty/contacts/{id}` - Get by ID
-- `POST /api/v1/realty/contacts` - Create contact
-- `PUT /api/v1/realty/contacts/{id}` - Update contact
-- `DELETE /api/v1/realty/contacts/{id}` - Delete contact
-- Error cases (404, 422) tested
+### 1. Health & Monitoring
+| Method | Endpoint | Description | Curl Check |
+| :--- | :--- | :--- | :--- |
+| `GET` | `/` | Root Health | `curl http://localhost:8000/` |
+| `GET` | `/health` | Detailed Health | `curl http://localhost:8000/health` |
+| `GET` | `/metrics` | Prometheus Metrics | `curl http://localhost:8000/metrics` |
 
-### ✅ Property Endpoints (10/10)
-- `GET /api/v1/realty/properties` - List all properties
-- `GET /api/v1/realty/properties?skip=0&limit=5` - Pagination
-- `GET /api/v1/realty/properties?property_type=PG` - Filter by type
-- `GET /api/v1/realty/properties?listing_type=rent` - Filter by listing
-- `GET /api/v1/realty/properties?is_available=true` - Filter by availability
-- `GET /api/v1/realty/properties/{id}` - Get by ID
-- `POST /api/v1/realty/properties` - Create property
-- `PUT /api/v1/realty/properties/{id}` - Update property
-- `DELETE /api/v1/realty/properties/{id}` - Delete property
-- Error cases (404, 422) tested
+### 2. Contacts
+**List Contacts**
+```bash
+curl "http://localhost:8000/api/v1/realty/contacts?skip=0&limit=10"
+```
 
-### ✅ Property Image Endpoints (5/5)
-- `GET /api/v1/realty/properties/{id}/images` - List images
-- `POST /api/v1/realty/properties/{id}/images` - Add image
-- `PUT /api/v1/realty/images/{id}` - Update image
-- `DELETE /api/v1/realty/images/{id}` - Delete image
-- Error cases (404) tested
+**Create Contact**
+```bash
+curl -X POST http://localhost:8000/api/v1/realty/contacts \
+  -H "Content-Type: application/json" \
+  -d '{
+    "name": "John Doe",
+    "phone": "9876543210",
+    "email": "john@example.com",
+    "message": "Interested in properties",
+    "status": "new"
+  }'
+```
 
-### ✅ Monitoring Endpoints (1/1)
-- `GET /metrics` - Prometheus metrics
+**Update Contact**
+```bash
+curl -X PUT http://localhost:8000/api/v1/realty/contacts/1 \
+  -H "Content-Type: application/json" \
+  -d '{"status": "contacted"}'
+```
+
+**Delete Contact**
+```bash
+curl -X DELETE http://localhost:8000/api/v1/realty/contacts/1
+```
+
+### 3. Properties
+**List All Properties** (with filters)
+```bash
+curl "http://localhost:8000/api/v1/realty/properties?property_type=PG&listing_type=rent&limit=5"
+```
+
+**Create Property (PG Example)**
+```bash
+curl -X POST http://localhost:8000/api/v1/realty/properties \
+  -H "Content-Type: application/json" \
+  -d '{
+    "property_name": "Cozy PG in Koramangala",
+    "location": "Koramangala, Bangalore",
+    "phone": "9876543210",
+    "description": "Fully furnished PG with WiFi",
+    "property_type": "PG",
+    "furnishing": "fully_furnished",
+    "single_price": 8000,
+    "listing_type": "rent",
+    "is_available": true
+  }'
+```
+
+**Create Property (Flat Example)**
+```bash
+curl -X POST http://localhost:8000/api/v1/realty/properties \
+  -H "Content-Type: application/json" \
+  -d '{
+    "property_name": "Luxury 2BHK Apartment",
+    "location": "Whitefield",
+    "phone": "9876543210",
+    "description": "Spacious apartment",
+    "property_type": "2BHK",
+    "furnishing": "semi_furnished",
+    "private_price": 25000,
+    "listing_type": "rent"
+  }'
+```
+
+**Update Property**
+```bash
+curl -X PUT http://localhost:8000/api/v1/realty/properties/1 \
+  -H "Content-Type: application/json" \
+  -d '{"is_available": false, "private_price": 26000}'
+```
+
+**Delete Property**
+```bash
+curl -X DELETE http://localhost:8000/api/v1/realty/properties/1
+```
+
+### 4. Property Images
+**List Images**
+```bash
+curl http://localhost:8000/api/v1/realty/properties/1/images
+```
+
+**Add Image**
+```bash
+curl -X POST http://localhost:8000/api/v1/realty/properties/1/images \
+  -H "Content-Type: application/json" \
+  -d '{
+    "image_url": "https://example.com/pic.jpg",
+    "is_primary": true,
+    "sort_order": 1
+  }'
+```
+
+**Update Image**
+```bash
+curl -X PUT http://localhost:8000/api/v1/realty/images/1 \
+  -H "Content-Type: application/json" \
+  -d '{"is_primary": false}'
+```
 
 ---
 
-## Test Coverage
+## Test Coverage Summary
+- **Functionality**: CRUD verified for Contacts, Properties, and Images.
+- **Filters**: Verified for Property Listing (Type, Price, Availability).
+- **Validation**: Confirmed 422 errors for missing required fields (e.g. `phone`).
+- **Status**: ✅ All 26 Endpoints are functioning as expected.
 
-### Functionality Tested
-- ✅ CRUD operations for all resources
-- ✅ Pagination (skip, limit parameters)
-- ✅ Filtering (status, property_type, listing_type, is_available)
-- ✅ Validation (invalid data handling)
-- ✅ Error handling (404, 422, 500)
-- ✅ Cascade deletes (property → images)
-- ✅ Required field validation
-- ✅ Optional field handling
-
-### HTTP Methods Tested
-- ✅ GET
-- ✅ POST
-- ✅ PUT
-- ✅ DELETE
-
-### Status Codes Verified
-- ✅ 200 (Success)
-- ✅ 201 (Created)
-- ✅ 204 (No Content)
-- ✅ 404 (Not Found)
-- ✅ 422 (Validation Error)
-
----
-
-## Additional Artifacts Created
-
-1. **test_all_endpoints.sh** - Comprehensive automated test suite
-   - Tests all 26 endpoints
-   - Colored output for easy reading
-   - Summary statistics
-   
-2. **API_ENDPOINTS.md** - Complete API documentation
-   - All endpoints with curl examples
-   - Required/optional fields
-   - Query parameters
-   - Error responses
-   - Status codes
-
----
-
-## Recommendations
-
-### ✅ Already Implemented
-- Global error handling
-- Input validation with Pydantic
-- Proper HTTP status codes
-- CORS configuration
-- Rate limiting
-- Prometheus metrics
-
-### For Future Consideration
-1. **Authentication & Authorization**
-   - Currently no authentication is required
-   - Consider implementing JWT tokens for sensitive operations
-
-2. **Database Migrations**
-   - Ensure Alembic migrations are up-to-date with current schema
-   - Consider creating a migration for the phone field constraint
-
-3. **Additional Validation**
-   - Phone number format validation (consider regex)
-   - Image URL validation (check if URL is accessible)
-
-4. **Testing**
-   - Add unit tests with pytest
-   - Add integration tests
-   - Consider CI/CD pipeline integration
-
----
-
-## Conclusion
-
-All API endpoints are functioning correctly after fixing the phone field constraint issue. The backend is ready for use with the following capabilities:
-
-- Full CRUD operations for Contacts, Properties, and Property Images
-- Comprehensive filtering and pagination
-- Proper error handling and validation
-- Monitoring capabilities
-- Rate limiting for security
-
-**Status: ✅ PRODUCTION READY**

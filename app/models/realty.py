@@ -31,10 +31,7 @@ class Property(MySQLBase):
     phone = Column(String(15), nullable=False)
     map_link = Column(String(500), nullable=True)
     description = Column(Text, nullable=True)
-    property_type = Column(
-        Enum('PG', '1RK', '1BHK', '2BHK', name='property_type_enum'),
-        nullable=False
-    )
+    property_type = Column(String(50), nullable=False)
     furnishing = Column(
         Enum('fully_furnished', 'semi_furnished', 'unfurnished', name='furnishing_enum'),
         nullable=True
@@ -43,6 +40,7 @@ class Property(MySQLBase):
     single_price = Column(DECIMAL(10, 2), nullable=True)
     double_price = Column(DECIMAL(10, 2), nullable=True)
     triple_price = Column(DECIMAL(10, 2), nullable=True)
+    starting_price = Column(DECIMAL(10, 2), nullable=True)
     listing_type = Column(
         Enum('buy', 'rent', name='listing_type_enum'),
         nullable=False
