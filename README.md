@@ -58,12 +58,17 @@
    ```
 
 4. **Environment Configuration**
-   Create a `.env` file in the root directory:
+   Copy the example environment file and configure your credentials:
+   ```bash
+   cp .env.example .env
+   ```
+   
+   Edit `.env` with your database details:
    ```env
    DB_HOST=127.0.0.1
-   DB_PORT=3310
-   DB_USER=appuser
-   DB_PASSWORD=StrongPassword@123
+   DB_PORT=3306
+   DB_USER=root
+   DB_PASSWORD=your_password
    DB_NAME=makemystay
    ```
 
