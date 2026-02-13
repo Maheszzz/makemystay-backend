@@ -1,132 +1,110 @@
-Here's a comprehensive README.md for your Content Moderation API project:
 
-## Workflow Diagram
-![Architecture Diagram](./assets/architecture.png)
+<div align="center">
+  <h1>MakeMyStay.ai - Backend API</h1>
+  <p>The robust FastAPI backend powering the first AI-native revenue engine for co-living and rental operators.</p>
 
-# Content Moderation API
+  <p>
+    <a href="https://fastapi.tiangolo.com/">
+      <img src="https://img.shields.io/badge/FastAPI-005571?style=for-the-badge&logo=fastapi" alt="FastAPI" />
+    </a>
+    <a href="https://www.python.org/">
+      <img src="https://img.shields.io/badge/Python-3776AB?style=for-the-badge&logo=python&logoColor=white" alt="Python" />
+    </a>
+    <a href="https://www.sqlalchemy.org/">
+      <img src="https://img.shields.io/badge/SQLAlchemy-D71F00?style=for-the-badge&logo=sqlalchemy&logoColor=white" alt="SQLAlchemy" />
+    </a>
+    <a href="https://www.mysql.com/">
+      <img src="https://img.shields.io/badge/MySQL-4479A1?style=for-the-badge&logo=mysql&logoColor=white" alt="MySQL" />
+    </a>
+  </p>
+</div>
 
-A high-performance content moderation API leveraging OpenAI's moderation models, built with FastAPI, Celery, and PostgreSQL. Designed for asynchronous processing and horizontal scaling.
+---
 
-## Features
+## 🚀 Features
 
-- 🚀 Asynchronous task processing with Celery and Redis
-- 🔒 Rate limiting for API endpoints
-- 📊 Built-in Prometheus monitoring and metrics
-- 🐳 Dockerized deployment with compose
-- 📈 Database migrations with Alembic
-- 🧪 Health checks for all dependencies
-- 📝 Request logging and error tracking
+- **High Performance API**: Built with FastAPI for speed and efficiency.
+- **Relational Data Management**: Powered by SQLAlchemy ORM and MySQL.
+- **Data Validation**: Strict type checking and validation using Pydantic schemas.
+- **Secure Endpoints**: API endpoints for property management, contacts, and services.
+- **Scripting Support**: Automated scripts for bulk property insertion and updates.
 
-## Technologies
+## 🛠️ Tech Stack
 
-- **API Framework**: FastAPI
-- **Task Queue**: Celery + Redis
-- **Database**: PostgreSQL
-- **Monitoring**: Prometheus
-- **ORM**: SQLAlchemy 2.0
-- **Containerization**: Docker + Docker Compose
+- **Framework**: [FastAPI](https://fastapi.tiangolo.com/)
+- **Language**: [Python 3.9+](https://www.python.org/)
+- **ORM**: [SQLAlchemy](https://www.sqlalchemy.org/)
+- **Database**: [MySQL](https://www.mysql.com/)
+- **Server**: [Uvicorn](https://www.uvicorn.org/)
+- **Validation**: [Pydantic](https://docs.pydantic.dev/)
 
-## Getting Started
+## 📦 Installation
 
-### Prerequisites
-
-- Docker 20.10+
-- Docker Compose 2.0+
-- Python 3.10+ (for local development)
-- OpenAI API Key
-
-### Installation
-1. Clone the repository:
+1. **Clone the repository**
    ```bash
-   git clone https://github.com/krithick-j/content-moderation.git
-   cd krithick-j-content-moderation
+   git clone <repository-url>
+   cd no-broker-backend
    ```
 
-2. Create `.env` file from template:
+2. **Create a virtual environment**
    ```bash
-   cp envexample.txt .env
-   ```
-   Update the values in `.env` with your credentials.
-
-3. Build and start services:
-   ```bash
-   docker compose up 
-   ```
-    Make sure the ports are available
-
-4. Verify containers are running:
-   ```bash
-   docker ps
+   python3 -m venv .venv
+   source .venv/bin/activate
    ```
 
-## Environment Variables
+3. **Install dependencies**
+   ```bash
+   pip install -r requirements.txt
+   ```
 
-| Variable | Description | Example |
-|----------|-------------|---------|
-| `POSTGRES_DB` | PostgreSQL database name | `moderation_db` |
-| `POSTGRES_USER` | Database user | `postgres` |
-| `POSTGRES_PASSWORD` | Database password | `secret` |
-| `REDIS_URL` | Redis connection URL | `redis://redis:6379/0` |
-| `OPENAI_API_KEY` | OpenAI API key | `sk-...` |
-| `MODERATION_MODEL` | OpenAI moderation model | `text-moderation-latest` |
+4. **Environment Configuration**
+   Copy the example environment file and configure your credentials:
+   ```bash
+   cp .env.example .env
+   ```
+   
+   Edit `.env` with your database details:
+   ```env
+   DB_HOST=127.0.0.1
+   DB_PORT=3306
+   DB_USER=root
+   DB_PASSWORD=your_password
+   DB_NAME=makemystay
+   ```
 
-## API Documentation
+5. **Start the server**
+   ```bash
+   python3 -m uvicorn app.main:app --reload
+   ```
+   The API will be available at `http://localhost:8000`.
 
-### Endpoints
+## 📚 API Documentation
 
-**POST** `/api/v1/moderate/text`
-```json
-{
-  "text": "Sample text to moderate"
-}
-```
+Once the server is running, you can access the interactive API documentation:
+- **Swagger UI**: `http://localhost:8000/docs`
+- **ReDoc**: `http://localhost:8000/redoc`
 
-**GET** `/api/v1/moderate/result/{task_id}`
-```json
-{"task_id":"bc73f551-c87f-4613-baf9-bea1f36f1f47","result":{"id":"modr-404c2452f1ffb7fd2a958d7f46c9e4fe","model":"omni-moderation-latest","results":[{"categories":{"harassment":false,"harassment/threatening":false,"hate":false,"hate/threatening":false,"illicit":false,"illicit/violent":false,"self-harm":false,"self-harm/instructions":false,"self-harm/intent":false,"sexual":false,"sexual/minors":false,"violence":false,"violence/graphic":false},"category_applied_input_types":{"harassment":["text"],"harassment/threatening":["text"],"hate":["text"],"hate/threatening":["text"],"illicit":["text"],"illicit/violent":["text"],"self-harm":["text"],"self-harm/instructions":["text"],"self-harm/intent":["text"],"sexual":["text"],"sexual/minors":["text"],"violence":["text"],"violence/graphic":["text"]},"category_scores":{"harassment":5.391084403253366e-06,"harassment/threatening":6.748051590048605e-07,"hate":1.4738981974494932e-06,"hate/threatening":8.851569304133282e-08,"illicit":5.738759521437678e-06,"illicit/violent":2.627477314480822e-06,"self-harm":1.8058518261159955e-06,"self-harm/instructions":5.955139348629957e-07,"self-harm/intent":1.1478768127080353e-06,"sexual":8.481104172358076e-06,"sexual/minors":7.889262586245034e-07,"violence":1.0071400221737608e-05,"violence/graphic":8.664653147910923e-07},"flagged":false}]},"status":"SUCCESS"}
-```
+## 📂 Project Structure
 
-### Monitoring Endpoints
-
-- `/metrics`: Prometheus metrics endpoint
-- `/health`: System health check (DB, Redis, Celery)
-
-## Workflow Diagram
-
-### POST API Flow
-![POST API Diagram](./assets/moderate_text_post.png)
-
-### GET API Flow
-![GET API Diagram](./assets/moderate_result_get.png)
-
-## Development
-
-### Running Migrations
 ```bash
-alembic upgrade head
+no-broker-backend/
+├── app/
+│   ├── main.py          # Application entry point
+│   ├── models/          # SQLAlchemy database models
+│   ├── schemas/         # Pydantic schemas for validation
+│   ├── api/             # API route handlers
+│   ├── core/            # Core configuration and database setup
+│   └── repo/            # Repository layer for DB interactions
+├── insert_bulk_properties.py # Script to adding properties
+├── update_bulk_properties.py # Script for updating property images
+├── requirements.txt     # Python dependencies
+└── .env                 # Environment variables
 ```
 
-### Logging
-Logs are stored in:
-```
-/app/logs/
-  ├── app_YYYY-MM-DD.log
-  └── app_error_YYYY-MM-DD.log
-```
+## 🤝 Contributing
 
-## Troubleshooting
+Contributions are welcome! Please feel free to submit a Pull Request.
 
-Common issues:
-1. **Database Connection Failures**:
-   - Verify `.env` credentials
-   - Check PostgreSQL logs: `docker compose logs db`
+## 📄 License
 
-2. **Celery Task Queue Backlog**:
-   - Scale workers: `docker compose up --scale celery_worker=4`
-
-3. **Rate Limit Errors**:
-   - Adjust rate limits in `app/api/moderation.py`
-
-## License
-
-MIT License - see [LICENSE](LICENSE) for details.
+This project is proprietary software. All rights reserved. © 2026 MakeMyStay.ai

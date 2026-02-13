@@ -1,4 +1,4 @@
-from sqlalchemy import Column, Integer, String, Text, DateTime, Boolean, ForeignKey, func, Enum, DECIMAL
+from sqlalchemy import Column, Integer, String, Text, DateTime, Boolean, ForeignKey, func, Enum, DECIMAL, JSON
 from sqlalchemy.orm import relationship
 from app.configs.db_config import MySQLBase
 
@@ -31,6 +31,7 @@ class Property(MySQLBase):
     phone = Column(String(15), nullable=False)
     map_link = Column(String(500), nullable=True)
     description = Column(Text, nullable=True)
+    features = Column(JSON, nullable=True)
     property_type = Column(String(50), nullable=False)
     furnishing = Column(
         Enum('fully_furnished', 'semi_furnished', 'unfurnished', name='furnishing_enum'),

@@ -98,6 +98,12 @@ class PropertyImageResponse(PropertyImageBase):
 
     model_config = {"from_attributes": True}
 
+    @field_validator('image_url')
+    @classmethod
+    def sign_image_url(cls, v: str) -> str:
+        from app.utils.cloudfront import get_cloudfront_signed_url
+        return get_cloudfront_signed_url(v)
+
 
 # ==================== PROPERTY SCHEMAS ====================
 
@@ -108,6 +114,7 @@ class PropertyBase(BaseModel):
     phone: str = Field(..., min_length=10, max_length=15)
     map_link: Optional[str] = Field(None, max_length=500)
     description: Optional[str] = None
+    features: Optional[List[str]] = None
     property_type: str = Field(..., min_length=1, max_length=50)
     furnishing: Optional[Furnishing] = Furnishing.unfurnished
     private_price: Optional[float] = Field(None, ge=0)
@@ -147,6 +154,7 @@ class PropertyUpdate(BaseModel):
     phone: Optional[str] = Field(None, min_length=10, max_length=15)
     map_link: Optional[str] = Field(None, max_length=500)
     description: Optional[str] = None
+    features: Optional[List[str]] = None
     property_type: Optional[str] = Field(None, min_length=1, max_length=50)
     furnishing: Optional[Furnishing] = None
     private_price: Optional[float] = Field(None, ge=0)
@@ -184,6 +192,7 @@ class PropertyResponse(BaseModel):
     phone: Optional[str] = None
     map_link: Optional[str] = None
     description: Optional[str] = None
+    features: Optional[List[str]] = []
     property_type: str
     furnishing: Optional[str] = None
     private_price: Optional[float] = None

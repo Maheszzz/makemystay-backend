@@ -77,6 +77,8 @@ async def health_check():
 
 # Include routers
 app.include_router(realty_router, prefix="/api/v1")
+from app.api.upload import router as upload_router
+app.include_router(upload_router, prefix="/api/v1")
 
 
 
