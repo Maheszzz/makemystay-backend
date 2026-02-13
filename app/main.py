@@ -79,6 +79,8 @@ async def health_check():
 app.include_router(realty_router, prefix="/api/v1")
 from app.api.upload import router as upload_router
 app.include_router(upload_router, prefix="/api/v1")
+from app.api.payment import router as payment_router
+app.include_router(payment_router, prefix="/api/v1")
 
 
 
