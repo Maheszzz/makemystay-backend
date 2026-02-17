@@ -8,8 +8,13 @@ from slowapi.util import get_remote_address
 from slowapi.errors import RateLimitExceeded
 
 from app.api.realty import realty_router
+from app.models.payment import Payment # Import to ensure table creation
 import os
 import logging
+from dotenv import load_dotenv
+
+# Load environment variables
+load_dotenv()
 
 logging.basicConfig(level=logging.INFO)
 
@@ -44,6 +49,10 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+# Create Database Tables
+from app.configs.db_config import MySQLBase, mysql_engine
+MySQLBase.metadata.create_all(bind=mysql_engine)
 
 
 @app.exception_handler(Exception)

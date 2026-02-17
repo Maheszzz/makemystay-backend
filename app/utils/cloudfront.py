@@ -1,5 +1,7 @@
 import os
 import datetime
+import boto3
+from botocore.exceptions import ClientError
 from urllib.parse import quote
 from cryptography.hazmat.backends import default_backend
 from cryptography.hazmat.primitives import serialization
@@ -25,28 +27,59 @@ def rsa_signer(message):
 def get_cloudfront_signed_url(s3_key: str, expires_in_seconds: int = 3600) -> str:
     """
     Generates a CloudFront signed URL for a given S3 object key.
+    If CloudFront is not configured, falls back to S3 presigned URL (private) or public URL.
     """
-    domain = os.getenv('CLOUDFRONT_DOMAIN')
-    key_pair_id = os.getenv('CLOUDFRONT_KEY_PAIR_ID')
-
-    if not domain or not key_pair_id:
-        # Fallback to direct S3 URL or placeholder if config is missing
-        bucket = os.getenv('S3_BUCKET_NAME')
-        region = os.getenv('AWS_REGION')
-        if bucket and region:
-             return f"https://{bucket}.s3.{region}.amazonaws.com/{s3_key}"
+    # If the key is already a full URL, return it
+    if s3_key.startswith("http"):
         return s3_key
 
-    # Ensure domain has protocol
-    if not domain.startswith('http'):
-        domain = f"https://{domain}"
+    domain = os.getenv('CLOUDFRONT_DOMAIN')
+    key_pair_id = os.getenv('CLOUDFRONT_KEY_PAIR_ID')
+    bucket_name = os.getenv('S3_BUCKET_NAME')
+    aws_region = os.getenv('AWS_REGION', 'ap-south-1')
 
-    # Encode the S3 key to handle spaces and special characters
-    # safe='/' ensures slashes are NOT encoded, preserving the directory structure
-    encoded_key = quote(s3_key, safe='/')
-    
-    url = f"{domain}/{encoded_key}"
-    expire_date = datetime.datetime.utcnow() + datetime.timedelta(seconds=expires_in_seconds)
+    # 1. Try CloudFront
+    if domain and key_pair_id:
+        # Ensure domain has protocol
+        if not domain.startswith('http'):
+            domain = f"https://{domain}"
 
-    signer = CloudFrontSigner(key_pair_id, rsa_signer)
-    return signer.generate_presigned_url(url, date_less_than=expire_date)
+        # Encode the S3 key
+        encoded_key = quote(s3_key, safe='/')
+        url = f"{domain}/{encoded_key}"
+        expire_date = datetime.datetime.utcnow() + datetime.timedelta(seconds=expires_in_seconds)
+
+        try:
+            signer = CloudFrontSigner(key_pair_id, rsa_signer)
+            return signer.generate_presigned_url(url, date_less_than=expire_date)
+        except Exception as e:
+            # Fallback if signing fails
+            print(f"CloudFront signing failed: {e}")
+
+    # 2. Fallback to Direct S3
+    if bucket_name:
+        # Check if we have credentials for presigned URL
+        aws_access_key = os.getenv('AWS_ACCESS_KEY_ID')
+        aws_secret_key = os.getenv('AWS_SECRET_ACCESS_KEY')
+
+        if aws_access_key and aws_secret_key:
+            try:
+                s3_client = boto3.client(
+                    's3',
+                    aws_access_key_id=aws_access_key,
+                    aws_secret_access_key=aws_secret_key,
+                    region_name=aws_region
+                )
+                return s3_client.generate_presigned_url(
+                    'get_object',
+                    Params={'Bucket': bucket_name, 'Key': s3_key},
+                    ExpiresIn=expires_in_seconds
+                )
+            except Exception as e:
+                print(f"S3 presigning failed: {e}")
+        
+        # 3. Public URL Fallback
+        return f"https://{bucket_name}.s3.{aws_region}.amazonaws.com/{s3_key}"
+
+    # 4. Give up, return key
+    return s3_key
