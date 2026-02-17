@@ -1,6 +1,8 @@
 from fastapi import APIRouter, HTTPException
-from app.schemas.payment import ServiceFeeValidationRequest, ValidationResponse
+from app.schemas.payment import ServiceFeeValidationRequest, ValidationResponse, PaymentInitiationRequest, PaymentResponse
 from loguru import logger
+import uuid
+
 
 router = APIRouter()
 
@@ -49,3 +51,16 @@ def validate_service_fee(data: ServiceFeeValidationRequest):
         raise HTTPException(status_code=400, detail=message)
 
     return {"valid": is_valid, "message": message}
+
+@router.post("/payments/initiate", response_model=PaymentResponse)
+def initiate_payment(data: PaymentInitiationRequest):
+    logger.info(f"Initiating payment: {data.amount} {data.currency} via {data.method} for {data.payer_name}")
+    
+    # Mock payment processing logic
+    transaction_id = f"TXN_{uuid.uuid4().hex[:12].upper()}"
+    
+    return {
+        "transaction_id": transaction_id,
+        "status": "success",
+        "message": f"Payment of {data.currency} {data.amount} initiated successfully via {data.method}"
+    }

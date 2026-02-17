@@ -1,4 +1,5 @@
 from sqlalchemy import Column, Integer, String, Text, DateTime, Boolean, ForeignKey, func, Enum, DECIMAL, JSON
+from sqlalchemy.dialects.mysql import INTEGER
 from sqlalchemy.orm import relationship
 from app.configs.db_config import MySQLBase
 
@@ -50,8 +51,9 @@ class Property(MySQLBase):
     created_at = Column(DateTime, server_default=func.now(), nullable=True)
     updated_at = Column(DateTime, server_default=func.now(), onupdate=func.now(), nullable=True)
     
-    # Relationship to property images
+    # Relationships
     images = relationship("PropertyImage", back_populates="property", cascade="all, delete-orphan")
+    reviews = relationship("Review", back_populates="property", cascade="all, delete-orphan")
 
 
 class PropertyImage(MySQLBase):
@@ -67,3 +69,18 @@ class PropertyImage(MySQLBase):
     
     # Relationship to property
     property = relationship("Property", back_populates="images")
+
+
+class Review(MySQLBase):
+    """Model for reviews table"""
+    __tablename__ = "reviews"
+    
+    id = Column(Integer, primary_key=True, index=True, autoincrement=True)
+    property_id = Column(INTEGER(unsigned=True), ForeignKey('properties.id', ondelete='CASCADE'), nullable=False)
+    rating = Column(Integer, nullable=False) # 1-5
+    user_name = Column(String(100), nullable=False)
+    comment = Column(Text, nullable=True)
+    created_at = Column(DateTime, server_default=func.now(), nullable=False)
+    
+    # Relationship to property
+    property = relationship("Property", back_populates="reviews")

@@ -18,6 +18,9 @@ class PropertyType(str, Enum):
     ONE_RK = "1RK"
     ONE_BHK = "1BHK"
     TWO_BHK = "2BHK"
+    THREE_BHK = "3BHK"
+    FOUR_BHK = "4BHK"
+    VILLA = "Villa"
 
 
 class Furnishing(str, Enum):
@@ -103,6 +106,29 @@ class PropertyImageResponse(PropertyImageBase):
     def sign_image_url(cls, v: str) -> str:
         from app.utils.cloudfront import get_cloudfront_signed_url
         return get_cloudfront_signed_url(v)
+
+
+# ==================== REVIEW SCHEMAS ====================
+
+class ReviewBase(BaseModel):
+    """Base schema for Review."""
+    rating: int = Field(..., ge=1, le=5)
+    user_name: str = Field(..., min_length=1, max_length=100)
+    comment: Optional[str] = None
+
+
+class ReviewCreate(ReviewBase):
+    """Schema for creating a new review."""
+    pass
+
+
+class ReviewResponse(ReviewBase):
+    """Schema for review response with ID and timestamp."""
+    id: int
+    property_id: int
+    created_at: datetime
+
+    model_config = {"from_attributes": True}
 
 
 # ==================== PROPERTY SCHEMAS ====================
@@ -205,5 +231,20 @@ class PropertyResponse(BaseModel):
     created_at: datetime
     updated_at: datetime
     images: List[PropertyImageResponse] = []
+    reviews: List[ReviewResponse] = []
+    average_rating: Optional[float] = 0.0
+    review_count: Optional[int] = 0
 
     model_config = {"from_attributes": True}
+
+    @field_validator('average_rating', mode='before')
+    @classmethod
+    def calculate_average_rating(cls, v, info):
+        # This is a bit tricky with from_attributes=True
+        # We might handle this in the repo or keep it simple
+        return v or 0.0
+
+    @field_validator('review_count', mode='before')
+    @classmethod
+    def calculate_review_count(cls, v, info):
+        return v or 0

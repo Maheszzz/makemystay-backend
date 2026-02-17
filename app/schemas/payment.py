@@ -10,3 +10,18 @@ class ServiceFeeValidationRequest(BaseModel):
 class ValidationResponse(BaseModel):
     valid: bool
     message: str
+
+class PaymentInitiationRequest(BaseModel):
+    amount: float
+    currency: str = "INR"
+    method: str  # 'upi', 'card', 'netbanking'
+    payer_name: Optional[str] = None
+    payer_phone: Optional[str] = None
+    payer_email: Optional[str] = None
+    details: Optional[dict] = None
+
+class PaymentResponse(BaseModel):
+    transaction_id: str
+    status: str
+    message: str
+

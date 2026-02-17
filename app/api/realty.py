@@ -9,6 +9,7 @@ from app.schemas.realty import (
     ContactCreate, ContactUpdate, ContactResponse,
     PropertyCreate, PropertyUpdate, PropertyResponse,
     PropertyImageCreate, PropertyImageUpdate, PropertyImageResponse,
+    ReviewCreate, ReviewResponse,
     PropertyType, ListingType, ContactStatus
 )
 from app.repo import realty as realty_repo
@@ -122,6 +123,7 @@ def list_properties(
     property_type: Optional[PropertyType] = Query(None, description="Filter by property type"),
     listing_type: Optional[ListingType] = Query(None, description="Filter by listing type"),
     is_available: Optional[bool] = Query(None, description="Filter by availability"),
+    search: Optional[str] = Query(None, description="Search by name, location or description"),
     db: Session = Depends(get_mysql_db)
 ):
     """
@@ -132,14 +134,29 @@ def list_properties(
     - **property_type**: Filter by type (PG, 1RK, 1BHK, 2BHK)
     - **listing_type**: Filter by listing (buy, rent)
     - **is_available**: Filter by availability (true/false)
+    - **search**: Search string for name, location or description
     """
     properties = realty_repo.get_properties(
         db, skip=skip, limit=limit,
         property_type=property_type.value if property_type else None,
         listing_type=listing_type.value if listing_type else None,
-        is_available=is_available
+        is_available=is_available,
+        search=search
     )
     return properties
+
+
+@realty_router.get("/realty/properties/suggestions", response_model=List[str])
+def get_property_suggestions(
+    q: str = Query(..., min_length=1, description="Search term for suggestions"),
+    db: Session = Depends(get_mysql_db)
+):
+    """
+    Get dynamic search suggestions based on property names and locations.
+    
+    - **q**: The search term (minimum 1 character)
+    """
+    return realty_repo.get_property_suggestions(db, q)
 
 
 @realty_router.get("/realty/properties/{property_id}", response_model=PropertyResponse)
@@ -297,3 +314,45 @@ def delete_property_image(image_id: int, db: Session = Depends(get_mysql_db)):
     except SQLAlchemyError as e:
         raise DatabaseError(f"Failed to delete property image: {str(e)}")
     return None
+
+
+# ==================== REVIEW ENDPOINTS ====================
+
+@realty_router.get("/realty/properties/{property_id}/reviews", response_model=List[ReviewResponse])
+def list_property_reviews(property_id: int, db: Session = Depends(get_mysql_db)):
+    """
+    List all reviews for a specific property.
+    
+    - **property_id**: The unique identifier of the property
+    """
+    # Verify property exists
+    property_obj = realty_repo.get_property_by_id(db, property_id)
+    if not property_obj:
+        raise NotFoundException("Property", property_id)
+    
+    return realty_repo.get_reviews_by_property_id(db, property_id)
+
+
+@realty_router.post("/realty/properties/{property_id}/reviews", response_model=ReviewResponse, status_code=201)
+def add_property_review(
+    property_id: int,
+    review: ReviewCreate,
+    db: Session = Depends(get_mysql_db)
+):
+    """
+    Add a new review to a property.
+    
+    - **property_id**: The unique identifier of the property
+    - **rating**: Rating from 1 to 5 (required)
+    - **user_name**: Name of the user (required)
+    - **comment**: Review comment (optional)
+    """
+    # Verify property exists
+    property_obj = realty_repo.get_property_by_id(db, property_id)
+    if not property_obj:
+        raise NotFoundException("Property", property_id)
+    
+    try:
+        return realty_repo.create_review(db, review.model_dump(), property_id)
+    except SQLAlchemyError as e:
+        raise DatabaseError(f"Failed to add review: {str(e)}")
