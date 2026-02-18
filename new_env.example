@@ -1,0 +1,17 @@
+DB_HOST=127.0.0.1
+DB_PORT=3310
+DB_USER=appuser
+DB_PASSWORD=StrongPassword@123
+DB_NAME=makemystay
+ENV=production
+
+# AWS / S3 Configuration (Required for Images)
+S3_BUCKET_NAME=your_bucket_name
+AWS_ACCESS_KEY_ID=your_access_key
+AWS_SECRET_ACCESS_KEY=your_secret_key
+AWS_REGION=ap-south-1
+
+# CloudFront Configuration (Optional, for CDN)
+# CLOUDFRONT_DOMAIN=d12345.cloudfront.net
+# CLOUDFRONT_KEY_PAIR_ID=your_key_pair_id
+# CLOUDFRONT_PRIVATE_KEY="-----BEGIN RSA PRIVATE KEY-----\n...\n-----END RSA PRIVATE KEY-----"
