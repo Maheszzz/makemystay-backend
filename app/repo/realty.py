@@ -182,8 +182,19 @@ def get_property_image_by_id(db: Session, image_id: int) -> Optional[PropertyIma
 
 
 def create_property_image(db: Session, image_data: dict, property_id: int) -> PropertyImage:
-    """Create a new property image with transaction safety."""
+    """Create a new property image with transaction safety. Deletes existing duplicate if present."""
     try:
+        # Check for existing image with same URL for this property
+        existing_img = db.query(PropertyImage).filter(
+            PropertyImage.property_id == property_id,
+            PropertyImage.image_url == image_data['image_url']
+        ).first()
+
+        if existing_img:
+            db.delete(existing_img)
+            # flush to ensure deletion happens before insertion if there's a unique constraint
+            db.flush() 
+
         db_image = PropertyImage(**image_data, property_id=property_id)
         db.add(db_image)
         db.commit()

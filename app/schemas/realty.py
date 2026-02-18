@@ -42,6 +42,8 @@ class ContactBase(BaseModel):
     phone: str = Field(..., min_length=10, max_length=15)
     email: EmailStr = Field(..., max_length=150)
     message: str = Field(..., max_length=250)
+    location: Optional[str] = Field(None, max_length=100)
+    property_type: Optional[str] = Field(None, max_length=50)
     status: Optional[ContactStatus] = ContactStatus.new
 
     model_config = {"populate_by_name": True}
@@ -58,6 +60,8 @@ class ContactUpdate(BaseModel):
     phone: Optional[str] = Field(None, min_length=10, max_length=15)
     email: Optional[EmailStr] = Field(None, max_length=150)
     message: Optional[str] = Field(None, max_length=250)
+    location: Optional[str] = Field(None, max_length=100)
+    property_type: Optional[str] = Field(None, max_length=50)
     status: Optional[ContactStatus] = None
 
     model_config = {"populate_by_name": True}

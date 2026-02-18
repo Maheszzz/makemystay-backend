@@ -9,20 +9,32 @@ from cryptography.hazmat.primitives import hashes
 from cryptography.hazmat.primitives.asymmetric import padding
 from botocore.signers import CloudFrontSigner
 
+# Global cache for performance
+_CACHED_PRIVATE_KEY = None
+_CACHED_S3_CLIENT = None
+
 def rsa_signer(message):
-    private_key_str = os.getenv('CLOUDFRONT_PRIVATE_KEY')
-    if not private_key_str:
-        return None
-        
-    # Replace literal '\\n' with actual newlines if present in env var
-    private_key_str = private_key_str.replace('\\n', '\n')
+    global _CACHED_PRIVATE_KEY
     
-    private_key = serialization.load_pem_private_key(
-        private_key_str.encode('utf-8'),
-        password=None,
-        backend=default_backend()
-    )
-    return private_key.sign(message, padding.PKCS1v15(), hashes.SHA1())
+    if _CACHED_PRIVATE_KEY is None:
+        private_key_str = os.getenv('CLOUDFRONT_PRIVATE_KEY')
+        if not private_key_str:
+            return None
+            
+        # Replace literal '\\n' with actual newlines if present in env var
+        private_key_str = private_key_str.replace('\\n', '\n')
+        
+        try:
+            _CACHED_PRIVATE_KEY = serialization.load_pem_private_key(
+                private_key_str.encode('utf-8'),
+                password=None,
+                backend=default_backend()
+            )
+        except Exception as e:
+            print(f"Failed to load CloudFront private key: {e}")
+            return None
+            
+    return _CACHED_PRIVATE_KEY.sign(message, padding.PKCS1v15(), hashes.SHA1())
 
 def get_cloudfront_signed_url(s3_key: str, expires_in_seconds: int = 3600) -> str:
     """
@@ -58,19 +70,22 @@ def get_cloudfront_signed_url(s3_key: str, expires_in_seconds: int = 3600) -> st
 
     # 2. Fallback to Direct S3
     if bucket_name:
+        global _CACHED_S3_CLIENT
+        
         # Check if we have credentials for presigned URL
         aws_access_key = os.getenv('AWS_ACCESS_KEY_ID')
         aws_secret_key = os.getenv('AWS_SECRET_ACCESS_KEY')
 
         if aws_access_key and aws_secret_key:
             try:
-                s3_client = boto3.client(
-                    's3',
-                    aws_access_key_id=aws_access_key,
-                    aws_secret_access_key=aws_secret_key,
-                    region_name=aws_region
-                )
-                return s3_client.generate_presigned_url(
+                if _CACHED_S3_CLIENT is None:
+                    _CACHED_S3_CLIENT = boto3.client(
+                        's3',
+                        aws_access_key_id=aws_access_key,
+                        aws_secret_access_key=aws_secret_key,
+                        region_name=aws_region
+                    )
+                return _CACHED_S3_CLIENT.generate_presigned_url(
                     'get_object',
                     Params={'Bucket': bucket_name, 'Key': s3_key},
                     ExpiresIn=expires_in_seconds

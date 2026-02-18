@@ -13,6 +13,8 @@ class Contact(MySQLBase):
     phone = Column(String(15), nullable=False)
     email = Column(String(150), nullable=False)
     message = Column(String(250), nullable=False)
+    location = Column(String(100), nullable=True)
+    property_type = Column(String(50), nullable=True)
     status = Column(
         Enum('new', 'contacted', 'closed', name='contact_status'),
         default='new',
@@ -27,8 +29,8 @@ class Property(MySQLBase):
     __tablename__ = "properties"
     
     id = Column(Integer, primary_key=True, index=True, autoincrement=True)
-    property_name = Column(String(150), nullable=False)
-    location = Column(String(150), nullable=False)
+    property_name = Column(String(150), nullable=False, index=True)
+    location = Column(String(150), nullable=False, index=True)
     phone = Column(String(15), nullable=False)
     map_link = Column(String(500), nullable=True)
     description = Column(Text, nullable=True)
