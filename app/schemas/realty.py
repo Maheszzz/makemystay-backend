@@ -21,6 +21,7 @@ class PropertyType(str, Enum):
     THREE_BHK = "3BHK"
     FOUR_BHK = "4BHK"
     VILLA = "Villa"
+    PLOT = "Plot"
 
 
 class Furnishing(str, Enum):
