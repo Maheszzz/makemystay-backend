@@ -4,7 +4,7 @@ set -e
 # ===== CONFIG =====
 APP_NAME="app"
 EC2_USER="ubuntu"
-EC2_HOST="ec2-35-154-207-200.ap-south-1.compute.amazonaws.com"
+EC2_HOST="ec2-3-110-184-129.ap-south-1.compute.amazonaws.com"
 PEM_KEY="/Users/maheswaranm/Downloads/makemystayrealty.pem"
 
 REMOTE_DIR="/home/ubuntu/app"
@@ -15,7 +15,7 @@ PORT=8000
 
 # ===== CLEANUP & PREPARE =====
 echo "🧹 Cleaning up old deployment..."
-ssh -i "$PEM_KEY" $EC2_USER@$EC2_HOST << EOF
+ssh -T -i "$PEM_KEY" $EC2_USER@$EC2_HOST << EOF
 mkdir -p $REMOTE_DIR
 cd $REMOTE_DIR
 rm -rf app dist build *.spec app.log
@@ -31,7 +31,7 @@ scp -i "$PEM_KEY" -r \
 
 # ===== SETUP & RUN ON EC2 =====
 echo "🚀 Setting up & running FastAPI on EC2..."
-ssh -i "$PEM_KEY" $EC2_USER@$EC2_HOST << EOF
+ssh -T -i "$PEM_KEY" $EC2_USER@$EC2_HOST << EOF
 set -e
 
 cd $REMOTE_DIR
