@@ -69,6 +69,8 @@ def get_properties(
     search: Optional[str] = None
 ) -> List[Property]:
     """Retrieve properties with filters and eager-loaded images and reviews."""
+    from sqlalchemy import or_
+    
     query = db.query(Property).options(
         subqueryload(Property.images),
         subqueryload(Property.reviews)
@@ -80,11 +82,36 @@ def get_properties(
     if is_available is not None:
         query = query.filter(Property.is_available == is_available)
     if search:
-        search_filter = f"%{search}%"
-        query = query.filter(
-            (Property.property_name.ilike(search_filter)) |
-            (Property.location.ilike(search_filter))
-        )
+        search_parts = [s.strip().lower() for s in search.split(",") if s.strip()]
+        search_terms = []
+        
+        # Simple nearby mapping for Bangalore areas
+        NEARBY_MAPPING = {
+            "electronic city": ["bommasandra", "chandapura", "begur", "hebbagodi"],
+            "bommasandra": ["electronic city", "chandapura", "hebbagodi"],
+            "hsr layout": ["koramangala", "btm layout", "bellandur", "bommanahalli"],
+            "koramangala": ["hsr layout", "btm layout", "indiranagar", "ejipura"],
+            "whitefield": ["marathahalli", "bellandur", "mahadevapura", "itpl"],
+            "marathahalli": ["whitefield", "bellandur", "kadubeesanahalli", "munnekollal"],
+            "indiranagar": ["koramangala", "domlur", "hal", "cv raman nagar"],
+            "btm layout": ["hsr layout", "koramangala", "jayanagar", "jp nagar"],
+            "jayanagar": ["btm layout", "jp nagar", "basavanagudi", "banashankari"],
+            "jp nagar": ["jayanagar", "btm layout", "bannerghatta road", "banashankari"],
+        }
+        
+        for part in search_parts:
+            search_terms.append(part)
+            for key, neighbors in NEARBY_MAPPING.items():
+                if key in part or part in key:
+                    search_terms.extend(neighbors)
+
+        conditions = []
+        for term in set(search_terms):
+            search_filter = f"%{term}%"
+            conditions.append(Property.property_name.ilike(search_filter))
+            conditions.append(Property.location.ilike(search_filter))
+            
+        query = query.filter(or_(*conditions))
     
     properties = query.offset(skip).limit(limit).all()
     
@@ -98,18 +125,48 @@ def get_properties(
 
 def get_property_suggestions(db: Session, q: str) -> List[str]:
     """Retrieve unique property names and locations matching the search term."""
-    search_filter = f"%{q}%"
+    q_parts = [s.strip().lower() for s in q.split(",") if s.strip()]
+    if not q_parts:
+        return []
+
+    # Get suggestions for the LAST typed part of the query
+    current_q = q_parts[-1]
     
-    # Get unique property names
-    names = db.query(Property.property_name).filter(
-        Property.property_name.ilike(search_filter)
-    ).distinct().limit(10).all()
+    search_terms = [current_q]
     
-    # Get unique locations
-    locations = db.query(Property.location).filter(
-        Property.location.ilike(search_filter)
-    ).distinct().limit(10).all()
+    # Simple nearby mapping for Bangalore
+    NEARBY_MAPPING = {
+        "electronic city": ["bommasandra", "chandapura", "begur", "hebbagodi"],
+        "bommasandra": ["electronic city", "chandapura", "hebbagodi"],
+        "hsr layout": ["koramangala", "btm layout", "bellandur", "bommanahalli"],
+        "koramangala": ["hsr layout", "btm layout", "indiranagar", "ejipura"],
+        "whitefield": ["marathahalli", "bellandur", "mahadevapura", "itpl"],
+        "marathahalli": ["whitefield", "bellandur", "kadubeesanahalli", "munnekollal"],
+        "indiranagar": ["koramangala", "domlur", "hal", "cv raman nagar"],
+        "btm layout": ["hsr layout", "koramangala", "jayanagar", "jp nagar"],
+        "jayanagar": ["btm layout", "jp nagar", "basavanagudi", "banashankari"],
+        "jp nagar": ["jayanagar", "btm layout", "bannerghatta road", "banashankari"],
+    }
     
+    for key, neighbors in NEARBY_MAPPING.items():
+        if key in current_q or current_q in key:
+            search_terms.extend(neighbors)
+
+    names = []
+    locations = []
+    for term in set(search_terms):
+        search_filter = f"%{term}%"
+        
+        # Get unique property names
+        names.extend(db.query(Property.property_name).filter(
+            Property.property_name.ilike(search_filter)
+        ).distinct().limit(5).all())
+        
+        # Get unique locations
+        locations.extend(db.query(Property.location).filter(
+            Property.location.ilike(search_filter)
+        ).distinct().limit(5).all())
+        
     # Extract strings and combine
     suggestions = [n[0] for n in names] + [l[0] for l in locations]
     
