@@ -14,6 +14,7 @@ from app.schemas.realty import (
 )
 from app.repo import realty as realty_repo
 from app.core.exceptions import NotFoundException, DatabaseError
+from app.core import security
 
 realty_router = APIRouter(tags=["Realty"])
 
@@ -190,7 +191,11 @@ def get_property_by_slug(property_type: str, slug: str, db: Session = Depends(ge
 
 
 @realty_router.post("/realty/properties", response_model=PropertyResponse, status_code=201)
-def create_property(property_data: PropertyCreate, db: Session = Depends(get_mysql_db)):
+def create_property(
+    property_data: PropertyCreate, 
+    db: Session = Depends(get_mysql_db),
+    current_admin = Depends(security.admin_required)
+):
     """
     Create a new property.
     
@@ -209,7 +214,8 @@ def create_property(property_data: PropertyCreate, db: Session = Depends(get_mys
 def update_property(
     property_id: int,
     property_data: PropertyUpdate,
-    db: Session = Depends(get_mysql_db)
+    db: Session = Depends(get_mysql_db),
+    current_admin = Depends(security.admin_required)
 ):
     """
     Update an existing property.
@@ -231,7 +237,11 @@ def update_property(
 
 
 @realty_router.delete("/realty/properties/{property_id}", status_code=204)
-def delete_property(property_id: int, db: Session = Depends(get_mysql_db)):
+def delete_property(
+    property_id: int, 
+    db: Session = Depends(get_mysql_db),
+    current_admin = Depends(security.admin_required)
+):
     """
     Delete a property and its associated images.
     
@@ -246,6 +256,25 @@ def delete_property(property_id: int, db: Session = Depends(get_mysql_db)):
     except SQLAlchemyError as e:
         raise DatabaseError(f"Failed to delete property: {str(e)}")
     return None
+
+
+@realty_router.post("/realty/properties/{property_id}/restore", response_model=PropertyResponse)
+def restore_property(
+    property_id: int,
+    db: Session = Depends(get_mysql_db),
+    current_admin = Depends(security.admin_required)
+):
+    """
+    Restore a soft-deleted property.
+    """
+    db_property = realty_repo.get_property_by_id(db, property_id, include_deleted=True)
+    if not db_property:
+        raise NotFoundException("Property", property_id)
+    
+    try:
+        return realty_repo.restore_property(db, db_property)
+    except SQLAlchemyError as e:
+        raise DatabaseError(f"Failed to restore property: {str(e)}")
 
 
 # ==================== PROPERTY IMAGE ENDPOINTS ====================
@@ -269,7 +298,8 @@ def list_property_images(property_id: int, db: Session = Depends(get_mysql_db)):
 def add_property_image(
     property_id: int,
     image: PropertyImageCreate,
-    db: Session = Depends(get_mysql_db)
+    db: Session = Depends(get_mysql_db),
+    current_admin = Depends(security.admin_required)
 ):
     """
     Add a new image to a property.
@@ -294,7 +324,8 @@ def add_property_image(
 def update_property_image(
     image_id: int,
     image: PropertyImageUpdate,
-    db: Session = Depends(get_mysql_db)
+    db: Session = Depends(get_mysql_db),
+    current_admin = Depends(security.admin_required)
 ):
     """
     Update a property image.
@@ -316,7 +347,11 @@ def update_property_image(
 
 
 @realty_router.delete("/realty/images/{image_id}", status_code=204)
-def delete_property_image(image_id: int, db: Session = Depends(get_mysql_db)):
+def delete_property_image(
+    image_id: int, 
+    db: Session = Depends(get_mysql_db),
+    current_admin = Depends(security.admin_required)
+):
     """
     Delete a property image.
     

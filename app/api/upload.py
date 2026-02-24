@@ -3,6 +3,7 @@ from app.schemas.upload import UploadRequest, UploadResponse
 import boto3
 import uuid
 import os
+from app.core import security
 from loguru import logger
 
 router = APIRouter()
@@ -26,7 +27,10 @@ def get_s3_client():
     )
 
 @router.post("/uploads/presigned-url", response_model=UploadResponse)
-def generate_upload_url(data: UploadRequest):
+def generate_upload_url(
+    data: UploadRequest,
+    current_admin = Depends(security.admin_required)
+):
     s3_client = get_s3_client()
     if not s3_client:
         raise HTTPException(status_code=500, detail="AWS credentials not configured")

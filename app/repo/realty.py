@@ -68,7 +68,8 @@ def get_properties(
     listing_type: Optional[str] = None,
     is_available: Optional[bool] = None,
     search: Optional[str] = None,
-    exclude_property_type: Optional[str] = None
+    exclude_property_type: Optional[str] = None,
+    include_deleted: bool = False
 ) -> List[Property]:
     """Retrieve properties with filters and eager-loaded images and reviews."""
     from sqlalchemy import or_
@@ -85,6 +86,10 @@ def get_properties(
         subqueryload(Property.images),
         subqueryload(Property.reviews)
     ).order_by(desc(func.coalesce(avg_rating_subquery.c.avg_rating, 0)))
+    
+    if not include_deleted:
+        query = query.filter(Property.is_deleted == False)
+        
     if property_type:
         query = query.filter(Property.property_type == property_type)
     if exclude_property_type:
@@ -171,12 +176,14 @@ def get_property_suggestions(db: Session, q: str) -> List[str]:
         
         # Get unique property names
         names.extend(db.query(Property.property_name).filter(
-            Property.property_name.ilike(search_filter)
+            Property.property_name.ilike(search_filter),
+            Property.is_deleted == False
         ).distinct().limit(5).all())
         
         # Get unique locations
         locations.extend(db.query(Property.location).filter(
-            Property.location.ilike(search_filter)
+            Property.location.ilike(search_filter),
+            Property.is_deleted == False
         ).distinct().limit(5).all())
         
     # Extract strings and combine
@@ -186,12 +193,17 @@ def get_property_suggestions(db: Session, q: str) -> List[str]:
     return sorted(list(set(suggestions)))
 
 
-def get_property_by_id(db: Session, property_id: int) -> Optional[Property]:
+def get_property_by_id(db: Session, property_id: int, include_deleted: bool = False) -> Optional[Property]:
     """Retrieve a single property by ID with eager-loaded images and reviews."""
-    p = db.query(Property).options(
+    query = db.query(Property).options(
         joinedload(Property.images),
         joinedload(Property.reviews)
-    ).filter(Property.id == property_id).first()
+    ).filter(Property.id == property_id)
+    
+    if not include_deleted:
+        query = query.filter(Property.is_deleted == False)
+        
+    p = query.first()
     
     if p:
         p.review_count = len(p.reviews)
@@ -200,14 +212,19 @@ def get_property_by_id(db: Session, property_id: int) -> Optional[Property]:
     return p
 
 
-def get_property_by_slug(db: Session, property_type: str, slug: str) -> Optional[Property]:
+def get_property_by_slug(db: Session, property_type: str, slug: str, include_deleted: bool = False) -> Optional[Property]:
     """Retrieve a single property by type and slug with eager-loaded images and reviews."""
-    p = db.query(Property).options(
+    query = db.query(Property).options(
         joinedload(Property.images),
         joinedload(Property.reviews)
     ).filter(
         Property.slug == slug
-    ).first()
+    )
+    
+    if not include_deleted:
+        query = query.filter(Property.is_deleted == False)
+        
+    p = query.first()
     
     if p:
         p.review_count = len(p.reviews)
@@ -255,11 +272,32 @@ def update_property(db: Session, db_property: Property, update_data: dict) -> Pr
         raise
 
 
-def delete_property(db: Session, db_property: Property) -> None:
-    """Delete a property with transaction safety."""
+def delete_property(db: Session, db_property: Property, soft: bool = True) -> None:
+    """Delete a property (soft delete by default)."""
     try:
-        db.delete(db_property)
+        if soft:
+            db_property.is_deleted = True
+            # Also soft delete images
+            for img in db_property.images:
+                img.is_deleted = True
+        else:
+            db.delete(db_property)
         db.commit()
+    except SQLAlchemyError:
+        db.rollback()
+        raise
+
+
+def restore_property(db: Session, db_property: Property) -> Property:
+    """Restore a soft-deleted property."""
+    try:
+        db_property.is_deleted = False
+        # Also restore images? User might want this.
+        for img in db_property.images:
+            img.is_deleted = False
+        db.commit()
+        db.refresh(db_property)
+        return db_property
     except SQLAlchemyError:
         db.rollback()
         raise

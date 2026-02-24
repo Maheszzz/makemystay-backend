@@ -8,7 +8,9 @@ from slowapi.util import get_remote_address
 from slowapi.errors import RateLimitExceeded
 
 from app.api.realty import realty_router
+from app.api.auth import router as auth_router
 from app.models.payment import Payment # Import to ensure table creation
+from app.models.user import User # Import to ensure table creation
 import os
 import logging
 from dotenv import load_dotenv
@@ -86,6 +88,7 @@ async def health_check():
 
 # Include routers
 app.include_router(realty_router, prefix="/api/v1")
+app.include_router(auth_router, prefix="/api/v1")
 from app.api.upload import router as upload_router
 app.include_router(upload_router, prefix="/api/v1")
 from app.api.payment import router as payment_router

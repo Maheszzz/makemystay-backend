@@ -51,6 +51,7 @@ class Property(MySQLBase):
     )
     is_available = Column(Boolean, default=True, nullable=True)
     slug = Column(String(200), unique=True, index=True, nullable=True)
+    is_deleted = Column(Boolean, default=False, nullable=False)
     created_at = Column(DateTime, server_default=func.now(), nullable=True)
     updated_at = Column(DateTime, server_default=func.now(), onupdate=func.now(), nullable=True)
     
@@ -68,6 +69,7 @@ class PropertyImage(MySQLBase):
     image_url = Column(String(500), nullable=False)
     is_primary = Column(Boolean, default=False, nullable=False)
     sort_order = Column(Integer, default=0, nullable=False)
+    is_deleted = Column(Boolean, default=False, nullable=False)
     created_at = Column(DateTime, server_default=func.now(), nullable=False)
     
     # Relationship to property
