@@ -155,6 +155,7 @@ class PropertyBase(BaseModel):
     starting_price: Optional[float] = Field(None, ge=0)
     listing_type: ListingType = ListingType.rent
     is_available: Optional[bool] = True
+    slug: Optional[str] = None
 
     @field_validator('property_name', 'location')
     @classmethod
@@ -233,6 +234,7 @@ class PropertyResponse(BaseModel):
     starting_price: Optional[float] = None
     listing_type: str
     is_available: Optional[bool] = None
+    slug: Optional[str] = None
     created_at: datetime
     updated_at: datetime
     images: List[PropertyImageResponse] = []

@@ -3,6 +3,7 @@ from sqlalchemy.orm import Session, joinedload, subqueryload
 from sqlalchemy.exc import SQLAlchemyError
 from typing import List, Optional
 from sqlalchemy import func
+import re
 from app.models.realty import Contact, Property, PropertyImage, Review
 
 
@@ -188,8 +189,37 @@ def get_property_by_id(db: Session, property_id: int) -> Optional[Property]:
     return p
 
 
+def get_property_by_slug(db: Session, property_type: str, slug: str) -> Optional[Property]:
+    """Retrieve a single property by type and slug with eager-loaded images and reviews."""
+    p = db.query(Property).options(
+        joinedload(Property.images),
+        joinedload(Property.reviews)
+    ).filter(
+        Property.slug == slug
+    ).first()
+    
+    if p:
+        p.review_count = len(p.reviews)
+        p.average_rating = sum(r.rating for r in p.reviews) / p.review_count if p.review_count > 0 else 0.0
+    
+    return p
+
+
+def generate_unique_slug(db: Session, name: str) -> str:
+    base_slug = re.sub(r'[^a-zA-Z0-9]+', '-', name).strip('-').lower()
+    slug = base_slug
+    counter = 1
+    while db.query(Property).filter(Property.slug == slug).first():
+        slug = f"{base_slug}-{counter}"
+        counter += 1
+    return slug
+
+
 def create_property(db: Session, property_data: dict) -> Property:
     """Create a new property with transaction safety."""
+    if not property_data.get('slug') and property_data.get('property_name'):
+        property_data['slug'] = generate_unique_slug(db, property_data['property_name'])
+        
     try:
         db_property = Property(**property_data)
         db.add(db_property)

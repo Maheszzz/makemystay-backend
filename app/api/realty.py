@@ -172,6 +172,20 @@ def get_property(property_id: int, db: Session = Depends(get_mysql_db)):
     return property_obj
 
 
+@realty_router.get("/realty/properties/by-slug/{property_type}/{slug}", response_model=PropertyResponse)
+def get_property_by_slug(property_type: str, slug: str, db: Session = Depends(get_mysql_db)):
+    """
+    Get a specific property by type and slug.
+    
+    - **property_type**: The type of the property (e.g., pg, rent)
+    - **slug**: The auto-generated slug of the property
+    """
+    property_obj = realty_repo.get_property_by_slug(db, property_type, slug)
+    if not property_obj:
+        raise NotFoundException("Property", f"{property_type}/{slug}")
+    return property_obj
+
+
 @realty_router.post("/realty/properties", response_model=PropertyResponse, status_code=201)
 def create_property(property_data: PropertyCreate, db: Session = Depends(get_mysql_db)):
     """
