@@ -119,6 +119,7 @@ class ReviewBase(BaseModel):
     """Base schema for Review."""
     rating: int = Field(..., ge=1, le=5)
     user_name: str = Field(..., min_length=1, max_length=100)
+    property_name: Optional[str] = Field(None, max_length=150)
     comment: Optional[str] = None
 
 

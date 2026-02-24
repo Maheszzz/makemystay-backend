@@ -2,7 +2,7 @@
 from sqlalchemy.orm import Session, joinedload, subqueryload
 from sqlalchemy.exc import SQLAlchemyError
 from typing import List, Optional
-from sqlalchemy import func
+from sqlalchemy import func, desc
 import re
 from app.models.realty import Contact, Property, PropertyImage, Review
 
@@ -72,10 +72,18 @@ def get_properties(
     """Retrieve properties with filters and eager-loaded images and reviews."""
     from sqlalchemy import or_
     
-    query = db.query(Property).options(
+    # Subquery to calculate average rating per property
+    avg_rating_subquery = db.query(
+        Review.property_id,
+        func.avg(Review.rating).label('avg_rating')
+    ).group_by(Review.property_id).subquery()
+
+    query = db.query(Property).outerjoin(
+        avg_rating_subquery, Property.id == avg_rating_subquery.c.property_id
+    ).options(
         subqueryload(Property.images),
         subqueryload(Property.reviews)
-    )
+    ).order_by(desc(func.coalesce(avg_rating_subquery.c.avg_rating, 0)))
     if property_type:
         query = query.filter(Property.property_type == property_type)
     if listing_type:
@@ -327,6 +335,12 @@ def get_reviews_by_property_id(db: Session, property_id: int) -> List[Review]:
 def create_review(db: Session, review_data: dict, property_id: int) -> Review:
     """Create a new review with transaction safety."""
     try:
+        # Automatically populate property_name if not provided
+        if not review_data.get('property_name'):
+            prop = db.query(Property).filter(Property.id == property_id).first()
+            if prop:
+                review_data['property_name'] = prop.property_name
+
         db_review = Review(**review_data, property_id=property_id)
         db.add(db_review)
         db.commit()

@@ -82,6 +82,7 @@ class Review(MySQLBase):
     property_id = Column(INTEGER(unsigned=True), ForeignKey('properties.id', ondelete='CASCADE'), nullable=False)
     rating = Column(Integer, nullable=False) # 1-5
     user_name = Column(String(100), nullable=False)
+    property_name = Column(String(150), nullable=True)
     comment = Column(Text, nullable=True)
     created_at = Column(DateTime, server_default=func.now(), nullable=False)
     
