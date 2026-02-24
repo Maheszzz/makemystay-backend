@@ -25,6 +25,8 @@ EOF
 echo "📦 Uploading source files..."
 scp -i "$PEM_KEY" -r \
   app \
+  alembic \
+  alembic.ini \
   requirements.txt \
   .env.production \
   $EC2_USER@$EC2_HOST:$REMOTE_DIR/
@@ -58,6 +60,9 @@ echo "🌱 Loading production envs..."
 set -a
 source .env.production
 set +a
+
+echo "🚀 Running database migrations..."
+alembic upgrade head
 
 echo "▶️ Starting FastAPI (background)..."
 nohup uvicorn $APP_MODULE \
