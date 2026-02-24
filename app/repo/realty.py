@@ -67,7 +67,8 @@ def get_properties(
     property_type: Optional[str] = None,
     listing_type: Optional[str] = None,
     is_available: Optional[bool] = None,
-    search: Optional[str] = None
+    search: Optional[str] = None,
+    exclude_property_type: Optional[str] = None
 ) -> List[Property]:
     """Retrieve properties with filters and eager-loaded images and reviews."""
     from sqlalchemy import or_
@@ -86,6 +87,8 @@ def get_properties(
     ).order_by(desc(func.coalesce(avg_rating_subquery.c.avg_rating, 0)))
     if property_type:
         query = query.filter(Property.property_type == property_type)
+    if exclude_property_type:
+        query = query.filter(Property.property_type != exclude_property_type)
     if listing_type:
         query = query.filter(Property.listing_type == listing_type)
     if is_available is not None:

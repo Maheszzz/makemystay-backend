@@ -124,6 +124,7 @@ def list_properties(
     listing_type: Optional[ListingType] = Query(None, description="Filter by listing type"),
     is_available: Optional[bool] = Query(None, description="Filter by availability"),
     search: Optional[str] = Query(None, description="Search by name, location or description"),
+    exclude_property_type: Optional[str] = Query(None, description="Exclude a specific property type"),
     db: Session = Depends(get_mysql_db)
 ):
     """
@@ -135,13 +136,15 @@ def list_properties(
     - **listing_type**: Filter by listing (buy, rent)
     - **is_available**: Filter by availability (true/false)
     - **search**: Search string for name, location or description
+    - **exclude_property_type**: Exclude a specific type (e.g., PG)
     """
     properties = realty_repo.get_properties(
         db, skip=skip, limit=limit,
         property_type=property_type.value if property_type else None,
         listing_type=listing_type.value if listing_type else None,
         is_available=is_available,
-        search=search
+        search=search,
+        exclude_property_type=exclude_property_type
     )
     return properties
 
