@@ -1,0 +1,302 @@
+[
+  {
+    "id": 1,
+    "property_name": "Kings & Queens Coliving",
+    "property_type": "PG",
+    "listing_type": "rent"
+  },
+  {
+    "id": 14,
+    "property_name": "Flock 9 Coliving",
+    "property_type": "PG",
+    "listing_type": "rent"
+  },
+  {
+    "id": 15,
+    "property_name": "Arcade Inn Coliving",
+    "property_type": "PG",
+    "listing_type": "rent"
+  },
+  {
+    "id": 16,
+    "property_name": "Urban Living",
+    "property_type": "1BHK",
+    "listing_type": "rent"
+  },
+  {
+    "id": 17,
+    "property_name": "SGR Enclave",
+    "property_type": "1BHK",
+    "listing_type": "rent"
+  },
+  {
+    "id": 18,
+    "property_name": "Premium urban Coliving",
+    "property_type": "PG",
+    "listing_type": "rent"
+  },
+  {
+    "id": 19,
+    "property_name": "Haveli Coliving",
+    "property_type": "PG",
+    "listing_type": "rent"
+  },
+  {
+    "id": 20,
+    "property_name": "Connect coliving",
+    "property_type": "PG",
+    "listing_type": "rent"
+  },
+  {
+    "id": 21,
+    "property_name": "PRO COLIVE PG",
+    "property_type": "PG",
+    "listing_type": "rent"
+  },
+  {
+    "id": 25,
+    "property_name": "AVINYA Colive",
+    "property_type": "PG",
+    "listing_type": "rent"
+  },
+  {
+    "id": 27,
+    "property_name": "DVR Co-Living PG Studio Rooms",
+    "property_type": "PG",
+    "listing_type": "rent"
+  },
+  {
+    "id": 28,
+    "property_name": "Shine Premium Colive",
+    "property_type": "PG",
+    "listing_type": "rent"
+  },
+  {
+    "id": 31,
+    "property_name": "Connect Coliving 2 ",
+    "property_type": "PG",
+    "listing_type": "rent"
+  },
+  {
+    "id": 32,
+    "property_name": "Heaven Homes",
+    "property_type": "1BHK",
+    "listing_type": "rent"
+  },
+  {
+    "id": 35,
+    "property_name": "Gina Artize Bomasandra",
+    "property_type": "1BHK",
+    "listing_type": "rent"
+  },
+  {
+    "id": 36,
+    "property_name": "At Home premium co living pg",
+    "property_type": "PG",
+    "listing_type": "rent"
+  },
+  {
+    "id": 37,
+    "property_name": "Flechazo co living PG",
+    "property_type": "PG",
+    "listing_type": "rent"
+  },
+  {
+    "id": 39,
+    "property_name": "KOINN Coliving PG",
+    "property_type": "PG",
+    "listing_type": "rent"
+  },
+  {
+    "id": 40,
+    "property_name": "Chap & dona coliving",
+    "property_type": "PG",
+    "listing_type": "rent"
+  },
+  {
+    "id": 42,
+    "property_name": "GVS Coliving Studio Rooms",
+    "property_type": "PG",
+    "listing_type": "rent"
+  },
+  {
+    "id": 43,
+    "property_name": "Livingnest Falcon coliving",
+    "property_type": "PG",
+    "listing_type": "rent"
+  },
+  {
+    "id": 44,
+    "property_name": "Cozhy coliving pg",
+    "property_type": "PG",
+    "listing_type": "rent"
+  },
+  {
+    "id": 45,
+    "property_name": "AA Sparrow Nest Colive",
+    "property_type": "PG",
+    "listing_type": "rent"
+  },
+  {
+    "id": 47,
+    "property_name": "Heaven coliving pg",
+    "property_type": "PG",
+    "listing_type": "rent"
+  },
+  {
+    "id": 48,
+    "property_name": "Astro living",
+    "property_type": "PG",
+    "listing_type": "rent"
+  },
+  {
+    "id": 49,
+    "property_name": "AA Epsilon Premium Colive",
+    "property_type": "PG",
+    "listing_type": "rent"
+  },
+  {
+    "id": 50,
+    "property_name": "Ashok PG Colive",
+    "property_type": "PG",
+    "listing_type": "rent"
+  },
+  {
+    "id": 51,
+    "property_name": "Kio Colive PG",
+    "property_type": "PG",
+    "listing_type": "rent"
+  },
+  {
+    "id": 52,
+    "property_name": "AA Sparrow nest premium co live pg",
+    "property_type": "PG",
+    "listing_type": "rent"
+  },
+  {
+    "id": 54,
+    "property_name": "Lakshya Co Living PG",
+    "property_type": "PG",
+    "listing_type": "rent"
+  },
+  {
+    "id": 57,
+    "property_name": "K.N Co living Pg",
+    "property_type": "PG",
+    "listing_type": "rent"
+  },
+  {
+    "id": 58,
+    "property_name": "JR LUXURY COLIVING",
+    "property_type": "PG",
+    "listing_type": "rent"
+  },
+  {
+    "id": 60,
+    "property_name": "AA Premium Coliving PG",
+    "property_type": "PG",
+    "listing_type": "rent"
+  },
+  {
+    "id": 61,
+    "property_name": "Mio Colive PG",
+    "property_type": "PG",
+    "listing_type": "rent"
+  },
+  {
+    "id": 62,
+    "property_name": "Mr & Mrs coliving( Mahadevpura)",
+    "property_type": "PG",
+    "listing_type": "rent"
+  },
+  {
+    "id": 63,
+    "property_name": "Arcade INN Ladies PG",
+    "property_type": "PG",
+    "listing_type": "rent"
+  },
+  {
+    "id": 64,
+    "property_name": "Geet Coliving",
+    "property_type": "PG",
+    "listing_type": "rent"
+  },
+  {
+    "id": 65,
+    "property_name": "Town Park  2BHK",
+    "property_type": "2BHK",
+    "listing_type": "buy"
+  },
+  {
+    "id": 66,
+    "property_name": " Dream Garden 2BHK",
+    "property_type": "2BHK",
+    "listing_type": "buy"
+  },
+  {
+    "id": 67,
+    "property_name": "Woodscapes 3BHK",
+    "property_type": "3BHK",
+    "listing_type": "buy"
+  },
+  {
+    "id": 68,
+    "property_name": "Premium Residential Plot",
+    "property_type": "Plot",
+    "listing_type": "buy"
+  },
+  {
+    "id": 69,
+    "property_name": "Classic Gold House",
+    "property_type": "PG",
+    "listing_type": "rent"
+  },
+  {
+    "id": 70,
+    "property_name": "Orchid House",
+    "property_type": "PG",
+    "listing_type": "rent"
+  },
+  {
+    "id": 71,
+    "property_name": "Daisy House",
+    "property_type": "PG",
+    "listing_type": "rent"
+  },
+  {
+    "id": 72,
+    "property_name": "Golden Nest",
+    "property_type": "PG",
+    "listing_type": "rent"
+  },
+  {
+    "id": 73,
+    "property_name": "Lavender House",
+    "property_type": "PG",
+    "listing_type": "rent"
+  },
+  {
+    "id": 74,
+    "property_name": "Iris House",
+    "property_type": "PG",
+    "listing_type": "rent"
+  },
+  {
+    "id": 75,
+    "property_name": "Blossom House",
+    "property_type": "PG",
+    "listing_type": "rent"
+  },
+  {
+    "id": 76,
+    "property_name": "Lotus House",
+    "property_type": "PG",
+    "listing_type": "rent"
+  },
+  {
+    "id": 77,
+    "property_name": "Cherry Blossom",
+    "property_type": "PG",
+    "listing_type": "rent"
+  }
+]
