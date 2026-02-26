@@ -1,22 +1,6 @@
 import requests
-import json
-
-url = "http://localhost:8000/api/v1/uploads/presigned-url"
-payload = {
-    "filename": "test-image.jpg",
-    "content_type": "image/jpeg"
-}
-headers = {
-    "Content-Type": "application/json"
-}
-
-try:
-    response = requests.post(url, json=payload, headers=headers)
-    if response.status_code == 200:
-        print("✅ Success! Presigned URL generated.")
-        print(json.dumps(response.json(), indent=2))
-    else:
-        print(f"❌ Failed. Status: {response.status_code}")
-        print(response.text)
-except Exception as e:
-    print(f"❌ Error: {e}")
+token = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJzZG1pbkBTYWtlTXlzdGF5LmFwIiwiZXhwIjoxNzQzMTQ2ODE3fQ.Zxhw1joxNzc0NjAyOTkyfQ.bNw_OJddge8fY1X6ZsYaF4DWG3kKrzjiG38Vh9ExXjM"
+headers = {"Authorization": f"Bearer {token}"}
+payload = {"image_url": "https://xyz.com/image.jpg", "is_primary": False, "sort_order": 0}
+res = requests.post("http://localhost:8000/api/v1/realty/properties/77/images", json=payload, headers=headers)
+print(res.status_code, res.text)

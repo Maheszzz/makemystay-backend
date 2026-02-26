@@ -57,9 +57,25 @@ def generate_upload_url(
             ExpiresIn=300,  # 5 minutes
         )
 
+        # Use the CloudFront utility to get the proper URL (it falls back to S3 public URL if no CF)
+        from app.utils.cloudfront import get_cloudfront_signed_url
+        
+        # We pass a long expiry since these URLs will be stored in the DB, 
+        # but if CloudFront isn't configured, it falls back to a public S3 URL anyway.
+        # Alternatively, for public assets, we just want the public URL base.
+        # Since uploads are public, let's just construct the direct public URL 
+        # or use the CloudFront domain if available.
+        cloudfront_domain = os.getenv('CLOUDFRONT_DOMAIN')
+        if cloudfront_domain:
+            domain = cloudfront_domain if cloudfront_domain.startswith('http') else f"https://{cloudfront_domain}"
+            public_url = f"{domain}/{unique_filename}"
+        else:
+            public_url = f"https://{BUCKET_NAME}.s3.{AWS_REGION}.amazonaws.com/{unique_filename}"
+
         return {
             "upload_url": presigned_url,
-            "file_key": unique_filename
+            "file_key": unique_filename,
+            "public_url": public_url
         }
     except Exception as e:
         logger.error(f"Error generating presigned URL: {e}")

@@ -1,0 +1,1077 @@
+INFO:root:ENV=production
+INFO:root:DB_HOST=127.0.0.1
+INFO:root:DB_PORT=3310
+INFO:root:DB_USER=appuser
+INFO:root:DB_NAME=makemystay
+2026-02-25 16:50:11,949 INFO sqlalchemy.engine.Engine SELECT DATABASE()
+INFO:sqlalchemy.engine.Engine:SELECT DATABASE()
+2026-02-25 16:50:11,949 INFO sqlalchemy.engine.Engine [raw sql] {}
+INFO:sqlalchemy.engine.Engine:[raw sql] {}
+2026-02-25 16:50:12,008 INFO sqlalchemy.engine.Engine SELECT @@sql_mode
+INFO:sqlalchemy.engine.Engine:SELECT @@sql_mode
+2026-02-25 16:50:12,008 INFO sqlalchemy.engine.Engine [raw sql] {}
+INFO:sqlalchemy.engine.Engine:[raw sql] {}
+2026-02-25 16:50:12,034 INFO sqlalchemy.engine.Engine SELECT @@lower_case_table_names
+INFO:sqlalchemy.engine.Engine:SELECT @@lower_case_table_names
+2026-02-25 16:50:12,034 INFO sqlalchemy.engine.Engine [raw sql] {}
+INFO:sqlalchemy.engine.Engine:[raw sql] {}
+2026-02-25 16:50:12,091 INFO sqlalchemy.engine.Engine BEGIN (implicit)
+INFO:sqlalchemy.engine.Engine:BEGIN (implicit)
+2026-02-25 16:50:12,091 INFO sqlalchemy.engine.Engine DESCRIBE `makemystay`.`contacts`
+INFO:sqlalchemy.engine.Engine:DESCRIBE `makemystay`.`contacts`
+2026-02-25 16:50:12,091 INFO sqlalchemy.engine.Engine [raw sql] {}
+INFO:sqlalchemy.engine.Engine:[raw sql] {}
+2026-02-25 16:50:12,120 INFO sqlalchemy.engine.Engine DESCRIBE `makemystay`.`properties`
+INFO:sqlalchemy.engine.Engine:DESCRIBE `makemystay`.`properties`
+2026-02-25 16:50:12,120 INFO sqlalchemy.engine.Engine [raw sql] {}
+INFO:sqlalchemy.engine.Engine:[raw sql] {}
+2026-02-25 16:50:12,148 INFO sqlalchemy.engine.Engine DESCRIBE `makemystay`.`property_images`
+INFO:sqlalchemy.engine.Engine:DESCRIBE `makemystay`.`property_images`
+2026-02-25 16:50:12,148 INFO sqlalchemy.engine.Engine [raw sql] {}
+INFO:sqlalchemy.engine.Engine:[raw sql] {}
+2026-02-25 16:50:12,208 INFO sqlalchemy.engine.Engine DESCRIBE `makemystay`.`reviews`
+INFO:sqlalchemy.engine.Engine:DESCRIBE `makemystay`.`reviews`
+2026-02-25 16:50:12,208 INFO sqlalchemy.engine.Engine [raw sql] {}
+INFO:sqlalchemy.engine.Engine:[raw sql] {}
+2026-02-25 16:50:12,249 INFO sqlalchemy.engine.Engine DESCRIBE `makemystay`.`users`
+INFO:sqlalchemy.engine.Engine:DESCRIBE `makemystay`.`users`
+2026-02-25 16:50:12,249 INFO sqlalchemy.engine.Engine [raw sql] {}
+INFO:sqlalchemy.engine.Engine:[raw sql] {}
+2026-02-25 16:50:12,290 INFO sqlalchemy.engine.Engine DESCRIBE `makemystay`.`payments`
+INFO:sqlalchemy.engine.Engine:DESCRIBE `makemystay`.`payments`
+2026-02-25 16:50:12,290 INFO sqlalchemy.engine.Engine [raw sql] {}
+INFO:sqlalchemy.engine.Engine:[raw sql] {}
+2026-02-25 16:50:12,320 INFO sqlalchemy.engine.Engine COMMIT
+INFO:sqlalchemy.engine.Engine:COMMIT
+INFO:     Started server process [31620]
+INFO:     Waiting for application startup.
+INFO:     Application startup complete.
+INFO:     Uvicorn running on http://127.0.0.1:8000 (Press CTRL+C to quit)
+INFO:     127.0.0.1:57128 - "GET /api/v1/health HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:59727 - "OPTIONS /api/v1/realty/properties/82 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:59728 - "OPTIONS /api/v1/realty/properties/82 HTTP/1.1" 200 OK
+2026-02-25 17:08:06,150 INFO sqlalchemy.engine.Engine BEGIN (implicit)
+INFO:sqlalchemy.engine.Engine:BEGIN (implicit)
+2026-02-25 17:08:06,156 INFO sqlalchemy.engine.Engine SELECT anon_1.properties_id AS anon_1_properties_id, anon_1.properties_property_name AS anon_1_properties_property_name, anon_1.properties_location AS anon_1_properties_location, anon_1.properties_phone AS anon_1_properties_phone, anon_1.properties_map_link AS anon_1_properties_map_link, anon_1.properties_description AS anon_1_properties_description, anon_1.properties_features AS anon_1_properties_features, anon_1.properties_property_type AS anon_1_properties_property_type, anon_1.properties_furnishing AS anon_1_properties_furnishing, anon_1.properties_private_price AS anon_1_properties_private_price, anon_1.properties_single_price AS anon_1_properties_single_price, anon_1.properties_double_price AS anon_1_properties_double_price, anon_1.properties_triple_price AS anon_1_properties_triple_price, anon_1.properties_starting_price AS anon_1_properties_starting_price, anon_1.properties_listing_type AS anon_1_properties_listing_type, anon_1.properties_is_available AS anon_1_properties_is_available, anon_1.properties_slug AS anon_1_properties_slug, anon_1.properties_is_deleted AS anon_1_properties_is_deleted, anon_1.properties_created_at AS anon_1_properties_created_at, anon_1.properties_updated_at AS anon_1_properties_updated_at, property_images_1.id AS property_images_1_id, property_images_1.property_id AS property_images_1_property_id, property_images_1.image_url AS property_images_1_image_url, property_images_1.is_primary AS property_images_1_is_primary, property_images_1.sort_order AS property_images_1_sort_order, property_images_1.is_deleted AS property_images_1_is_deleted, property_images_1.created_at AS property_images_1_created_at, reviews_1.id AS reviews_1_id, reviews_1.property_id AS reviews_1_property_id, reviews_1.rating AS reviews_1_rating, reviews_1.user_name AS reviews_1_user_name, reviews_1.property_name AS reviews_1_property_name, reviews_1.comment AS reviews_1_comment, reviews_1.created_at AS reviews_1_created_at 
+FROM (SELECT properties.id AS properties_id, properties.property_name AS properties_property_name, properties.location AS properties_location, properties.phone AS properties_phone, properties.map_link AS properties_map_link, properties.description AS properties_description, properties.features AS properties_features, properties.property_type AS properties_property_type, properties.furnishing AS properties_furnishing, properties.private_price AS properties_private_price, properties.single_price AS properties_single_price, properties.double_price AS properties_double_price, properties.triple_price AS properties_triple_price, properties.starting_price AS properties_starting_price, properties.listing_type AS properties_listing_type, properties.is_available AS properties_is_available, properties.slug AS properties_slug, properties.is_deleted AS properties_is_deleted, properties.created_at AS properties_created_at, properties.updated_at AS properties_updated_at 
+FROM properties 
+WHERE properties.id = %(id_1)s AND properties.is_deleted = false 
+ LIMIT %(param_1)s) AS anon_1 LEFT OUTER JOIN property_images AS property_images_1 ON anon_1.properties_id = property_images_1.property_id LEFT OUTER JOIN reviews AS reviews_1 ON anon_1.properties_id = reviews_1.property_id
+INFO:sqlalchemy.engine.Engine:SELECT anon_1.properties_id AS anon_1_properties_id, anon_1.properties_property_name AS anon_1_properties_property_name, anon_1.properties_location AS anon_1_properties_location, anon_1.properties_phone AS anon_1_properties_phone, anon_1.properties_map_link AS anon_1_properties_map_link, anon_1.properties_description AS anon_1_properties_description, anon_1.properties_features AS anon_1_properties_features, anon_1.properties_property_type AS anon_1_properties_property_type, anon_1.properties_furnishing AS anon_1_properties_furnishing, anon_1.properties_private_price AS anon_1_properties_private_price, anon_1.properties_single_price AS anon_1_properties_single_price, anon_1.properties_double_price AS anon_1_properties_double_price, anon_1.properties_triple_price AS anon_1_properties_triple_price, anon_1.properties_starting_price AS anon_1_properties_starting_price, anon_1.properties_listing_type AS anon_1_properties_listing_type, anon_1.properties_is_available AS anon_1_properties_is_available, anon_1.properties_slug AS anon_1_properties_slug, anon_1.properties_is_deleted AS anon_1_properties_is_deleted, anon_1.properties_created_at AS anon_1_properties_created_at, anon_1.properties_updated_at AS anon_1_properties_updated_at, property_images_1.id AS property_images_1_id, property_images_1.property_id AS property_images_1_property_id, property_images_1.image_url AS property_images_1_image_url, property_images_1.is_primary AS property_images_1_is_primary, property_images_1.sort_order AS property_images_1_sort_order, property_images_1.is_deleted AS property_images_1_is_deleted, property_images_1.created_at AS property_images_1_created_at, reviews_1.id AS reviews_1_id, reviews_1.property_id AS reviews_1_property_id, reviews_1.rating AS reviews_1_rating, reviews_1.user_name AS reviews_1_user_name, reviews_1.property_name AS reviews_1_property_name, reviews_1.comment AS reviews_1_comment, reviews_1.created_at AS reviews_1_created_at 
+FROM (SELECT properties.id AS properties_id, properties.property_name AS properties_property_name, properties.location AS properties_location, properties.phone AS properties_phone, properties.map_link AS properties_map_link, properties.description AS properties_description, properties.features AS properties_features, properties.property_type AS properties_property_type, properties.furnishing AS properties_furnishing, properties.private_price AS properties_private_price, properties.single_price AS properties_single_price, properties.double_price AS properties_double_price, properties.triple_price AS properties_triple_price, properties.starting_price AS properties_starting_price, properties.listing_type AS properties_listing_type, properties.is_available AS properties_is_available, properties.slug AS properties_slug, properties.is_deleted AS properties_is_deleted, properties.created_at AS properties_created_at, properties.updated_at AS properties_updated_at 
+FROM properties 
+WHERE properties.id = %(id_1)s AND properties.is_deleted = false 
+ LIMIT %(param_1)s) AS anon_1 LEFT OUTER JOIN property_images AS property_images_1 ON anon_1.properties_id = property_images_1.property_id LEFT OUTER JOIN reviews AS reviews_1 ON anon_1.properties_id = reviews_1.property_id
+2026-02-25 17:08:06,157 INFO sqlalchemy.engine.Engine [generated in 0.00062s] {'id_1': 82, 'param_1': 1}
+INFO:sqlalchemy.engine.Engine:[generated in 0.00062s] {'id_1': 82, 'param_1': 1}
+INFO:     127.0.0.1:59727 - "GET /api/v1/realty/properties/82 HTTP/1.1" 200 OK
+2026-02-25 17:08:06,186 INFO sqlalchemy.engine.Engine ROLLBACK
+INFO:sqlalchemy.engine.Engine:ROLLBACK
+2026-02-25 17:08:06,320 INFO sqlalchemy.engine.Engine BEGIN (implicit)
+INFO:sqlalchemy.engine.Engine:BEGIN (implicit)
+2026-02-25 17:08:06,321 INFO sqlalchemy.engine.Engine SELECT anon_1.properties_id AS anon_1_properties_id, anon_1.properties_property_name AS anon_1_properties_property_name, anon_1.properties_location AS anon_1_properties_location, anon_1.properties_phone AS anon_1_properties_phone, anon_1.properties_map_link AS anon_1_properties_map_link, anon_1.properties_description AS anon_1_properties_description, anon_1.properties_features AS anon_1_properties_features, anon_1.properties_property_type AS anon_1_properties_property_type, anon_1.properties_furnishing AS anon_1_properties_furnishing, anon_1.properties_private_price AS anon_1_properties_private_price, anon_1.properties_single_price AS anon_1_properties_single_price, anon_1.properties_double_price AS anon_1_properties_double_price, anon_1.properties_triple_price AS anon_1_properties_triple_price, anon_1.properties_starting_price AS anon_1_properties_starting_price, anon_1.properties_listing_type AS anon_1_properties_listing_type, anon_1.properties_is_available AS anon_1_properties_is_available, anon_1.properties_slug AS anon_1_properties_slug, anon_1.properties_is_deleted AS anon_1_properties_is_deleted, anon_1.properties_created_at AS anon_1_properties_created_at, anon_1.properties_updated_at AS anon_1_properties_updated_at, property_images_1.id AS property_images_1_id, property_images_1.property_id AS property_images_1_property_id, property_images_1.image_url AS property_images_1_image_url, property_images_1.is_primary AS property_images_1_is_primary, property_images_1.sort_order AS property_images_1_sort_order, property_images_1.is_deleted AS property_images_1_is_deleted, property_images_1.created_at AS property_images_1_created_at, reviews_1.id AS reviews_1_id, reviews_1.property_id AS reviews_1_property_id, reviews_1.rating AS reviews_1_rating, reviews_1.user_name AS reviews_1_user_name, reviews_1.property_name AS reviews_1_property_name, reviews_1.comment AS reviews_1_comment, reviews_1.created_at AS reviews_1_created_at 
+FROM (SELECT properties.id AS properties_id, properties.property_name AS properties_property_name, properties.location AS properties_location, properties.phone AS properties_phone, properties.map_link AS properties_map_link, properties.description AS properties_description, properties.features AS properties_features, properties.property_type AS properties_property_type, properties.furnishing AS properties_furnishing, properties.private_price AS properties_private_price, properties.single_price AS properties_single_price, properties.double_price AS properties_double_price, properties.triple_price AS properties_triple_price, properties.starting_price AS properties_starting_price, properties.listing_type AS properties_listing_type, properties.is_available AS properties_is_available, properties.slug AS properties_slug, properties.is_deleted AS properties_is_deleted, properties.created_at AS properties_created_at, properties.updated_at AS properties_updated_at 
+FROM properties 
+WHERE properties.id = %(id_1)s AND properties.is_deleted = false 
+ LIMIT %(param_1)s) AS anon_1 LEFT OUTER JOIN property_images AS property_images_1 ON anon_1.properties_id = property_images_1.property_id LEFT OUTER JOIN reviews AS reviews_1 ON anon_1.properties_id = reviews_1.property_id
+INFO:sqlalchemy.engine.Engine:SELECT anon_1.properties_id AS anon_1_properties_id, anon_1.properties_property_name AS anon_1_properties_property_name, anon_1.properties_location AS anon_1_properties_location, anon_1.properties_phone AS anon_1_properties_phone, anon_1.properties_map_link AS anon_1_properties_map_link, anon_1.properties_description AS anon_1_properties_description, anon_1.properties_features AS anon_1_properties_features, anon_1.properties_property_type AS anon_1_properties_property_type, anon_1.properties_furnishing AS anon_1_properties_furnishing, anon_1.properties_private_price AS anon_1_properties_private_price, anon_1.properties_single_price AS anon_1_properties_single_price, anon_1.properties_double_price AS anon_1_properties_double_price, anon_1.properties_triple_price AS anon_1_properties_triple_price, anon_1.properties_starting_price AS anon_1_properties_starting_price, anon_1.properties_listing_type AS anon_1_properties_listing_type, anon_1.properties_is_available AS anon_1_properties_is_available, anon_1.properties_slug AS anon_1_properties_slug, anon_1.properties_is_deleted AS anon_1_properties_is_deleted, anon_1.properties_created_at AS anon_1_properties_created_at, anon_1.properties_updated_at AS anon_1_properties_updated_at, property_images_1.id AS property_images_1_id, property_images_1.property_id AS property_images_1_property_id, property_images_1.image_url AS property_images_1_image_url, property_images_1.is_primary AS property_images_1_is_primary, property_images_1.sort_order AS property_images_1_sort_order, property_images_1.is_deleted AS property_images_1_is_deleted, property_images_1.created_at AS property_images_1_created_at, reviews_1.id AS reviews_1_id, reviews_1.property_id AS reviews_1_property_id, reviews_1.rating AS reviews_1_rating, reviews_1.user_name AS reviews_1_user_name, reviews_1.property_name AS reviews_1_property_name, reviews_1.comment AS reviews_1_comment, reviews_1.created_at AS reviews_1_created_at 
+FROM (SELECT properties.id AS properties_id, properties.property_name AS properties_property_name, properties.location AS properties_location, properties.phone AS properties_phone, properties.map_link AS properties_map_link, properties.description AS properties_description, properties.features AS properties_features, properties.property_type AS properties_property_type, properties.furnishing AS properties_furnishing, properties.private_price AS properties_private_price, properties.single_price AS properties_single_price, properties.double_price AS properties_double_price, properties.triple_price AS properties_triple_price, properties.starting_price AS properties_starting_price, properties.listing_type AS properties_listing_type, properties.is_available AS properties_is_available, properties.slug AS properties_slug, properties.is_deleted AS properties_is_deleted, properties.created_at AS properties_created_at, properties.updated_at AS properties_updated_at 
+FROM properties 
+WHERE properties.id = %(id_1)s AND properties.is_deleted = false 
+ LIMIT %(param_1)s) AS anon_1 LEFT OUTER JOIN property_images AS property_images_1 ON anon_1.properties_id = property_images_1.property_id LEFT OUTER JOIN reviews AS reviews_1 ON anon_1.properties_id = reviews_1.property_id
+2026-02-25 17:08:06,321 INFO sqlalchemy.engine.Engine [cached since 0.1653s ago] {'id_1': 82, 'param_1': 1}
+INFO:sqlalchemy.engine.Engine:[cached since 0.1653s ago] {'id_1': 82, 'param_1': 1}
+INFO:     127.0.0.1:59727 - "GET /api/v1/realty/properties/82 HTTP/1.1" 200 OK
+2026-02-25 17:08:06,357 INFO sqlalchemy.engine.Engine ROLLBACK
+INFO:sqlalchemy.engine.Engine:ROLLBACK
+2026-02-25 17:10:33,738 INFO sqlalchemy.engine.Engine BEGIN (implicit)
+INFO:sqlalchemy.engine.Engine:BEGIN (implicit)
+2026-02-25 17:10:33,739 INFO sqlalchemy.engine.Engine SELECT anon_1.properties_id AS anon_1_properties_id, anon_1.properties_property_name AS anon_1_properties_property_name, anon_1.properties_location AS anon_1_properties_location, anon_1.properties_phone AS anon_1_properties_phone, anon_1.properties_map_link AS anon_1_properties_map_link, anon_1.properties_description AS anon_1_properties_description, anon_1.properties_features AS anon_1_properties_features, anon_1.properties_property_type AS anon_1_properties_property_type, anon_1.properties_furnishing AS anon_1_properties_furnishing, anon_1.properties_private_price AS anon_1_properties_private_price, anon_1.properties_single_price AS anon_1_properties_single_price, anon_1.properties_double_price AS anon_1_properties_double_price, anon_1.properties_triple_price AS anon_1_properties_triple_price, anon_1.properties_starting_price AS anon_1_properties_starting_price, anon_1.properties_listing_type AS anon_1_properties_listing_type, anon_1.properties_is_available AS anon_1_properties_is_available, anon_1.properties_slug AS anon_1_properties_slug, anon_1.properties_is_deleted AS anon_1_properties_is_deleted, anon_1.properties_created_at AS anon_1_properties_created_at, anon_1.properties_updated_at AS anon_1_properties_updated_at, property_images_1.id AS property_images_1_id, property_images_1.property_id AS property_images_1_property_id, property_images_1.image_url AS property_images_1_image_url, property_images_1.is_primary AS property_images_1_is_primary, property_images_1.sort_order AS property_images_1_sort_order, property_images_1.is_deleted AS property_images_1_is_deleted, property_images_1.created_at AS property_images_1_created_at, reviews_1.id AS reviews_1_id, reviews_1.property_id AS reviews_1_property_id, reviews_1.rating AS reviews_1_rating, reviews_1.user_name AS reviews_1_user_name, reviews_1.property_name AS reviews_1_property_name, reviews_1.comment AS reviews_1_comment, reviews_1.created_at AS reviews_1_created_at 
+FROM (SELECT properties.id AS properties_id, properties.property_name AS properties_property_name, properties.location AS properties_location, properties.phone AS properties_phone, properties.map_link AS properties_map_link, properties.description AS properties_description, properties.features AS properties_features, properties.property_type AS properties_property_type, properties.furnishing AS properties_furnishing, properties.private_price AS properties_private_price, properties.single_price AS properties_single_price, properties.double_price AS properties_double_price, properties.triple_price AS properties_triple_price, properties.starting_price AS properties_starting_price, properties.listing_type AS properties_listing_type, properties.is_available AS properties_is_available, properties.slug AS properties_slug, properties.is_deleted AS properties_is_deleted, properties.created_at AS properties_created_at, properties.updated_at AS properties_updated_at 
+FROM properties 
+WHERE properties.id = %(id_1)s AND properties.is_deleted = false 
+ LIMIT %(param_1)s) AS anon_1 LEFT OUTER JOIN property_images AS property_images_1 ON anon_1.properties_id = property_images_1.property_id LEFT OUTER JOIN reviews AS reviews_1 ON anon_1.properties_id = reviews_1.property_id
+INFO:sqlalchemy.engine.Engine:SELECT anon_1.properties_id AS anon_1_properties_id, anon_1.properties_property_name AS anon_1_properties_property_name, anon_1.properties_location AS anon_1_properties_location, anon_1.properties_phone AS anon_1_properties_phone, anon_1.properties_map_link AS anon_1_properties_map_link, anon_1.properties_description AS anon_1_properties_description, anon_1.properties_features AS anon_1_properties_features, anon_1.properties_property_type AS anon_1_properties_property_type, anon_1.properties_furnishing AS anon_1_properties_furnishing, anon_1.properties_private_price AS anon_1_properties_private_price, anon_1.properties_single_price AS anon_1_properties_single_price, anon_1.properties_double_price AS anon_1_properties_double_price, anon_1.properties_triple_price AS anon_1_properties_triple_price, anon_1.properties_starting_price AS anon_1_properties_starting_price, anon_1.properties_listing_type AS anon_1_properties_listing_type, anon_1.properties_is_available AS anon_1_properties_is_available, anon_1.properties_slug AS anon_1_properties_slug, anon_1.properties_is_deleted AS anon_1_properties_is_deleted, anon_1.properties_created_at AS anon_1_properties_created_at, anon_1.properties_updated_at AS anon_1_properties_updated_at, property_images_1.id AS property_images_1_id, property_images_1.property_id AS property_images_1_property_id, property_images_1.image_url AS property_images_1_image_url, property_images_1.is_primary AS property_images_1_is_primary, property_images_1.sort_order AS property_images_1_sort_order, property_images_1.is_deleted AS property_images_1_is_deleted, property_images_1.created_at AS property_images_1_created_at, reviews_1.id AS reviews_1_id, reviews_1.property_id AS reviews_1_property_id, reviews_1.rating AS reviews_1_rating, reviews_1.user_name AS reviews_1_user_name, reviews_1.property_name AS reviews_1_property_name, reviews_1.comment AS reviews_1_comment, reviews_1.created_at AS reviews_1_created_at 
+FROM (SELECT properties.id AS properties_id, properties.property_name AS properties_property_name, properties.location AS properties_location, properties.phone AS properties_phone, properties.map_link AS properties_map_link, properties.description AS properties_description, properties.features AS properties_features, properties.property_type AS properties_property_type, properties.furnishing AS properties_furnishing, properties.private_price AS properties_private_price, properties.single_price AS properties_single_price, properties.double_price AS properties_double_price, properties.triple_price AS properties_triple_price, properties.starting_price AS properties_starting_price, properties.listing_type AS properties_listing_type, properties.is_available AS properties_is_available, properties.slug AS properties_slug, properties.is_deleted AS properties_is_deleted, properties.created_at AS properties_created_at, properties.updated_at AS properties_updated_at 
+FROM properties 
+WHERE properties.id = %(id_1)s AND properties.is_deleted = false 
+ LIMIT %(param_1)s) AS anon_1 LEFT OUTER JOIN property_images AS property_images_1 ON anon_1.properties_id = property_images_1.property_id LEFT OUTER JOIN reviews AS reviews_1 ON anon_1.properties_id = reviews_1.property_id
+2026-02-25 17:10:33,739 INFO sqlalchemy.engine.Engine [cached since 147.6s ago] {'id_1': 82, 'param_1': 1}
+INFO:sqlalchemy.engine.Engine:[cached since 147.6s ago] {'id_1': 82, 'param_1': 1}
+INFO:     127.0.0.1:59772 - "GET /api/v1/realty/properties/82 HTTP/1.1" 200 OK
+2026-02-25 17:10:33,772 INFO sqlalchemy.engine.Engine ROLLBACK
+INFO:sqlalchemy.engine.Engine:ROLLBACK
+2026-02-25 17:10:33,803 INFO sqlalchemy.engine.Engine BEGIN (implicit)
+INFO:sqlalchemy.engine.Engine:BEGIN (implicit)
+2026-02-25 17:10:33,803 INFO sqlalchemy.engine.Engine SELECT anon_1.properties_id AS anon_1_properties_id, anon_1.properties_property_name AS anon_1_properties_property_name, anon_1.properties_location AS anon_1_properties_location, anon_1.properties_phone AS anon_1_properties_phone, anon_1.properties_map_link AS anon_1_properties_map_link, anon_1.properties_description AS anon_1_properties_description, anon_1.properties_features AS anon_1_properties_features, anon_1.properties_property_type AS anon_1_properties_property_type, anon_1.properties_furnishing AS anon_1_properties_furnishing, anon_1.properties_private_price AS anon_1_properties_private_price, anon_1.properties_single_price AS anon_1_properties_single_price, anon_1.properties_double_price AS anon_1_properties_double_price, anon_1.properties_triple_price AS anon_1_properties_triple_price, anon_1.properties_starting_price AS anon_1_properties_starting_price, anon_1.properties_listing_type AS anon_1_properties_listing_type, anon_1.properties_is_available AS anon_1_properties_is_available, anon_1.properties_slug AS anon_1_properties_slug, anon_1.properties_is_deleted AS anon_1_properties_is_deleted, anon_1.properties_created_at AS anon_1_properties_created_at, anon_1.properties_updated_at AS anon_1_properties_updated_at, property_images_1.id AS property_images_1_id, property_images_1.property_id AS property_images_1_property_id, property_images_1.image_url AS property_images_1_image_url, property_images_1.is_primary AS property_images_1_is_primary, property_images_1.sort_order AS property_images_1_sort_order, property_images_1.is_deleted AS property_images_1_is_deleted, property_images_1.created_at AS property_images_1_created_at, reviews_1.id AS reviews_1_id, reviews_1.property_id AS reviews_1_property_id, reviews_1.rating AS reviews_1_rating, reviews_1.user_name AS reviews_1_user_name, reviews_1.property_name AS reviews_1_property_name, reviews_1.comment AS reviews_1_comment, reviews_1.created_at AS reviews_1_created_at 
+FROM (SELECT properties.id AS properties_id, properties.property_name AS properties_property_name, properties.location AS properties_location, properties.phone AS properties_phone, properties.map_link AS properties_map_link, properties.description AS properties_description, properties.features AS properties_features, properties.property_type AS properties_property_type, properties.furnishing AS properties_furnishing, properties.private_price AS properties_private_price, properties.single_price AS properties_single_price, properties.double_price AS properties_double_price, properties.triple_price AS properties_triple_price, properties.starting_price AS properties_starting_price, properties.listing_type AS properties_listing_type, properties.is_available AS properties_is_available, properties.slug AS properties_slug, properties.is_deleted AS properties_is_deleted, properties.created_at AS properties_created_at, properties.updated_at AS properties_updated_at 
+FROM properties 
+WHERE properties.id = %(id_1)s AND properties.is_deleted = false 
+ LIMIT %(param_1)s) AS anon_1 LEFT OUTER JOIN property_images AS property_images_1 ON anon_1.properties_id = property_images_1.property_id LEFT OUTER JOIN reviews AS reviews_1 ON anon_1.properties_id = reviews_1.property_id
+INFO:sqlalchemy.engine.Engine:SELECT anon_1.properties_id AS anon_1_properties_id, anon_1.properties_property_name AS anon_1_properties_property_name, anon_1.properties_location AS anon_1_properties_location, anon_1.properties_phone AS anon_1_properties_phone, anon_1.properties_map_link AS anon_1_properties_map_link, anon_1.properties_description AS anon_1_properties_description, anon_1.properties_features AS anon_1_properties_features, anon_1.properties_property_type AS anon_1_properties_property_type, anon_1.properties_furnishing AS anon_1_properties_furnishing, anon_1.properties_private_price AS anon_1_properties_private_price, anon_1.properties_single_price AS anon_1_properties_single_price, anon_1.properties_double_price AS anon_1_properties_double_price, anon_1.properties_triple_price AS anon_1_properties_triple_price, anon_1.properties_starting_price AS anon_1_properties_starting_price, anon_1.properties_listing_type AS anon_1_properties_listing_type, anon_1.properties_is_available AS anon_1_properties_is_available, anon_1.properties_slug AS anon_1_properties_slug, anon_1.properties_is_deleted AS anon_1_properties_is_deleted, anon_1.properties_created_at AS anon_1_properties_created_at, anon_1.properties_updated_at AS anon_1_properties_updated_at, property_images_1.id AS property_images_1_id, property_images_1.property_id AS property_images_1_property_id, property_images_1.image_url AS property_images_1_image_url, property_images_1.is_primary AS property_images_1_is_primary, property_images_1.sort_order AS property_images_1_sort_order, property_images_1.is_deleted AS property_images_1_is_deleted, property_images_1.created_at AS property_images_1_created_at, reviews_1.id AS reviews_1_id, reviews_1.property_id AS reviews_1_property_id, reviews_1.rating AS reviews_1_rating, reviews_1.user_name AS reviews_1_user_name, reviews_1.property_name AS reviews_1_property_name, reviews_1.comment AS reviews_1_comment, reviews_1.created_at AS reviews_1_created_at 
+FROM (SELECT properties.id AS properties_id, properties.property_name AS properties_property_name, properties.location AS properties_location, properties.phone AS properties_phone, properties.map_link AS properties_map_link, properties.description AS properties_description, properties.features AS properties_features, properties.property_type AS properties_property_type, properties.furnishing AS properties_furnishing, properties.private_price AS properties_private_price, properties.single_price AS properties_single_price, properties.double_price AS properties_double_price, properties.triple_price AS properties_triple_price, properties.starting_price AS properties_starting_price, properties.listing_type AS properties_listing_type, properties.is_available AS properties_is_available, properties.slug AS properties_slug, properties.is_deleted AS properties_is_deleted, properties.created_at AS properties_created_at, properties.updated_at AS properties_updated_at 
+FROM properties 
+WHERE properties.id = %(id_1)s AND properties.is_deleted = false 
+ LIMIT %(param_1)s) AS anon_1 LEFT OUTER JOIN property_images AS property_images_1 ON anon_1.properties_id = property_images_1.property_id LEFT OUTER JOIN reviews AS reviews_1 ON anon_1.properties_id = reviews_1.property_id
+2026-02-25 17:10:33,804 INFO sqlalchemy.engine.Engine [cached since 147.6s ago] {'id_1': 82, 'param_1': 1}
+INFO:sqlalchemy.engine.Engine:[cached since 147.6s ago] {'id_1': 82, 'param_1': 1}
+INFO:     127.0.0.1:59772 - "GET /api/v1/realty/properties/82 HTTP/1.1" 200 OK
+2026-02-25 17:10:33,835 INFO sqlalchemy.engine.Engine ROLLBACK
+INFO:sqlalchemy.engine.Engine:ROLLBACK
+INFO:     127.0.0.1:59843 - "OPTIONS /api/v1/uploads/presigned-url HTTP/1.1" 200 OK
+2026-02-25 17:10:51,489 INFO sqlalchemy.engine.Engine BEGIN (implicit)
+INFO:sqlalchemy.engine.Engine:BEGIN (implicit)
+2026-02-25 17:10:51,492 INFO sqlalchemy.engine.Engine SELECT users.id AS users_id, users.email AS users_email, users.password_hash AS users_password_hash, users.`role` AS users_role, users.full_name AS users_full_name, users.created_at AS users_created_at, users.updated_at AS users_updated_at 
+FROM users 
+WHERE users.email = %(email_1)s 
+ LIMIT %(param_1)s
+INFO:sqlalchemy.engine.Engine:SELECT users.id AS users_id, users.email AS users_email, users.password_hash AS users_password_hash, users.`role` AS users_role, users.full_name AS users_full_name, users.created_at AS users_created_at, users.updated_at AS users_updated_at 
+FROM users 
+WHERE users.email = %(email_1)s 
+ LIMIT %(param_1)s
+2026-02-25 17:10:51,493 INFO sqlalchemy.engine.Engine [generated in 0.00039s] {'email_1': 'admin@makemystay.ai', 'param_1': 1}
+INFO:sqlalchemy.engine.Engine:[generated in 0.00039s] {'email_1': 'admin@makemystay.ai', 'param_1': 1}
+/Users/maheswaranm/no-broker-backend/.venv/lib/python3.9/site-packages/boto3/compat.py:89: PythonDeprecationWarning: Boto3 will no longer support Python 3.9 starting April 29, 2026. To continue receiving service updates, bug fixes, and security updates please upgrade to Python 3.10 or later. More information can be found here: https://aws.amazon.com/blogs/developer/python-support-policy-updates-for-aws-sdks-and-tools/
+  warnings.warn(warning, PythonDeprecationWarning)
+INFO:     127.0.0.1:59843 - "POST /api/v1/uploads/presigned-url HTTP/1.1" 200 OK
+2026-02-25 17:10:51,665 INFO sqlalchemy.engine.Engine ROLLBACK
+INFO:sqlalchemy.engine.Engine:ROLLBACK
+INFO:     127.0.0.1:59843 - "OPTIONS /api/v1/realty/properties/82 HTTP/1.1" 200 OK
+2026-02-25 17:10:53,844 INFO sqlalchemy.engine.Engine BEGIN (implicit)
+INFO:sqlalchemy.engine.Engine:BEGIN (implicit)
+2026-02-25 17:10:53,845 INFO sqlalchemy.engine.Engine SELECT users.id AS users_id, users.email AS users_email, users.password_hash AS users_password_hash, users.`role` AS users_role, users.full_name AS users_full_name, users.created_at AS users_created_at, users.updated_at AS users_updated_at 
+FROM users 
+WHERE users.email = %(email_1)s 
+ LIMIT %(param_1)s
+INFO:sqlalchemy.engine.Engine:SELECT users.id AS users_id, users.email AS users_email, users.password_hash AS users_password_hash, users.`role` AS users_role, users.full_name AS users_full_name, users.created_at AS users_created_at, users.updated_at AS users_updated_at 
+FROM users 
+WHERE users.email = %(email_1)s 
+ LIMIT %(param_1)s
+2026-02-25 17:10:53,845 INFO sqlalchemy.engine.Engine [cached since 2.353s ago] {'email_1': 'admin@makemystay.ai', 'param_1': 1}
+INFO:sqlalchemy.engine.Engine:[cached since 2.353s ago] {'email_1': 'admin@makemystay.ai', 'param_1': 1}
+2026-02-25 17:10:53,875 INFO sqlalchemy.engine.Engine SELECT anon_1.properties_id AS anon_1_properties_id, anon_1.properties_property_name AS anon_1_properties_property_name, anon_1.properties_location AS anon_1_properties_location, anon_1.properties_phone AS anon_1_properties_phone, anon_1.properties_map_link AS anon_1_properties_map_link, anon_1.properties_description AS anon_1_properties_description, anon_1.properties_features AS anon_1_properties_features, anon_1.properties_property_type AS anon_1_properties_property_type, anon_1.properties_furnishing AS anon_1_properties_furnishing, anon_1.properties_private_price AS anon_1_properties_private_price, anon_1.properties_single_price AS anon_1_properties_single_price, anon_1.properties_double_price AS anon_1_properties_double_price, anon_1.properties_triple_price AS anon_1_properties_triple_price, anon_1.properties_starting_price AS anon_1_properties_starting_price, anon_1.properties_listing_type AS anon_1_properties_listing_type, anon_1.properties_is_available AS anon_1_properties_is_available, anon_1.properties_slug AS anon_1_properties_slug, anon_1.properties_is_deleted AS anon_1_properties_is_deleted, anon_1.properties_created_at AS anon_1_properties_created_at, anon_1.properties_updated_at AS anon_1_properties_updated_at, property_images_1.id AS property_images_1_id, property_images_1.property_id AS property_images_1_property_id, property_images_1.image_url AS property_images_1_image_url, property_images_1.is_primary AS property_images_1_is_primary, property_images_1.sort_order AS property_images_1_sort_order, property_images_1.is_deleted AS property_images_1_is_deleted, property_images_1.created_at AS property_images_1_created_at, reviews_1.id AS reviews_1_id, reviews_1.property_id AS reviews_1_property_id, reviews_1.rating AS reviews_1_rating, reviews_1.user_name AS reviews_1_user_name, reviews_1.property_name AS reviews_1_property_name, reviews_1.comment AS reviews_1_comment, reviews_1.created_at AS reviews_1_created_at 
+FROM (SELECT properties.id AS properties_id, properties.property_name AS properties_property_name, properties.location AS properties_location, properties.phone AS properties_phone, properties.map_link AS properties_map_link, properties.description AS properties_description, properties.features AS properties_features, properties.property_type AS properties_property_type, properties.furnishing AS properties_furnishing, properties.private_price AS properties_private_price, properties.single_price AS properties_single_price, properties.double_price AS properties_double_price, properties.triple_price AS properties_triple_price, properties.starting_price AS properties_starting_price, properties.listing_type AS properties_listing_type, properties.is_available AS properties_is_available, properties.slug AS properties_slug, properties.is_deleted AS properties_is_deleted, properties.created_at AS properties_created_at, properties.updated_at AS properties_updated_at 
+FROM properties 
+WHERE properties.id = %(id_1)s AND properties.is_deleted = false 
+ LIMIT %(param_1)s) AS anon_1 LEFT OUTER JOIN property_images AS property_images_1 ON anon_1.properties_id = property_images_1.property_id LEFT OUTER JOIN reviews AS reviews_1 ON anon_1.properties_id = reviews_1.property_id
+INFO:sqlalchemy.engine.Engine:SELECT anon_1.properties_id AS anon_1_properties_id, anon_1.properties_property_name AS anon_1_properties_property_name, anon_1.properties_location AS anon_1_properties_location, anon_1.properties_phone AS anon_1_properties_phone, anon_1.properties_map_link AS anon_1_properties_map_link, anon_1.properties_description AS anon_1_properties_description, anon_1.properties_features AS anon_1_properties_features, anon_1.properties_property_type AS anon_1_properties_property_type, anon_1.properties_furnishing AS anon_1_properties_furnishing, anon_1.properties_private_price AS anon_1_properties_private_price, anon_1.properties_single_price AS anon_1_properties_single_price, anon_1.properties_double_price AS anon_1_properties_double_price, anon_1.properties_triple_price AS anon_1_properties_triple_price, anon_1.properties_starting_price AS anon_1_properties_starting_price, anon_1.properties_listing_type AS anon_1_properties_listing_type, anon_1.properties_is_available AS anon_1_properties_is_available, anon_1.properties_slug AS anon_1_properties_slug, anon_1.properties_is_deleted AS anon_1_properties_is_deleted, anon_1.properties_created_at AS anon_1_properties_created_at, anon_1.properties_updated_at AS anon_1_properties_updated_at, property_images_1.id AS property_images_1_id, property_images_1.property_id AS property_images_1_property_id, property_images_1.image_url AS property_images_1_image_url, property_images_1.is_primary AS property_images_1_is_primary, property_images_1.sort_order AS property_images_1_sort_order, property_images_1.is_deleted AS property_images_1_is_deleted, property_images_1.created_at AS property_images_1_created_at, reviews_1.id AS reviews_1_id, reviews_1.property_id AS reviews_1_property_id, reviews_1.rating AS reviews_1_rating, reviews_1.user_name AS reviews_1_user_name, reviews_1.property_name AS reviews_1_property_name, reviews_1.comment AS reviews_1_comment, reviews_1.created_at AS reviews_1_created_at 
+FROM (SELECT properties.id AS properties_id, properties.property_name AS properties_property_name, properties.location AS properties_location, properties.phone AS properties_phone, properties.map_link AS properties_map_link, properties.description AS properties_description, properties.features AS properties_features, properties.property_type AS properties_property_type, properties.furnishing AS properties_furnishing, properties.private_price AS properties_private_price, properties.single_price AS properties_single_price, properties.double_price AS properties_double_price, properties.triple_price AS properties_triple_price, properties.starting_price AS properties_starting_price, properties.listing_type AS properties_listing_type, properties.is_available AS properties_is_available, properties.slug AS properties_slug, properties.is_deleted AS properties_is_deleted, properties.created_at AS properties_created_at, properties.updated_at AS properties_updated_at 
+FROM properties 
+WHERE properties.id = %(id_1)s AND properties.is_deleted = false 
+ LIMIT %(param_1)s) AS anon_1 LEFT OUTER JOIN property_images AS property_images_1 ON anon_1.properties_id = property_images_1.property_id LEFT OUTER JOIN reviews AS reviews_1 ON anon_1.properties_id = reviews_1.property_id
+2026-02-25 17:10:53,876 INFO sqlalchemy.engine.Engine [cached since 167.7s ago] {'id_1': 82, 'param_1': 1}
+INFO:sqlalchemy.engine.Engine:[cached since 167.7s ago] {'id_1': 82, 'param_1': 1}
+2026-02-25 17:10:53,910 INFO sqlalchemy.engine.Engine UPDATE properties SET phone=%(phone)s, updated_at=now() WHERE properties.id = %(properties_id)s
+INFO:sqlalchemy.engine.Engine:UPDATE properties SET phone=%(phone)s, updated_at=now() WHERE properties.id = %(properties_id)s
+2026-02-25 17:10:53,910 INFO sqlalchemy.engine.Engine [generated in 0.00047s] {'phone': '0999999999', 'properties_id': 82}
+INFO:sqlalchemy.engine.Engine:[generated in 0.00047s] {'phone': '0999999999', 'properties_id': 82}
+2026-02-25 17:10:53,940 INFO sqlalchemy.engine.Engine COMMIT
+INFO:sqlalchemy.engine.Engine:COMMIT
+2026-02-25 17:10:54,028 INFO sqlalchemy.engine.Engine BEGIN (implicit)
+INFO:sqlalchemy.engine.Engine:BEGIN (implicit)
+2026-02-25 17:10:54,036 INFO sqlalchemy.engine.Engine SELECT properties.id, properties.property_name, properties.location, properties.phone, properties.map_link, properties.description, properties.features, properties.property_type, properties.furnishing, properties.private_price, properties.single_price, properties.double_price, properties.triple_price, properties.starting_price, properties.listing_type, properties.is_available, properties.slug, properties.is_deleted, properties.created_at, properties.updated_at, property_images_1.id AS id_1, property_images_1.property_id, property_images_1.image_url, property_images_1.is_primary, property_images_1.sort_order, property_images_1.is_deleted AS is_deleted_1, property_images_1.created_at AS created_at_1, reviews_1.id AS id_2, reviews_1.property_id AS property_id_1, reviews_1.rating, reviews_1.user_name, reviews_1.property_name AS property_name_1, reviews_1.comment, reviews_1.created_at AS created_at_2 
+FROM properties LEFT OUTER JOIN property_images AS property_images_1 ON properties.id = property_images_1.property_id LEFT OUTER JOIN reviews AS reviews_1 ON properties.id = reviews_1.property_id 
+WHERE properties.id = %(pk_1)s
+INFO:sqlalchemy.engine.Engine:SELECT properties.id, properties.property_name, properties.location, properties.phone, properties.map_link, properties.description, properties.features, properties.property_type, properties.furnishing, properties.private_price, properties.single_price, properties.double_price, properties.triple_price, properties.starting_price, properties.listing_type, properties.is_available, properties.slug, properties.is_deleted, properties.created_at, properties.updated_at, property_images_1.id AS id_1, property_images_1.property_id, property_images_1.image_url, property_images_1.is_primary, property_images_1.sort_order, property_images_1.is_deleted AS is_deleted_1, property_images_1.created_at AS created_at_1, reviews_1.id AS id_2, reviews_1.property_id AS property_id_1, reviews_1.rating, reviews_1.user_name, reviews_1.property_name AS property_name_1, reviews_1.comment, reviews_1.created_at AS created_at_2 
+FROM properties LEFT OUTER JOIN property_images AS property_images_1 ON properties.id = property_images_1.property_id LEFT OUTER JOIN reviews AS reviews_1 ON properties.id = reviews_1.property_id 
+WHERE properties.id = %(pk_1)s
+2026-02-25 17:10:54,036 INFO sqlalchemy.engine.Engine [generated in 0.00035s] {'pk_1': 82}
+INFO:sqlalchemy.engine.Engine:[generated in 0.00035s] {'pk_1': 82}
+INFO:     127.0.0.1:59845 - "PUT /api/v1/realty/properties/82 HTTP/1.1" 200 OK
+2026-02-25 17:10:54,069 INFO sqlalchemy.engine.Engine ROLLBACK
+INFO:sqlalchemy.engine.Engine:ROLLBACK
+INFO:     127.0.0.1:59845 - "OPTIONS /api/v1/realty/properties/82/images HTTP/1.1" 200 OK
+2026-02-25 17:10:54,105 INFO sqlalchemy.engine.Engine BEGIN (implicit)
+INFO:sqlalchemy.engine.Engine:BEGIN (implicit)
+2026-02-25 17:10:54,106 INFO sqlalchemy.engine.Engine SELECT users.id AS users_id, users.email AS users_email, users.password_hash AS users_password_hash, users.`role` AS users_role, users.full_name AS users_full_name, users.created_at AS users_created_at, users.updated_at AS users_updated_at 
+FROM users 
+WHERE users.email = %(email_1)s 
+ LIMIT %(param_1)s
+INFO:sqlalchemy.engine.Engine:SELECT users.id AS users_id, users.email AS users_email, users.password_hash AS users_password_hash, users.`role` AS users_role, users.full_name AS users_full_name, users.created_at AS users_created_at, users.updated_at AS users_updated_at 
+FROM users 
+WHERE users.email = %(email_1)s 
+ LIMIT %(param_1)s
+2026-02-25 17:10:54,106 INFO sqlalchemy.engine.Engine [cached since 2.614s ago] {'email_1': 'admin@makemystay.ai', 'param_1': 1}
+INFO:sqlalchemy.engine.Engine:[cached since 2.614s ago] {'email_1': 'admin@makemystay.ai', 'param_1': 1}
+2026-02-25 17:10:54,136 INFO sqlalchemy.engine.Engine SELECT anon_1.properties_id AS anon_1_properties_id, anon_1.properties_property_name AS anon_1_properties_property_name, anon_1.properties_location AS anon_1_properties_location, anon_1.properties_phone AS anon_1_properties_phone, anon_1.properties_map_link AS anon_1_properties_map_link, anon_1.properties_description AS anon_1_properties_description, anon_1.properties_features AS anon_1_properties_features, anon_1.properties_property_type AS anon_1_properties_property_type, anon_1.properties_furnishing AS anon_1_properties_furnishing, anon_1.properties_private_price AS anon_1_properties_private_price, anon_1.properties_single_price AS anon_1_properties_single_price, anon_1.properties_double_price AS anon_1_properties_double_price, anon_1.properties_triple_price AS anon_1_properties_triple_price, anon_1.properties_starting_price AS anon_1_properties_starting_price, anon_1.properties_listing_type AS anon_1_properties_listing_type, anon_1.properties_is_available AS anon_1_properties_is_available, anon_1.properties_slug AS anon_1_properties_slug, anon_1.properties_is_deleted AS anon_1_properties_is_deleted, anon_1.properties_created_at AS anon_1_properties_created_at, anon_1.properties_updated_at AS anon_1_properties_updated_at, property_images_1.id AS property_images_1_id, property_images_1.property_id AS property_images_1_property_id, property_images_1.image_url AS property_images_1_image_url, property_images_1.is_primary AS property_images_1_is_primary, property_images_1.sort_order AS property_images_1_sort_order, property_images_1.is_deleted AS property_images_1_is_deleted, property_images_1.created_at AS property_images_1_created_at, reviews_1.id AS reviews_1_id, reviews_1.property_id AS reviews_1_property_id, reviews_1.rating AS reviews_1_rating, reviews_1.user_name AS reviews_1_user_name, reviews_1.property_name AS reviews_1_property_name, reviews_1.comment AS reviews_1_comment, reviews_1.created_at AS reviews_1_created_at 
+FROM (SELECT properties.id AS properties_id, properties.property_name AS properties_property_name, properties.location AS properties_location, properties.phone AS properties_phone, properties.map_link AS properties_map_link, properties.description AS properties_description, properties.features AS properties_features, properties.property_type AS properties_property_type, properties.furnishing AS properties_furnishing, properties.private_price AS properties_private_price, properties.single_price AS properties_single_price, properties.double_price AS properties_double_price, properties.triple_price AS properties_triple_price, properties.starting_price AS properties_starting_price, properties.listing_type AS properties_listing_type, properties.is_available AS properties_is_available, properties.slug AS properties_slug, properties.is_deleted AS properties_is_deleted, properties.created_at AS properties_created_at, properties.updated_at AS properties_updated_at 
+FROM properties 
+WHERE properties.id = %(id_1)s AND properties.is_deleted = false 
+ LIMIT %(param_1)s) AS anon_1 LEFT OUTER JOIN property_images AS property_images_1 ON anon_1.properties_id = property_images_1.property_id LEFT OUTER JOIN reviews AS reviews_1 ON anon_1.properties_id = reviews_1.property_id
+INFO:sqlalchemy.engine.Engine:SELECT anon_1.properties_id AS anon_1_properties_id, anon_1.properties_property_name AS anon_1_properties_property_name, anon_1.properties_location AS anon_1_properties_location, anon_1.properties_phone AS anon_1_properties_phone, anon_1.properties_map_link AS anon_1_properties_map_link, anon_1.properties_description AS anon_1_properties_description, anon_1.properties_features AS anon_1_properties_features, anon_1.properties_property_type AS anon_1_properties_property_type, anon_1.properties_furnishing AS anon_1_properties_furnishing, anon_1.properties_private_price AS anon_1_properties_private_price, anon_1.properties_single_price AS anon_1_properties_single_price, anon_1.properties_double_price AS anon_1_properties_double_price, anon_1.properties_triple_price AS anon_1_properties_triple_price, anon_1.properties_starting_price AS anon_1_properties_starting_price, anon_1.properties_listing_type AS anon_1_properties_listing_type, anon_1.properties_is_available AS anon_1_properties_is_available, anon_1.properties_slug AS anon_1_properties_slug, anon_1.properties_is_deleted AS anon_1_properties_is_deleted, anon_1.properties_created_at AS anon_1_properties_created_at, anon_1.properties_updated_at AS anon_1_properties_updated_at, property_images_1.id AS property_images_1_id, property_images_1.property_id AS property_images_1_property_id, property_images_1.image_url AS property_images_1_image_url, property_images_1.is_primary AS property_images_1_is_primary, property_images_1.sort_order AS property_images_1_sort_order, property_images_1.is_deleted AS property_images_1_is_deleted, property_images_1.created_at AS property_images_1_created_at, reviews_1.id AS reviews_1_id, reviews_1.property_id AS reviews_1_property_id, reviews_1.rating AS reviews_1_rating, reviews_1.user_name AS reviews_1_user_name, reviews_1.property_name AS reviews_1_property_name, reviews_1.comment AS reviews_1_comment, reviews_1.created_at AS reviews_1_created_at 
+FROM (SELECT properties.id AS properties_id, properties.property_name AS properties_property_name, properties.location AS properties_location, properties.phone AS properties_phone, properties.map_link AS properties_map_link, properties.description AS properties_description, properties.features AS properties_features, properties.property_type AS properties_property_type, properties.furnishing AS properties_furnishing, properties.private_price AS properties_private_price, properties.single_price AS properties_single_price, properties.double_price AS properties_double_price, properties.triple_price AS properties_triple_price, properties.starting_price AS properties_starting_price, properties.listing_type AS properties_listing_type, properties.is_available AS properties_is_available, properties.slug AS properties_slug, properties.is_deleted AS properties_is_deleted, properties.created_at AS properties_created_at, properties.updated_at AS properties_updated_at 
+FROM properties 
+WHERE properties.id = %(id_1)s AND properties.is_deleted = false 
+ LIMIT %(param_1)s) AS anon_1 LEFT OUTER JOIN property_images AS property_images_1 ON anon_1.properties_id = property_images_1.property_id LEFT OUTER JOIN reviews AS reviews_1 ON anon_1.properties_id = reviews_1.property_id
+2026-02-25 17:10:54,137 INFO sqlalchemy.engine.Engine [cached since 168s ago] {'id_1': 82, 'param_1': 1}
+INFO:sqlalchemy.engine.Engine:[cached since 168s ago] {'id_1': 82, 'param_1': 1}
+2026-02-25 17:10:54,168 INFO sqlalchemy.engine.Engine SELECT property_images.id AS property_images_id, property_images.property_id AS property_images_property_id, property_images.image_url AS property_images_image_url, property_images.is_primary AS property_images_is_primary, property_images.sort_order AS property_images_sort_order, property_images.is_deleted AS property_images_is_deleted, property_images.created_at AS property_images_created_at 
+FROM property_images 
+WHERE property_images.property_id = %(property_id_1)s AND property_images.image_url = %(image_url_1)s 
+ LIMIT %(param_1)s
+INFO:sqlalchemy.engine.Engine:SELECT property_images.id AS property_images_id, property_images.property_id AS property_images_property_id, property_images.image_url AS property_images_image_url, property_images.is_primary AS property_images_is_primary, property_images.sort_order AS property_images_sort_order, property_images.is_deleted AS property_images_is_deleted, property_images.created_at AS property_images_created_at 
+FROM property_images 
+WHERE property_images.property_id = %(property_id_1)s AND property_images.image_url = %(image_url_1)s 
+ LIMIT %(param_1)s
+2026-02-25 17:10:54,168 INFO sqlalchemy.engine.Engine [generated in 0.00035s] {'property_id_1': 82, 'image_url_1': 'https://d1yfdszs9lcm9e.cloudfront.net/uploads/252760f7-ddaf-47b1-b889-14342b9f2c47.jpeg', 'param_1': 1}
+INFO:sqlalchemy.engine.Engine:[generated in 0.00035s] {'property_id_1': 82, 'image_url_1': 'https://d1yfdszs9lcm9e.cloudfront.net/uploads/252760f7-ddaf-47b1-b889-14342b9f2c47.jpeg', 'param_1': 1}
+2026-02-25 17:10:54,200 INFO sqlalchemy.engine.Engine INSERT INTO property_images (property_id, image_url, is_primary, sort_order, is_deleted) VALUES (%(property_id)s, %(image_url)s, %(is_primary)s, %(sort_order)s, %(is_deleted)s)
+INFO:sqlalchemy.engine.Engine:INSERT INTO property_images (property_id, image_url, is_primary, sort_order, is_deleted) VALUES (%(property_id)s, %(image_url)s, %(is_primary)s, %(sort_order)s, %(is_deleted)s)
+2026-02-25 17:10:54,200 INFO sqlalchemy.engine.Engine [generated in 0.00047s] {'property_id': 82, 'image_url': 'https://d1yfdszs9lcm9e.cloudfront.net/uploads/252760f7-ddaf-47b1-b889-14342b9f2c47.jpeg', 'is_primary': 0, 'sort_order': 0, 'is_deleted': 0}
+INFO:sqlalchemy.engine.Engine:[generated in 0.00047s] {'property_id': 82, 'image_url': 'https://d1yfdszs9lcm9e.cloudfront.net/uploads/252760f7-ddaf-47b1-b889-14342b9f2c47.jpeg', 'is_primary': 0, 'sort_order': 0, 'is_deleted': 0}
+2026-02-25 17:10:54,227 INFO sqlalchemy.engine.Engine COMMIT
+INFO:sqlalchemy.engine.Engine:COMMIT
+2026-02-25 17:10:54,317 INFO sqlalchemy.engine.Engine BEGIN (implicit)
+INFO:sqlalchemy.engine.Engine:BEGIN (implicit)
+2026-02-25 17:10:54,319 INFO sqlalchemy.engine.Engine SELECT property_images.id, property_images.property_id, property_images.image_url, property_images.is_primary, property_images.sort_order, property_images.is_deleted, property_images.created_at 
+FROM property_images 
+WHERE property_images.id = %(pk_1)s
+INFO:sqlalchemy.engine.Engine:SELECT property_images.id, property_images.property_id, property_images.image_url, property_images.is_primary, property_images.sort_order, property_images.is_deleted, property_images.created_at 
+FROM property_images 
+WHERE property_images.id = %(pk_1)s
+2026-02-25 17:10:54,319 INFO sqlalchemy.engine.Engine [generated in 0.00031s] {'pk_1': 244}
+INFO:sqlalchemy.engine.Engine:[generated in 0.00031s] {'pk_1': 244}
+INFO:     127.0.0.1:59843 - "POST /api/v1/realty/properties/82/images HTTP/1.1" 201 Created
+2026-02-25 17:10:54,350 INFO sqlalchemy.engine.Engine ROLLBACK
+INFO:sqlalchemy.engine.Engine:ROLLBACK
+INFO:     127.0.0.1:59843 - "OPTIONS /api/v1/realty/properties HTTP/1.1" 200 OK
+INFO:     127.0.0.1:59845 - "OPTIONS /api/v1/realty/properties HTTP/1.1" 200 OK
+2026-02-25 17:10:56,498 INFO sqlalchemy.engine.Engine BEGIN (implicit)
+INFO:sqlalchemy.engine.Engine:BEGIN (implicit)
+2026-02-25 17:10:56,499 INFO sqlalchemy.engine.Engine SELECT properties.id AS properties_id, properties.property_name AS properties_property_name, properties.location AS properties_location, properties.phone AS properties_phone, properties.map_link AS properties_map_link, properties.description AS properties_description, properties.features AS properties_features, properties.property_type AS properties_property_type, properties.furnishing AS properties_furnishing, properties.private_price AS properties_private_price, properties.single_price AS properties_single_price, properties.double_price AS properties_double_price, properties.triple_price AS properties_triple_price, properties.starting_price AS properties_starting_price, properties.listing_type AS properties_listing_type, properties.is_available AS properties_is_available, properties.slug AS properties_slug, properties.is_deleted AS properties_is_deleted, properties.created_at AS properties_created_at, properties.updated_at AS properties_updated_at 
+FROM properties LEFT OUTER JOIN (SELECT reviews.property_id AS property_id, avg(reviews.rating) AS avg_rating 
+FROM reviews GROUP BY reviews.property_id) AS anon_1 ON properties.id = anon_1.property_id 
+WHERE properties.is_deleted = false ORDER BY coalesce(anon_1.avg_rating, %(coalesce_1)s) DESC 
+ LIMIT %(param_1)s, %(param_2)s
+INFO:sqlalchemy.engine.Engine:SELECT properties.id AS properties_id, properties.property_name AS properties_property_name, properties.location AS properties_location, properties.phone AS properties_phone, properties.map_link AS properties_map_link, properties.description AS properties_description, properties.features AS properties_features, properties.property_type AS properties_property_type, properties.furnishing AS properties_furnishing, properties.private_price AS properties_private_price, properties.single_price AS properties_single_price, properties.double_price AS properties_double_price, properties.triple_price AS properties_triple_price, properties.starting_price AS properties_starting_price, properties.listing_type AS properties_listing_type, properties.is_available AS properties_is_available, properties.slug AS properties_slug, properties.is_deleted AS properties_is_deleted, properties.created_at AS properties_created_at, properties.updated_at AS properties_updated_at 
+FROM properties LEFT OUTER JOIN (SELECT reviews.property_id AS property_id, avg(reviews.rating) AS avg_rating 
+FROM reviews GROUP BY reviews.property_id) AS anon_1 ON properties.id = anon_1.property_id 
+WHERE properties.is_deleted = false ORDER BY coalesce(anon_1.avg_rating, %(coalesce_1)s) DESC 
+ LIMIT %(param_1)s, %(param_2)s
+2026-02-25 17:10:56,499 INFO sqlalchemy.engine.Engine [generated in 0.00008s] {'coalesce_1': 0, 'param_1': 0, 'param_2': 100}
+INFO:sqlalchemy.engine.Engine:[generated in 0.00008s] {'coalesce_1': 0, 'param_1': 0, 'param_2': 100}
+2026-02-25 17:10:56,563 INFO sqlalchemy.engine.Engine SELECT property_images.id AS property_images_id, property_images.property_id AS property_images_property_id, property_images.image_url AS property_images_image_url, property_images.is_primary AS property_images_is_primary, property_images.sort_order AS property_images_sort_order, property_images.is_deleted AS property_images_is_deleted, property_images.created_at AS property_images_created_at, anon_1.properties_id AS anon_1_properties_id 
+FROM (SELECT properties.id AS properties_id 
+FROM properties LEFT OUTER JOIN (SELECT reviews.property_id AS property_id, avg(reviews.rating) AS avg_rating 
+FROM reviews GROUP BY reviews.property_id) AS anon_2 ON properties.id = anon_2.property_id 
+WHERE properties.is_deleted = false ORDER BY coalesce(anon_2.avg_rating, %(coalesce_1)s) DESC 
+ LIMIT %(param_1)s, %(param_2)s) AS anon_1 INNER JOIN property_images ON anon_1.properties_id = property_images.property_id
+INFO:sqlalchemy.engine.Engine:SELECT property_images.id AS property_images_id, property_images.property_id AS property_images_property_id, property_images.image_url AS property_images_image_url, property_images.is_primary AS property_images_is_primary, property_images.sort_order AS property_images_sort_order, property_images.is_deleted AS property_images_is_deleted, property_images.created_at AS property_images_created_at, anon_1.properties_id AS anon_1_properties_id 
+FROM (SELECT properties.id AS properties_id 
+FROM properties LEFT OUTER JOIN (SELECT reviews.property_id AS property_id, avg(reviews.rating) AS avg_rating 
+FROM reviews GROUP BY reviews.property_id) AS anon_2 ON properties.id = anon_2.property_id 
+WHERE properties.is_deleted = false ORDER BY coalesce(anon_2.avg_rating, %(coalesce_1)s) DESC 
+ LIMIT %(param_1)s, %(param_2)s) AS anon_1 INNER JOIN property_images ON anon_1.properties_id = property_images.property_id
+2026-02-25 17:10:56,563 INFO sqlalchemy.engine.Engine [generated in 0.00036s] {'coalesce_1': 0, 'param_1': 0, 'param_2': 100}
+INFO:sqlalchemy.engine.Engine:[generated in 0.00036s] {'coalesce_1': 0, 'param_1': 0, 'param_2': 100}
+2026-02-25 17:10:56,601 INFO sqlalchemy.engine.Engine SELECT reviews.id AS reviews_id, reviews.property_id AS reviews_property_id, reviews.rating AS reviews_rating, reviews.user_name AS reviews_user_name, reviews.property_name AS reviews_property_name, reviews.comment AS reviews_comment, reviews.created_at AS reviews_created_at, anon_1.properties_id AS anon_1_properties_id 
+FROM (SELECT properties.id AS properties_id 
+FROM properties LEFT OUTER JOIN (SELECT reviews.property_id AS property_id, avg(reviews.rating) AS avg_rating 
+FROM reviews GROUP BY reviews.property_id) AS anon_2 ON properties.id = anon_2.property_id 
+WHERE properties.is_deleted = false ORDER BY coalesce(anon_2.avg_rating, %(coalesce_1)s) DESC 
+ LIMIT %(param_1)s, %(param_2)s) AS anon_1 INNER JOIN reviews ON anon_1.properties_id = reviews.property_id
+INFO:sqlalchemy.engine.Engine:SELECT reviews.id AS reviews_id, reviews.property_id AS reviews_property_id, reviews.rating AS reviews_rating, reviews.user_name AS reviews_user_name, reviews.property_name AS reviews_property_name, reviews.comment AS reviews_comment, reviews.created_at AS reviews_created_at, anon_1.properties_id AS anon_1_properties_id 
+FROM (SELECT properties.id AS properties_id 
+FROM properties LEFT OUTER JOIN (SELECT reviews.property_id AS property_id, avg(reviews.rating) AS avg_rating 
+FROM reviews GROUP BY reviews.property_id) AS anon_2 ON properties.id = anon_2.property_id 
+WHERE properties.is_deleted = false ORDER BY coalesce(anon_2.avg_rating, %(coalesce_1)s) DESC 
+ LIMIT %(param_1)s, %(param_2)s) AS anon_1 INNER JOIN reviews ON anon_1.properties_id = reviews.property_id
+2026-02-25 17:10:56,601 INFO sqlalchemy.engine.Engine [generated in 0.00025s] {'coalesce_1': 0, 'param_1': 0, 'param_2': 100}
+INFO:sqlalchemy.engine.Engine:[generated in 0.00025s] {'coalesce_1': 0, 'param_1': 0, 'param_2': 100}
+INFO:     127.0.0.1:59843 - "GET /api/v1/realty/properties HTTP/1.1" 200 OK
+2026-02-25 17:10:56,795 INFO sqlalchemy.engine.Engine ROLLBACK
+INFO:sqlalchemy.engine.Engine:ROLLBACK
+2026-02-25 17:10:56,822 INFO sqlalchemy.engine.Engine BEGIN (implicit)
+INFO:sqlalchemy.engine.Engine:BEGIN (implicit)
+2026-02-25 17:10:56,822 INFO sqlalchemy.engine.Engine SELECT properties.id AS properties_id, properties.property_name AS properties_property_name, properties.location AS properties_location, properties.phone AS properties_phone, properties.map_link AS properties_map_link, properties.description AS properties_description, properties.features AS properties_features, properties.property_type AS properties_property_type, properties.furnishing AS properties_furnishing, properties.private_price AS properties_private_price, properties.single_price AS properties_single_price, properties.double_price AS properties_double_price, properties.triple_price AS properties_triple_price, properties.starting_price AS properties_starting_price, properties.listing_type AS properties_listing_type, properties.is_available AS properties_is_available, properties.slug AS properties_slug, properties.is_deleted AS properties_is_deleted, properties.created_at AS properties_created_at, properties.updated_at AS properties_updated_at 
+FROM properties LEFT OUTER JOIN (SELECT reviews.property_id AS property_id, avg(reviews.rating) AS avg_rating 
+FROM reviews GROUP BY reviews.property_id) AS anon_1 ON properties.id = anon_1.property_id 
+WHERE properties.is_deleted = false ORDER BY coalesce(anon_1.avg_rating, %(coalesce_1)s) DESC 
+ LIMIT %(param_1)s, %(param_2)s
+INFO:sqlalchemy.engine.Engine:SELECT properties.id AS properties_id, properties.property_name AS properties_property_name, properties.location AS properties_location, properties.phone AS properties_phone, properties.map_link AS properties_map_link, properties.description AS properties_description, properties.features AS properties_features, properties.property_type AS properties_property_type, properties.furnishing AS properties_furnishing, properties.private_price AS properties_private_price, properties.single_price AS properties_single_price, properties.double_price AS properties_double_price, properties.triple_price AS properties_triple_price, properties.starting_price AS properties_starting_price, properties.listing_type AS properties_listing_type, properties.is_available AS properties_is_available, properties.slug AS properties_slug, properties.is_deleted AS properties_is_deleted, properties.created_at AS properties_created_at, properties.updated_at AS properties_updated_at 
+FROM properties LEFT OUTER JOIN (SELECT reviews.property_id AS property_id, avg(reviews.rating) AS avg_rating 
+FROM reviews GROUP BY reviews.property_id) AS anon_1 ON properties.id = anon_1.property_id 
+WHERE properties.is_deleted = false ORDER BY coalesce(anon_1.avg_rating, %(coalesce_1)s) DESC 
+ LIMIT %(param_1)s, %(param_2)s
+2026-02-25 17:10:56,822 INFO sqlalchemy.engine.Engine [cached since 0.3228s ago] {'coalesce_1': 0, 'param_1': 0, 'param_2': 100}
+INFO:sqlalchemy.engine.Engine:[cached since 0.3228s ago] {'coalesce_1': 0, 'param_1': 0, 'param_2': 100}
+2026-02-25 17:10:56,858 INFO sqlalchemy.engine.Engine SELECT property_images.id AS property_images_id, property_images.property_id AS property_images_property_id, property_images.image_url AS property_images_image_url, property_images.is_primary AS property_images_is_primary, property_images.sort_order AS property_images_sort_order, property_images.is_deleted AS property_images_is_deleted, property_images.created_at AS property_images_created_at, anon_1.properties_id AS anon_1_properties_id 
+FROM (SELECT properties.id AS properties_id 
+FROM properties LEFT OUTER JOIN (SELECT reviews.property_id AS property_id, avg(reviews.rating) AS avg_rating 
+FROM reviews GROUP BY reviews.property_id) AS anon_2 ON properties.id = anon_2.property_id 
+WHERE properties.is_deleted = false ORDER BY coalesce(anon_2.avg_rating, %(coalesce_1)s) DESC 
+ LIMIT %(param_1)s, %(param_2)s) AS anon_1 INNER JOIN property_images ON anon_1.properties_id = property_images.property_id
+INFO:sqlalchemy.engine.Engine:SELECT property_images.id AS property_images_id, property_images.property_id AS property_images_property_id, property_images.image_url AS property_images_image_url, property_images.is_primary AS property_images_is_primary, property_images.sort_order AS property_images_sort_order, property_images.is_deleted AS property_images_is_deleted, property_images.created_at AS property_images_created_at, anon_1.properties_id AS anon_1_properties_id 
+FROM (SELECT properties.id AS properties_id 
+FROM properties LEFT OUTER JOIN (SELECT reviews.property_id AS property_id, avg(reviews.rating) AS avg_rating 
+FROM reviews GROUP BY reviews.property_id) AS anon_2 ON properties.id = anon_2.property_id 
+WHERE properties.is_deleted = false ORDER BY coalesce(anon_2.avg_rating, %(coalesce_1)s) DESC 
+ LIMIT %(param_1)s, %(param_2)s) AS anon_1 INNER JOIN property_images ON anon_1.properties_id = property_images.property_id
+2026-02-25 17:10:56,858 INFO sqlalchemy.engine.Engine [cached since 0.2957s ago] {'coalesce_1': 0, 'param_1': 0, 'param_2': 100}
+INFO:sqlalchemy.engine.Engine:[cached since 0.2957s ago] {'coalesce_1': 0, 'param_1': 0, 'param_2': 100}
+2026-02-25 17:10:56,895 INFO sqlalchemy.engine.Engine SELECT reviews.id AS reviews_id, reviews.property_id AS reviews_property_id, reviews.rating AS reviews_rating, reviews.user_name AS reviews_user_name, reviews.property_name AS reviews_property_name, reviews.comment AS reviews_comment, reviews.created_at AS reviews_created_at, anon_1.properties_id AS anon_1_properties_id 
+FROM (SELECT properties.id AS properties_id 
+FROM properties LEFT OUTER JOIN (SELECT reviews.property_id AS property_id, avg(reviews.rating) AS avg_rating 
+FROM reviews GROUP BY reviews.property_id) AS anon_2 ON properties.id = anon_2.property_id 
+WHERE properties.is_deleted = false ORDER BY coalesce(anon_2.avg_rating, %(coalesce_1)s) DESC 
+ LIMIT %(param_1)s, %(param_2)s) AS anon_1 INNER JOIN reviews ON anon_1.properties_id = reviews.property_id
+INFO:sqlalchemy.engine.Engine:SELECT reviews.id AS reviews_id, reviews.property_id AS reviews_property_id, reviews.rating AS reviews_rating, reviews.user_name AS reviews_user_name, reviews.property_name AS reviews_property_name, reviews.comment AS reviews_comment, reviews.created_at AS reviews_created_at, anon_1.properties_id AS anon_1_properties_id 
+FROM (SELECT properties.id AS properties_id 
+FROM properties LEFT OUTER JOIN (SELECT reviews.property_id AS property_id, avg(reviews.rating) AS avg_rating 
+FROM reviews GROUP BY reviews.property_id) AS anon_2 ON properties.id = anon_2.property_id 
+WHERE properties.is_deleted = false ORDER BY coalesce(anon_2.avg_rating, %(coalesce_1)s) DESC 
+ LIMIT %(param_1)s, %(param_2)s) AS anon_1 INNER JOIN reviews ON anon_1.properties_id = reviews.property_id
+2026-02-25 17:10:56,895 INFO sqlalchemy.engine.Engine [cached since 0.2941s ago] {'coalesce_1': 0, 'param_1': 0, 'param_2': 100}
+INFO:sqlalchemy.engine.Engine:[cached since 0.2941s ago] {'coalesce_1': 0, 'param_1': 0, 'param_2': 100}
+INFO:     127.0.0.1:59845 - "GET /api/v1/realty/properties HTTP/1.1" 200 OK
+2026-02-25 17:10:57,028 INFO sqlalchemy.engine.Engine ROLLBACK
+INFO:sqlalchemy.engine.Engine:ROLLBACK
+2026-02-25 17:11:56,075 INFO sqlalchemy.engine.Engine BEGIN (implicit)
+INFO:sqlalchemy.engine.Engine:BEGIN (implicit)
+2026-02-25 17:11:56,076 INFO sqlalchemy.engine.Engine SELECT properties.id AS properties_id, properties.property_name AS properties_property_name, properties.location AS properties_location, properties.phone AS properties_phone, properties.map_link AS properties_map_link, properties.description AS properties_description, properties.features AS properties_features, properties.property_type AS properties_property_type, properties.furnishing AS properties_furnishing, properties.private_price AS properties_private_price, properties.single_price AS properties_single_price, properties.double_price AS properties_double_price, properties.triple_price AS properties_triple_price, properties.starting_price AS properties_starting_price, properties.listing_type AS properties_listing_type, properties.is_available AS properties_is_available, properties.slug AS properties_slug, properties.is_deleted AS properties_is_deleted, properties.created_at AS properties_created_at, properties.updated_at AS properties_updated_at 
+FROM properties LEFT OUTER JOIN (SELECT reviews.property_id AS property_id, avg(reviews.rating) AS avg_rating 
+FROM reviews GROUP BY reviews.property_id) AS anon_1 ON properties.id = anon_1.property_id 
+WHERE properties.is_deleted = false ORDER BY coalesce(anon_1.avg_rating, %(coalesce_1)s) DESC 
+ LIMIT %(param_1)s, %(param_2)s
+INFO:sqlalchemy.engine.Engine:SELECT properties.id AS properties_id, properties.property_name AS properties_property_name, properties.location AS properties_location, properties.phone AS properties_phone, properties.map_link AS properties_map_link, properties.description AS properties_description, properties.features AS properties_features, properties.property_type AS properties_property_type, properties.furnishing AS properties_furnishing, properties.private_price AS properties_private_price, properties.single_price AS properties_single_price, properties.double_price AS properties_double_price, properties.triple_price AS properties_triple_price, properties.starting_price AS properties_starting_price, properties.listing_type AS properties_listing_type, properties.is_available AS properties_is_available, properties.slug AS properties_slug, properties.is_deleted AS properties_is_deleted, properties.created_at AS properties_created_at, properties.updated_at AS properties_updated_at 
+FROM properties LEFT OUTER JOIN (SELECT reviews.property_id AS property_id, avg(reviews.rating) AS avg_rating 
+FROM reviews GROUP BY reviews.property_id) AS anon_1 ON properties.id = anon_1.property_id 
+WHERE properties.is_deleted = false ORDER BY coalesce(anon_1.avg_rating, %(coalesce_1)s) DESC 
+ LIMIT %(param_1)s, %(param_2)s
+2026-02-25 17:11:56,076 INFO sqlalchemy.engine.Engine [cached since 59.58s ago] {'coalesce_1': 0, 'param_1': 0, 'param_2': 100}
+INFO:sqlalchemy.engine.Engine:[cached since 59.58s ago] {'coalesce_1': 0, 'param_1': 0, 'param_2': 100}
+2026-02-25 17:11:56,138 INFO sqlalchemy.engine.Engine SELECT property_images.id AS property_images_id, property_images.property_id AS property_images_property_id, property_images.image_url AS property_images_image_url, property_images.is_primary AS property_images_is_primary, property_images.sort_order AS property_images_sort_order, property_images.is_deleted AS property_images_is_deleted, property_images.created_at AS property_images_created_at, anon_1.properties_id AS anon_1_properties_id 
+FROM (SELECT properties.id AS properties_id 
+FROM properties LEFT OUTER JOIN (SELECT reviews.property_id AS property_id, avg(reviews.rating) AS avg_rating 
+FROM reviews GROUP BY reviews.property_id) AS anon_2 ON properties.id = anon_2.property_id 
+WHERE properties.is_deleted = false ORDER BY coalesce(anon_2.avg_rating, %(coalesce_1)s) DESC 
+ LIMIT %(param_1)s, %(param_2)s) AS anon_1 INNER JOIN property_images ON anon_1.properties_id = property_images.property_id
+INFO:sqlalchemy.engine.Engine:SELECT property_images.id AS property_images_id, property_images.property_id AS property_images_property_id, property_images.image_url AS property_images_image_url, property_images.is_primary AS property_images_is_primary, property_images.sort_order AS property_images_sort_order, property_images.is_deleted AS property_images_is_deleted, property_images.created_at AS property_images_created_at, anon_1.properties_id AS anon_1_properties_id 
+FROM (SELECT properties.id AS properties_id 
+FROM properties LEFT OUTER JOIN (SELECT reviews.property_id AS property_id, avg(reviews.rating) AS avg_rating 
+FROM reviews GROUP BY reviews.property_id) AS anon_2 ON properties.id = anon_2.property_id 
+WHERE properties.is_deleted = false ORDER BY coalesce(anon_2.avg_rating, %(coalesce_1)s) DESC 
+ LIMIT %(param_1)s, %(param_2)s) AS anon_1 INNER JOIN property_images ON anon_1.properties_id = property_images.property_id
+2026-02-25 17:11:56,138 INFO sqlalchemy.engine.Engine [cached since 59.57s ago] {'coalesce_1': 0, 'param_1': 0, 'param_2': 100}
+INFO:sqlalchemy.engine.Engine:[cached since 59.57s ago] {'coalesce_1': 0, 'param_1': 0, 'param_2': 100}
+2026-02-25 17:11:56,174 INFO sqlalchemy.engine.Engine SELECT reviews.id AS reviews_id, reviews.property_id AS reviews_property_id, reviews.rating AS reviews_rating, reviews.user_name AS reviews_user_name, reviews.property_name AS reviews_property_name, reviews.comment AS reviews_comment, reviews.created_at AS reviews_created_at, anon_1.properties_id AS anon_1_properties_id 
+FROM (SELECT properties.id AS properties_id 
+FROM properties LEFT OUTER JOIN (SELECT reviews.property_id AS property_id, avg(reviews.rating) AS avg_rating 
+FROM reviews GROUP BY reviews.property_id) AS anon_2 ON properties.id = anon_2.property_id 
+WHERE properties.is_deleted = false ORDER BY coalesce(anon_2.avg_rating, %(coalesce_1)s) DESC 
+ LIMIT %(param_1)s, %(param_2)s) AS anon_1 INNER JOIN reviews ON anon_1.properties_id = reviews.property_id
+INFO:sqlalchemy.engine.Engine:SELECT reviews.id AS reviews_id, reviews.property_id AS reviews_property_id, reviews.rating AS reviews_rating, reviews.user_name AS reviews_user_name, reviews.property_name AS reviews_property_name, reviews.comment AS reviews_comment, reviews.created_at AS reviews_created_at, anon_1.properties_id AS anon_1_properties_id 
+FROM (SELECT properties.id AS properties_id 
+FROM properties LEFT OUTER JOIN (SELECT reviews.property_id AS property_id, avg(reviews.rating) AS avg_rating 
+FROM reviews GROUP BY reviews.property_id) AS anon_2 ON properties.id = anon_2.property_id 
+WHERE properties.is_deleted = false ORDER BY coalesce(anon_2.avg_rating, %(coalesce_1)s) DESC 
+ LIMIT %(param_1)s, %(param_2)s) AS anon_1 INNER JOIN reviews ON anon_1.properties_id = reviews.property_id
+2026-02-25 17:11:56,174 INFO sqlalchemy.engine.Engine [cached since 59.57s ago] {'coalesce_1': 0, 'param_1': 0, 'param_2': 100}
+INFO:sqlalchemy.engine.Engine:[cached since 59.57s ago] {'coalesce_1': 0, 'param_1': 0, 'param_2': 100}
+INFO:     127.0.0.1:59875 - "GET /api/v1/realty/properties HTTP/1.1" 200 OK
+2026-02-25 17:11:56,303 INFO sqlalchemy.engine.Engine ROLLBACK
+INFO:sqlalchemy.engine.Engine:ROLLBACK
+2026-02-25 17:11:56,331 INFO sqlalchemy.engine.Engine BEGIN (implicit)
+INFO:sqlalchemy.engine.Engine:BEGIN (implicit)
+2026-02-25 17:11:56,331 INFO sqlalchemy.engine.Engine SELECT properties.id AS properties_id, properties.property_name AS properties_property_name, properties.location AS properties_location, properties.phone AS properties_phone, properties.map_link AS properties_map_link, properties.description AS properties_description, properties.features AS properties_features, properties.property_type AS properties_property_type, properties.furnishing AS properties_furnishing, properties.private_price AS properties_private_price, properties.single_price AS properties_single_price, properties.double_price AS properties_double_price, properties.triple_price AS properties_triple_price, properties.starting_price AS properties_starting_price, properties.listing_type AS properties_listing_type, properties.is_available AS properties_is_available, properties.slug AS properties_slug, properties.is_deleted AS properties_is_deleted, properties.created_at AS properties_created_at, properties.updated_at AS properties_updated_at 
+FROM properties LEFT OUTER JOIN (SELECT reviews.property_id AS property_id, avg(reviews.rating) AS avg_rating 
+FROM reviews GROUP BY reviews.property_id) AS anon_1 ON properties.id = anon_1.property_id 
+WHERE properties.is_deleted = false ORDER BY coalesce(anon_1.avg_rating, %(coalesce_1)s) DESC 
+ LIMIT %(param_1)s, %(param_2)s
+INFO:sqlalchemy.engine.Engine:SELECT properties.id AS properties_id, properties.property_name AS properties_property_name, properties.location AS properties_location, properties.phone AS properties_phone, properties.map_link AS properties_map_link, properties.description AS properties_description, properties.features AS properties_features, properties.property_type AS properties_property_type, properties.furnishing AS properties_furnishing, properties.private_price AS properties_private_price, properties.single_price AS properties_single_price, properties.double_price AS properties_double_price, properties.triple_price AS properties_triple_price, properties.starting_price AS properties_starting_price, properties.listing_type AS properties_listing_type, properties.is_available AS properties_is_available, properties.slug AS properties_slug, properties.is_deleted AS properties_is_deleted, properties.created_at AS properties_created_at, properties.updated_at AS properties_updated_at 
+FROM properties LEFT OUTER JOIN (SELECT reviews.property_id AS property_id, avg(reviews.rating) AS avg_rating 
+FROM reviews GROUP BY reviews.property_id) AS anon_1 ON properties.id = anon_1.property_id 
+WHERE properties.is_deleted = false ORDER BY coalesce(anon_1.avg_rating, %(coalesce_1)s) DESC 
+ LIMIT %(param_1)s, %(param_2)s
+2026-02-25 17:11:56,331 INFO sqlalchemy.engine.Engine [cached since 59.83s ago] {'coalesce_1': 0, 'param_1': 0, 'param_2': 100}
+INFO:sqlalchemy.engine.Engine:[cached since 59.83s ago] {'coalesce_1': 0, 'param_1': 0, 'param_2': 100}
+2026-02-25 17:11:56,366 INFO sqlalchemy.engine.Engine SELECT property_images.id AS property_images_id, property_images.property_id AS property_images_property_id, property_images.image_url AS property_images_image_url, property_images.is_primary AS property_images_is_primary, property_images.sort_order AS property_images_sort_order, property_images.is_deleted AS property_images_is_deleted, property_images.created_at AS property_images_created_at, anon_1.properties_id AS anon_1_properties_id 
+FROM (SELECT properties.id AS properties_id 
+FROM properties LEFT OUTER JOIN (SELECT reviews.property_id AS property_id, avg(reviews.rating) AS avg_rating 
+FROM reviews GROUP BY reviews.property_id) AS anon_2 ON properties.id = anon_2.property_id 
+WHERE properties.is_deleted = false ORDER BY coalesce(anon_2.avg_rating, %(coalesce_1)s) DESC 
+ LIMIT %(param_1)s, %(param_2)s) AS anon_1 INNER JOIN property_images ON anon_1.properties_id = property_images.property_id
+INFO:sqlalchemy.engine.Engine:SELECT property_images.id AS property_images_id, property_images.property_id AS property_images_property_id, property_images.image_url AS property_images_image_url, property_images.is_primary AS property_images_is_primary, property_images.sort_order AS property_images_sort_order, property_images.is_deleted AS property_images_is_deleted, property_images.created_at AS property_images_created_at, anon_1.properties_id AS anon_1_properties_id 
+FROM (SELECT properties.id AS properties_id 
+FROM properties LEFT OUTER JOIN (SELECT reviews.property_id AS property_id, avg(reviews.rating) AS avg_rating 
+FROM reviews GROUP BY reviews.property_id) AS anon_2 ON properties.id = anon_2.property_id 
+WHERE properties.is_deleted = false ORDER BY coalesce(anon_2.avg_rating, %(coalesce_1)s) DESC 
+ LIMIT %(param_1)s, %(param_2)s) AS anon_1 INNER JOIN property_images ON anon_1.properties_id = property_images.property_id
+2026-02-25 17:11:56,366 INFO sqlalchemy.engine.Engine [cached since 59.8s ago] {'coalesce_1': 0, 'param_1': 0, 'param_2': 100}
+INFO:sqlalchemy.engine.Engine:[cached since 59.8s ago] {'coalesce_1': 0, 'param_1': 0, 'param_2': 100}
+2026-02-25 17:11:56,396 INFO sqlalchemy.engine.Engine SELECT reviews.id AS reviews_id, reviews.property_id AS reviews_property_id, reviews.rating AS reviews_rating, reviews.user_name AS reviews_user_name, reviews.property_name AS reviews_property_name, reviews.comment AS reviews_comment, reviews.created_at AS reviews_created_at, anon_1.properties_id AS anon_1_properties_id 
+FROM (SELECT properties.id AS properties_id 
+FROM properties LEFT OUTER JOIN (SELECT reviews.property_id AS property_id, avg(reviews.rating) AS avg_rating 
+FROM reviews GROUP BY reviews.property_id) AS anon_2 ON properties.id = anon_2.property_id 
+WHERE properties.is_deleted = false ORDER BY coalesce(anon_2.avg_rating, %(coalesce_1)s) DESC 
+ LIMIT %(param_1)s, %(param_2)s) AS anon_1 INNER JOIN reviews ON anon_1.properties_id = reviews.property_id
+INFO:sqlalchemy.engine.Engine:SELECT reviews.id AS reviews_id, reviews.property_id AS reviews_property_id, reviews.rating AS reviews_rating, reviews.user_name AS reviews_user_name, reviews.property_name AS reviews_property_name, reviews.comment AS reviews_comment, reviews.created_at AS reviews_created_at, anon_1.properties_id AS anon_1_properties_id 
+FROM (SELECT properties.id AS properties_id 
+FROM properties LEFT OUTER JOIN (SELECT reviews.property_id AS property_id, avg(reviews.rating) AS avg_rating 
+FROM reviews GROUP BY reviews.property_id) AS anon_2 ON properties.id = anon_2.property_id 
+WHERE properties.is_deleted = false ORDER BY coalesce(anon_2.avg_rating, %(coalesce_1)s) DESC 
+ LIMIT %(param_1)s, %(param_2)s) AS anon_1 INNER JOIN reviews ON anon_1.properties_id = reviews.property_id
+2026-02-25 17:11:56,396 INFO sqlalchemy.engine.Engine [cached since 59.79s ago] {'coalesce_1': 0, 'param_1': 0, 'param_2': 100}
+INFO:sqlalchemy.engine.Engine:[cached since 59.79s ago] {'coalesce_1': 0, 'param_1': 0, 'param_2': 100}
+INFO:     127.0.0.1:59875 - "GET /api/v1/realty/properties HTTP/1.1" 200 OK
+2026-02-25 17:11:56,552 INFO sqlalchemy.engine.Engine ROLLBACK
+INFO:sqlalchemy.engine.Engine:ROLLBACK
+2026-02-25 17:11:58,866 INFO sqlalchemy.engine.Engine BEGIN (implicit)
+INFO:sqlalchemy.engine.Engine:BEGIN (implicit)
+2026-02-25 17:11:58,867 INFO sqlalchemy.engine.Engine SELECT properties.id AS properties_id, properties.property_name AS properties_property_name, properties.location AS properties_location, properties.phone AS properties_phone, properties.map_link AS properties_map_link, properties.description AS properties_description, properties.features AS properties_features, properties.property_type AS properties_property_type, properties.furnishing AS properties_furnishing, properties.private_price AS properties_private_price, properties.single_price AS properties_single_price, properties.double_price AS properties_double_price, properties.triple_price AS properties_triple_price, properties.starting_price AS properties_starting_price, properties.listing_type AS properties_listing_type, properties.is_available AS properties_is_available, properties.slug AS properties_slug, properties.is_deleted AS properties_is_deleted, properties.created_at AS properties_created_at, properties.updated_at AS properties_updated_at 
+FROM properties LEFT OUTER JOIN (SELECT reviews.property_id AS property_id, avg(reviews.rating) AS avg_rating 
+FROM reviews GROUP BY reviews.property_id) AS anon_1 ON properties.id = anon_1.property_id 
+WHERE properties.is_deleted = false ORDER BY coalesce(anon_1.avg_rating, %(coalesce_1)s) DESC 
+ LIMIT %(param_1)s, %(param_2)s
+INFO:sqlalchemy.engine.Engine:SELECT properties.id AS properties_id, properties.property_name AS properties_property_name, properties.location AS properties_location, properties.phone AS properties_phone, properties.map_link AS properties_map_link, properties.description AS properties_description, properties.features AS properties_features, properties.property_type AS properties_property_type, properties.furnishing AS properties_furnishing, properties.private_price AS properties_private_price, properties.single_price AS properties_single_price, properties.double_price AS properties_double_price, properties.triple_price AS properties_triple_price, properties.starting_price AS properties_starting_price, properties.listing_type AS properties_listing_type, properties.is_available AS properties_is_available, properties.slug AS properties_slug, properties.is_deleted AS properties_is_deleted, properties.created_at AS properties_created_at, properties.updated_at AS properties_updated_at 
+FROM properties LEFT OUTER JOIN (SELECT reviews.property_id AS property_id, avg(reviews.rating) AS avg_rating 
+FROM reviews GROUP BY reviews.property_id) AS anon_1 ON properties.id = anon_1.property_id 
+WHERE properties.is_deleted = false ORDER BY coalesce(anon_1.avg_rating, %(coalesce_1)s) DESC 
+ LIMIT %(param_1)s, %(param_2)s
+2026-02-25 17:11:58,867 INFO sqlalchemy.engine.Engine [cached since 62.37s ago] {'coalesce_1': 0, 'param_1': 0, 'param_2': 100}
+INFO:sqlalchemy.engine.Engine:[cached since 62.37s ago] {'coalesce_1': 0, 'param_1': 0, 'param_2': 100}
+2026-02-25 17:11:58,948 INFO sqlalchemy.engine.Engine SELECT property_images.id AS property_images_id, property_images.property_id AS property_images_property_id, property_images.image_url AS property_images_image_url, property_images.is_primary AS property_images_is_primary, property_images.sort_order AS property_images_sort_order, property_images.is_deleted AS property_images_is_deleted, property_images.created_at AS property_images_created_at, anon_1.properties_id AS anon_1_properties_id 
+FROM (SELECT properties.id AS properties_id 
+FROM properties LEFT OUTER JOIN (SELECT reviews.property_id AS property_id, avg(reviews.rating) AS avg_rating 
+FROM reviews GROUP BY reviews.property_id) AS anon_2 ON properties.id = anon_2.property_id 
+WHERE properties.is_deleted = false ORDER BY coalesce(anon_2.avg_rating, %(coalesce_1)s) DESC 
+ LIMIT %(param_1)s, %(param_2)s) AS anon_1 INNER JOIN property_images ON anon_1.properties_id = property_images.property_id
+INFO:sqlalchemy.engine.Engine:SELECT property_images.id AS property_images_id, property_images.property_id AS property_images_property_id, property_images.image_url AS property_images_image_url, property_images.is_primary AS property_images_is_primary, property_images.sort_order AS property_images_sort_order, property_images.is_deleted AS property_images_is_deleted, property_images.created_at AS property_images_created_at, anon_1.properties_id AS anon_1_properties_id 
+FROM (SELECT properties.id AS properties_id 
+FROM properties LEFT OUTER JOIN (SELECT reviews.property_id AS property_id, avg(reviews.rating) AS avg_rating 
+FROM reviews GROUP BY reviews.property_id) AS anon_2 ON properties.id = anon_2.property_id 
+WHERE properties.is_deleted = false ORDER BY coalesce(anon_2.avg_rating, %(coalesce_1)s) DESC 
+ LIMIT %(param_1)s, %(param_2)s) AS anon_1 INNER JOIN property_images ON anon_1.properties_id = property_images.property_id
+2026-02-25 17:11:58,949 INFO sqlalchemy.engine.Engine [cached since 62.39s ago] {'coalesce_1': 0, 'param_1': 0, 'param_2': 100}
+INFO:sqlalchemy.engine.Engine:[cached since 62.39s ago] {'coalesce_1': 0, 'param_1': 0, 'param_2': 100}
+2026-02-25 17:11:58,983 INFO sqlalchemy.engine.Engine SELECT reviews.id AS reviews_id, reviews.property_id AS reviews_property_id, reviews.rating AS reviews_rating, reviews.user_name AS reviews_user_name, reviews.property_name AS reviews_property_name, reviews.comment AS reviews_comment, reviews.created_at AS reviews_created_at, anon_1.properties_id AS anon_1_properties_id 
+FROM (SELECT properties.id AS properties_id 
+FROM properties LEFT OUTER JOIN (SELECT reviews.property_id AS property_id, avg(reviews.rating) AS avg_rating 
+FROM reviews GROUP BY reviews.property_id) AS anon_2 ON properties.id = anon_2.property_id 
+WHERE properties.is_deleted = false ORDER BY coalesce(anon_2.avg_rating, %(coalesce_1)s) DESC 
+ LIMIT %(param_1)s, %(param_2)s) AS anon_1 INNER JOIN reviews ON anon_1.properties_id = reviews.property_id
+INFO:sqlalchemy.engine.Engine:SELECT reviews.id AS reviews_id, reviews.property_id AS reviews_property_id, reviews.rating AS reviews_rating, reviews.user_name AS reviews_user_name, reviews.property_name AS reviews_property_name, reviews.comment AS reviews_comment, reviews.created_at AS reviews_created_at, anon_1.properties_id AS anon_1_properties_id 
+FROM (SELECT properties.id AS properties_id 
+FROM properties LEFT OUTER JOIN (SELECT reviews.property_id AS property_id, avg(reviews.rating) AS avg_rating 
+FROM reviews GROUP BY reviews.property_id) AS anon_2 ON properties.id = anon_2.property_id 
+WHERE properties.is_deleted = false ORDER BY coalesce(anon_2.avg_rating, %(coalesce_1)s) DESC 
+ LIMIT %(param_1)s, %(param_2)s) AS anon_1 INNER JOIN reviews ON anon_1.properties_id = reviews.property_id
+2026-02-25 17:11:58,983 INFO sqlalchemy.engine.Engine [cached since 62.38s ago] {'coalesce_1': 0, 'param_1': 0, 'param_2': 100}
+INFO:sqlalchemy.engine.Engine:[cached since 62.38s ago] {'coalesce_1': 0, 'param_1': 0, 'param_2': 100}
+INFO:     127.0.0.1:59875 - "GET /api/v1/realty/properties HTTP/1.1" 200 OK
+2026-02-25 17:11:59,133 INFO sqlalchemy.engine.Engine ROLLBACK
+INFO:sqlalchemy.engine.Engine:ROLLBACK
+2026-02-25 17:11:59,166 INFO sqlalchemy.engine.Engine BEGIN (implicit)
+INFO:sqlalchemy.engine.Engine:BEGIN (implicit)
+2026-02-25 17:11:59,166 INFO sqlalchemy.engine.Engine SELECT properties.id AS properties_id, properties.property_name AS properties_property_name, properties.location AS properties_location, properties.phone AS properties_phone, properties.map_link AS properties_map_link, properties.description AS properties_description, properties.features AS properties_features, properties.property_type AS properties_property_type, properties.furnishing AS properties_furnishing, properties.private_price AS properties_private_price, properties.single_price AS properties_single_price, properties.double_price AS properties_double_price, properties.triple_price AS properties_triple_price, properties.starting_price AS properties_starting_price, properties.listing_type AS properties_listing_type, properties.is_available AS properties_is_available, properties.slug AS properties_slug, properties.is_deleted AS properties_is_deleted, properties.created_at AS properties_created_at, properties.updated_at AS properties_updated_at 
+FROM properties LEFT OUTER JOIN (SELECT reviews.property_id AS property_id, avg(reviews.rating) AS avg_rating 
+FROM reviews GROUP BY reviews.property_id) AS anon_1 ON properties.id = anon_1.property_id 
+WHERE properties.is_deleted = false ORDER BY coalesce(anon_1.avg_rating, %(coalesce_1)s) DESC 
+ LIMIT %(param_1)s, %(param_2)s
+INFO:sqlalchemy.engine.Engine:SELECT properties.id AS properties_id, properties.property_name AS properties_property_name, properties.location AS properties_location, properties.phone AS properties_phone, properties.map_link AS properties_map_link, properties.description AS properties_description, properties.features AS properties_features, properties.property_type AS properties_property_type, properties.furnishing AS properties_furnishing, properties.private_price AS properties_private_price, properties.single_price AS properties_single_price, properties.double_price AS properties_double_price, properties.triple_price AS properties_triple_price, properties.starting_price AS properties_starting_price, properties.listing_type AS properties_listing_type, properties.is_available AS properties_is_available, properties.slug AS properties_slug, properties.is_deleted AS properties_is_deleted, properties.created_at AS properties_created_at, properties.updated_at AS properties_updated_at 
+FROM properties LEFT OUTER JOIN (SELECT reviews.property_id AS property_id, avg(reviews.rating) AS avg_rating 
+FROM reviews GROUP BY reviews.property_id) AS anon_1 ON properties.id = anon_1.property_id 
+WHERE properties.is_deleted = false ORDER BY coalesce(anon_1.avg_rating, %(coalesce_1)s) DESC 
+ LIMIT %(param_1)s, %(param_2)s
+2026-02-25 17:11:59,166 INFO sqlalchemy.engine.Engine [cached since 62.67s ago] {'coalesce_1': 0, 'param_1': 0, 'param_2': 100}
+INFO:sqlalchemy.engine.Engine:[cached since 62.67s ago] {'coalesce_1': 0, 'param_1': 0, 'param_2': 100}
+2026-02-25 17:11:59,203 INFO sqlalchemy.engine.Engine SELECT property_images.id AS property_images_id, property_images.property_id AS property_images_property_id, property_images.image_url AS property_images_image_url, property_images.is_primary AS property_images_is_primary, property_images.sort_order AS property_images_sort_order, property_images.is_deleted AS property_images_is_deleted, property_images.created_at AS property_images_created_at, anon_1.properties_id AS anon_1_properties_id 
+FROM (SELECT properties.id AS properties_id 
+FROM properties LEFT OUTER JOIN (SELECT reviews.property_id AS property_id, avg(reviews.rating) AS avg_rating 
+FROM reviews GROUP BY reviews.property_id) AS anon_2 ON properties.id = anon_2.property_id 
+WHERE properties.is_deleted = false ORDER BY coalesce(anon_2.avg_rating, %(coalesce_1)s) DESC 
+ LIMIT %(param_1)s, %(param_2)s) AS anon_1 INNER JOIN property_images ON anon_1.properties_id = property_images.property_id
+INFO:sqlalchemy.engine.Engine:SELECT property_images.id AS property_images_id, property_images.property_id AS property_images_property_id, property_images.image_url AS property_images_image_url, property_images.is_primary AS property_images_is_primary, property_images.sort_order AS property_images_sort_order, property_images.is_deleted AS property_images_is_deleted, property_images.created_at AS property_images_created_at, anon_1.properties_id AS anon_1_properties_id 
+FROM (SELECT properties.id AS properties_id 
+FROM properties LEFT OUTER JOIN (SELECT reviews.property_id AS property_id, avg(reviews.rating) AS avg_rating 
+FROM reviews GROUP BY reviews.property_id) AS anon_2 ON properties.id = anon_2.property_id 
+WHERE properties.is_deleted = false ORDER BY coalesce(anon_2.avg_rating, %(coalesce_1)s) DESC 
+ LIMIT %(param_1)s, %(param_2)s) AS anon_1 INNER JOIN property_images ON anon_1.properties_id = property_images.property_id
+2026-02-25 17:11:59,203 INFO sqlalchemy.engine.Engine [cached since 62.64s ago] {'coalesce_1': 0, 'param_1': 0, 'param_2': 100}
+INFO:sqlalchemy.engine.Engine:[cached since 62.64s ago] {'coalesce_1': 0, 'param_1': 0, 'param_2': 100}
+2026-02-25 17:11:59,239 INFO sqlalchemy.engine.Engine SELECT reviews.id AS reviews_id, reviews.property_id AS reviews_property_id, reviews.rating AS reviews_rating, reviews.user_name AS reviews_user_name, reviews.property_name AS reviews_property_name, reviews.comment AS reviews_comment, reviews.created_at AS reviews_created_at, anon_1.properties_id AS anon_1_properties_id 
+FROM (SELECT properties.id AS properties_id 
+FROM properties LEFT OUTER JOIN (SELECT reviews.property_id AS property_id, avg(reviews.rating) AS avg_rating 
+FROM reviews GROUP BY reviews.property_id) AS anon_2 ON properties.id = anon_2.property_id 
+WHERE properties.is_deleted = false ORDER BY coalesce(anon_2.avg_rating, %(coalesce_1)s) DESC 
+ LIMIT %(param_1)s, %(param_2)s) AS anon_1 INNER JOIN reviews ON anon_1.properties_id = reviews.property_id
+INFO:sqlalchemy.engine.Engine:SELECT reviews.id AS reviews_id, reviews.property_id AS reviews_property_id, reviews.rating AS reviews_rating, reviews.user_name AS reviews_user_name, reviews.property_name AS reviews_property_name, reviews.comment AS reviews_comment, reviews.created_at AS reviews_created_at, anon_1.properties_id AS anon_1_properties_id 
+FROM (SELECT properties.id AS properties_id 
+FROM properties LEFT OUTER JOIN (SELECT reviews.property_id AS property_id, avg(reviews.rating) AS avg_rating 
+FROM reviews GROUP BY reviews.property_id) AS anon_2 ON properties.id = anon_2.property_id 
+WHERE properties.is_deleted = false ORDER BY coalesce(anon_2.avg_rating, %(coalesce_1)s) DESC 
+ LIMIT %(param_1)s, %(param_2)s) AS anon_1 INNER JOIN reviews ON anon_1.properties_id = reviews.property_id
+2026-02-25 17:11:59,239 INFO sqlalchemy.engine.Engine [cached since 62.64s ago] {'coalesce_1': 0, 'param_1': 0, 'param_2': 100}
+INFO:sqlalchemy.engine.Engine:[cached since 62.64s ago] {'coalesce_1': 0, 'param_1': 0, 'param_2': 100}
+INFO:     127.0.0.1:60125 - "GET /api/v1/realty/properties HTTP/1.1" 200 OK
+2026-02-25 17:11:59,360 INFO sqlalchemy.engine.Engine ROLLBACK
+INFO:sqlalchemy.engine.Engine:ROLLBACK
+INFO:     127.0.0.1:60125 - "OPTIONS /api/v1/realty/properties?listing_type=rent&exclude_property_type=PG HTTP/1.1" 200 OK
+INFO:     127.0.0.1:59875 - "OPTIONS /api/v1/realty/properties?listing_type=rent&exclude_property_type=PG HTTP/1.1" 200 OK
+2026-02-25 17:12:00,620 INFO sqlalchemy.engine.Engine BEGIN (implicit)
+INFO:sqlalchemy.engine.Engine:BEGIN (implicit)
+2026-02-25 17:12:00,622 INFO sqlalchemy.engine.Engine SELECT properties.id AS properties_id, properties.property_name AS properties_property_name, properties.location AS properties_location, properties.phone AS properties_phone, properties.map_link AS properties_map_link, properties.description AS properties_description, properties.features AS properties_features, properties.property_type AS properties_property_type, properties.furnishing AS properties_furnishing, properties.private_price AS properties_private_price, properties.single_price AS properties_single_price, properties.double_price AS properties_double_price, properties.triple_price AS properties_triple_price, properties.starting_price AS properties_starting_price, properties.listing_type AS properties_listing_type, properties.is_available AS properties_is_available, properties.slug AS properties_slug, properties.is_deleted AS properties_is_deleted, properties.created_at AS properties_created_at, properties.updated_at AS properties_updated_at 
+FROM properties LEFT OUTER JOIN (SELECT reviews.property_id AS property_id, avg(reviews.rating) AS avg_rating 
+FROM reviews GROUP BY reviews.property_id) AS anon_1 ON properties.id = anon_1.property_id 
+WHERE properties.is_deleted = false AND properties.property_type != %(property_type_1)s AND properties.listing_type = %(listing_type_1)s ORDER BY coalesce(anon_1.avg_rating, %(coalesce_1)s) DESC 
+ LIMIT %(param_1)s, %(param_2)s
+INFO:sqlalchemy.engine.Engine:SELECT properties.id AS properties_id, properties.property_name AS properties_property_name, properties.location AS properties_location, properties.phone AS properties_phone, properties.map_link AS properties_map_link, properties.description AS properties_description, properties.features AS properties_features, properties.property_type AS properties_property_type, properties.furnishing AS properties_furnishing, properties.private_price AS properties_private_price, properties.single_price AS properties_single_price, properties.double_price AS properties_double_price, properties.triple_price AS properties_triple_price, properties.starting_price AS properties_starting_price, properties.listing_type AS properties_listing_type, properties.is_available AS properties_is_available, properties.slug AS properties_slug, properties.is_deleted AS properties_is_deleted, properties.created_at AS properties_created_at, properties.updated_at AS properties_updated_at 
+FROM properties LEFT OUTER JOIN (SELECT reviews.property_id AS property_id, avg(reviews.rating) AS avg_rating 
+FROM reviews GROUP BY reviews.property_id) AS anon_1 ON properties.id = anon_1.property_id 
+WHERE properties.is_deleted = false AND properties.property_type != %(property_type_1)s AND properties.listing_type = %(listing_type_1)s ORDER BY coalesce(anon_1.avg_rating, %(coalesce_1)s) DESC 
+ LIMIT %(param_1)s, %(param_2)s
+2026-02-25 17:12:00,623 INFO sqlalchemy.engine.Engine [generated in 0.00027s] {'property_type_1': 'PG', 'listing_type_1': 'rent', 'coalesce_1': 0, 'param_1': 0, 'param_2': 100}
+INFO:sqlalchemy.engine.Engine:[generated in 0.00027s] {'property_type_1': 'PG', 'listing_type_1': 'rent', 'coalesce_1': 0, 'param_1': 0, 'param_2': 100}
+2026-02-25 17:12:00,656 INFO sqlalchemy.engine.Engine SELECT property_images.id AS property_images_id, property_images.property_id AS property_images_property_id, property_images.image_url AS property_images_image_url, property_images.is_primary AS property_images_is_primary, property_images.sort_order AS property_images_sort_order, property_images.is_deleted AS property_images_is_deleted, property_images.created_at AS property_images_created_at, anon_1.properties_id AS anon_1_properties_id 
+FROM (SELECT properties.id AS properties_id 
+FROM properties LEFT OUTER JOIN (SELECT reviews.property_id AS property_id, avg(reviews.rating) AS avg_rating 
+FROM reviews GROUP BY reviews.property_id) AS anon_2 ON properties.id = anon_2.property_id 
+WHERE properties.is_deleted = false AND properties.property_type != %(property_type_1)s AND properties.listing_type = %(listing_type_1)s ORDER BY coalesce(anon_2.avg_rating, %(coalesce_1)s) DESC 
+ LIMIT %(param_1)s, %(param_2)s) AS anon_1 INNER JOIN property_images ON anon_1.properties_id = property_images.property_id
+INFO:sqlalchemy.engine.Engine:SELECT property_images.id AS property_images_id, property_images.property_id AS property_images_property_id, property_images.image_url AS property_images_image_url, property_images.is_primary AS property_images_is_primary, property_images.sort_order AS property_images_sort_order, property_images.is_deleted AS property_images_is_deleted, property_images.created_at AS property_images_created_at, anon_1.properties_id AS anon_1_properties_id 
+FROM (SELECT properties.id AS properties_id 
+FROM properties LEFT OUTER JOIN (SELECT reviews.property_id AS property_id, avg(reviews.rating) AS avg_rating 
+FROM reviews GROUP BY reviews.property_id) AS anon_2 ON properties.id = anon_2.property_id 
+WHERE properties.is_deleted = false AND properties.property_type != %(property_type_1)s AND properties.listing_type = %(listing_type_1)s ORDER BY coalesce(anon_2.avg_rating, %(coalesce_1)s) DESC 
+ LIMIT %(param_1)s, %(param_2)s) AS anon_1 INNER JOIN property_images ON anon_1.properties_id = property_images.property_id
+2026-02-25 17:12:00,656 INFO sqlalchemy.engine.Engine [generated in 0.00042s] {'property_type_1': 'PG', 'listing_type_1': 'rent', 'coalesce_1': 0, 'param_1': 0, 'param_2': 100}
+INFO:sqlalchemy.engine.Engine:[generated in 0.00042s] {'property_type_1': 'PG', 'listing_type_1': 'rent', 'coalesce_1': 0, 'param_1': 0, 'param_2': 100}
+2026-02-25 17:12:00,689 INFO sqlalchemy.engine.Engine SELECT reviews.id AS reviews_id, reviews.property_id AS reviews_property_id, reviews.rating AS reviews_rating, reviews.user_name AS reviews_user_name, reviews.property_name AS reviews_property_name, reviews.comment AS reviews_comment, reviews.created_at AS reviews_created_at, anon_1.properties_id AS anon_1_properties_id 
+FROM (SELECT properties.id AS properties_id 
+FROM properties LEFT OUTER JOIN (SELECT reviews.property_id AS property_id, avg(reviews.rating) AS avg_rating 
+FROM reviews GROUP BY reviews.property_id) AS anon_2 ON properties.id = anon_2.property_id 
+WHERE properties.is_deleted = false AND properties.property_type != %(property_type_1)s AND properties.listing_type = %(listing_type_1)s ORDER BY coalesce(anon_2.avg_rating, %(coalesce_1)s) DESC 
+ LIMIT %(param_1)s, %(param_2)s) AS anon_1 INNER JOIN reviews ON anon_1.properties_id = reviews.property_id
+INFO:sqlalchemy.engine.Engine:SELECT reviews.id AS reviews_id, reviews.property_id AS reviews_property_id, reviews.rating AS reviews_rating, reviews.user_name AS reviews_user_name, reviews.property_name AS reviews_property_name, reviews.comment AS reviews_comment, reviews.created_at AS reviews_created_at, anon_1.properties_id AS anon_1_properties_id 
+FROM (SELECT properties.id AS properties_id 
+FROM properties LEFT OUTER JOIN (SELECT reviews.property_id AS property_id, avg(reviews.rating) AS avg_rating 
+FROM reviews GROUP BY reviews.property_id) AS anon_2 ON properties.id = anon_2.property_id 
+WHERE properties.is_deleted = false AND properties.property_type != %(property_type_1)s AND properties.listing_type = %(listing_type_1)s ORDER BY coalesce(anon_2.avg_rating, %(coalesce_1)s) DESC 
+ LIMIT %(param_1)s, %(param_2)s) AS anon_1 INNER JOIN reviews ON anon_1.properties_id = reviews.property_id
+2026-02-25 17:12:00,689 INFO sqlalchemy.engine.Engine [generated in 0.00037s] {'property_type_1': 'PG', 'listing_type_1': 'rent', 'coalesce_1': 0, 'param_1': 0, 'param_2': 100}
+INFO:sqlalchemy.engine.Engine:[generated in 0.00037s] {'property_type_1': 'PG', 'listing_type_1': 'rent', 'coalesce_1': 0, 'param_1': 0, 'param_2': 100}
+INFO:     127.0.0.1:60125 - "GET /api/v1/realty/properties?listing_type=rent&exclude_property_type=PG HTTP/1.1" 200 OK
+2026-02-25 17:12:00,739 INFO sqlalchemy.engine.Engine ROLLBACK
+INFO:sqlalchemy.engine.Engine:ROLLBACK
+2026-02-25 17:12:00,768 INFO sqlalchemy.engine.Engine BEGIN (implicit)
+INFO:sqlalchemy.engine.Engine:BEGIN (implicit)
+2026-02-25 17:12:00,769 INFO sqlalchemy.engine.Engine SELECT properties.id AS properties_id, properties.property_name AS properties_property_name, properties.location AS properties_location, properties.phone AS properties_phone, properties.map_link AS properties_map_link, properties.description AS properties_description, properties.features AS properties_features, properties.property_type AS properties_property_type, properties.furnishing AS properties_furnishing, properties.private_price AS properties_private_price, properties.single_price AS properties_single_price, properties.double_price AS properties_double_price, properties.triple_price AS properties_triple_price, properties.starting_price AS properties_starting_price, properties.listing_type AS properties_listing_type, properties.is_available AS properties_is_available, properties.slug AS properties_slug, properties.is_deleted AS properties_is_deleted, properties.created_at AS properties_created_at, properties.updated_at AS properties_updated_at 
+FROM properties LEFT OUTER JOIN (SELECT reviews.property_id AS property_id, avg(reviews.rating) AS avg_rating 
+FROM reviews GROUP BY reviews.property_id) AS anon_1 ON properties.id = anon_1.property_id 
+WHERE properties.is_deleted = false AND properties.property_type != %(property_type_1)s AND properties.listing_type = %(listing_type_1)s ORDER BY coalesce(anon_1.avg_rating, %(coalesce_1)s) DESC 
+ LIMIT %(param_1)s, %(param_2)s
+INFO:sqlalchemy.engine.Engine:SELECT properties.id AS properties_id, properties.property_name AS properties_property_name, properties.location AS properties_location, properties.phone AS properties_phone, properties.map_link AS properties_map_link, properties.description AS properties_description, properties.features AS properties_features, properties.property_type AS properties_property_type, properties.furnishing AS properties_furnishing, properties.private_price AS properties_private_price, properties.single_price AS properties_single_price, properties.double_price AS properties_double_price, properties.triple_price AS properties_triple_price, properties.starting_price AS properties_starting_price, properties.listing_type AS properties_listing_type, properties.is_available AS properties_is_available, properties.slug AS properties_slug, properties.is_deleted AS properties_is_deleted, properties.created_at AS properties_created_at, properties.updated_at AS properties_updated_at 
+FROM properties LEFT OUTER JOIN (SELECT reviews.property_id AS property_id, avg(reviews.rating) AS avg_rating 
+FROM reviews GROUP BY reviews.property_id) AS anon_1 ON properties.id = anon_1.property_id 
+WHERE properties.is_deleted = false AND properties.property_type != %(property_type_1)s AND properties.listing_type = %(listing_type_1)s ORDER BY coalesce(anon_1.avg_rating, %(coalesce_1)s) DESC 
+ LIMIT %(param_1)s, %(param_2)s
+2026-02-25 17:12:00,769 INFO sqlalchemy.engine.Engine [cached since 0.1467s ago] {'property_type_1': 'PG', 'listing_type_1': 'rent', 'coalesce_1': 0, 'param_1': 0, 'param_2': 100}
+INFO:sqlalchemy.engine.Engine:[cached since 0.1467s ago] {'property_type_1': 'PG', 'listing_type_1': 'rent', 'coalesce_1': 0, 'param_1': 0, 'param_2': 100}
+2026-02-25 17:12:00,804 INFO sqlalchemy.engine.Engine SELECT property_images.id AS property_images_id, property_images.property_id AS property_images_property_id, property_images.image_url AS property_images_image_url, property_images.is_primary AS property_images_is_primary, property_images.sort_order AS property_images_sort_order, property_images.is_deleted AS property_images_is_deleted, property_images.created_at AS property_images_created_at, anon_1.properties_id AS anon_1_properties_id 
+FROM (SELECT properties.id AS properties_id 
+FROM properties LEFT OUTER JOIN (SELECT reviews.property_id AS property_id, avg(reviews.rating) AS avg_rating 
+FROM reviews GROUP BY reviews.property_id) AS anon_2 ON properties.id = anon_2.property_id 
+WHERE properties.is_deleted = false AND properties.property_type != %(property_type_1)s AND properties.listing_type = %(listing_type_1)s ORDER BY coalesce(anon_2.avg_rating, %(coalesce_1)s) DESC 
+ LIMIT %(param_1)s, %(param_2)s) AS anon_1 INNER JOIN property_images ON anon_1.properties_id = property_images.property_id
+INFO:sqlalchemy.engine.Engine:SELECT property_images.id AS property_images_id, property_images.property_id AS property_images_property_id, property_images.image_url AS property_images_image_url, property_images.is_primary AS property_images_is_primary, property_images.sort_order AS property_images_sort_order, property_images.is_deleted AS property_images_is_deleted, property_images.created_at AS property_images_created_at, anon_1.properties_id AS anon_1_properties_id 
+FROM (SELECT properties.id AS properties_id 
+FROM properties LEFT OUTER JOIN (SELECT reviews.property_id AS property_id, avg(reviews.rating) AS avg_rating 
+FROM reviews GROUP BY reviews.property_id) AS anon_2 ON properties.id = anon_2.property_id 
+WHERE properties.is_deleted = false AND properties.property_type != %(property_type_1)s AND properties.listing_type = %(listing_type_1)s ORDER BY coalesce(anon_2.avg_rating, %(coalesce_1)s) DESC 
+ LIMIT %(param_1)s, %(param_2)s) AS anon_1 INNER JOIN property_images ON anon_1.properties_id = property_images.property_id
+2026-02-25 17:12:00,804 INFO sqlalchemy.engine.Engine [cached since 0.1486s ago] {'property_type_1': 'PG', 'listing_type_1': 'rent', 'coalesce_1': 0, 'param_1': 0, 'param_2': 100}
+INFO:sqlalchemy.engine.Engine:[cached since 0.1486s ago] {'property_type_1': 'PG', 'listing_type_1': 'rent', 'coalesce_1': 0, 'param_1': 0, 'param_2': 100}
+2026-02-25 17:12:00,834 INFO sqlalchemy.engine.Engine SELECT reviews.id AS reviews_id, reviews.property_id AS reviews_property_id, reviews.rating AS reviews_rating, reviews.user_name AS reviews_user_name, reviews.property_name AS reviews_property_name, reviews.comment AS reviews_comment, reviews.created_at AS reviews_created_at, anon_1.properties_id AS anon_1_properties_id 
+FROM (SELECT properties.id AS properties_id 
+FROM properties LEFT OUTER JOIN (SELECT reviews.property_id AS property_id, avg(reviews.rating) AS avg_rating 
+FROM reviews GROUP BY reviews.property_id) AS anon_2 ON properties.id = anon_2.property_id 
+WHERE properties.is_deleted = false AND properties.property_type != %(property_type_1)s AND properties.listing_type = %(listing_type_1)s ORDER BY coalesce(anon_2.avg_rating, %(coalesce_1)s) DESC 
+ LIMIT %(param_1)s, %(param_2)s) AS anon_1 INNER JOIN reviews ON anon_1.properties_id = reviews.property_id
+INFO:sqlalchemy.engine.Engine:SELECT reviews.id AS reviews_id, reviews.property_id AS reviews_property_id, reviews.rating AS reviews_rating, reviews.user_name AS reviews_user_name, reviews.property_name AS reviews_property_name, reviews.comment AS reviews_comment, reviews.created_at AS reviews_created_at, anon_1.properties_id AS anon_1_properties_id 
+FROM (SELECT properties.id AS properties_id 
+FROM properties LEFT OUTER JOIN (SELECT reviews.property_id AS property_id, avg(reviews.rating) AS avg_rating 
+FROM reviews GROUP BY reviews.property_id) AS anon_2 ON properties.id = anon_2.property_id 
+WHERE properties.is_deleted = false AND properties.property_type != %(property_type_1)s AND properties.listing_type = %(listing_type_1)s ORDER BY coalesce(anon_2.avg_rating, %(coalesce_1)s) DESC 
+ LIMIT %(param_1)s, %(param_2)s) AS anon_1 INNER JOIN reviews ON anon_1.properties_id = reviews.property_id
+2026-02-25 17:12:00,834 INFO sqlalchemy.engine.Engine [cached since 0.1459s ago] {'property_type_1': 'PG', 'listing_type_1': 'rent', 'coalesce_1': 0, 'param_1': 0, 'param_2': 100}
+INFO:sqlalchemy.engine.Engine:[cached since 0.1459s ago] {'property_type_1': 'PG', 'listing_type_1': 'rent', 'coalesce_1': 0, 'param_1': 0, 'param_2': 100}
+INFO:     127.0.0.1:59875 - "GET /api/v1/realty/properties?listing_type=rent&exclude_property_type=PG HTTP/1.1" 200 OK
+2026-02-25 17:12:00,886 INFO sqlalchemy.engine.Engine ROLLBACK
+INFO:sqlalchemy.engine.Engine:ROLLBACK
+INFO:     127.0.0.1:59875 - "OPTIONS /api/v1/realty/properties?listing_type=buy&exclude_property_type=Plot HTTP/1.1" 200 OK
+INFO:     127.0.0.1:60125 - "OPTIONS /api/v1/realty/properties?listing_type=buy&exclude_property_type=Plot HTTP/1.1" 200 OK
+2026-02-25 17:12:05,162 INFO sqlalchemy.engine.Engine BEGIN (implicit)
+INFO:sqlalchemy.engine.Engine:BEGIN (implicit)
+2026-02-25 17:12:05,163 INFO sqlalchemy.engine.Engine SELECT properties.id AS properties_id, properties.property_name AS properties_property_name, properties.location AS properties_location, properties.phone AS properties_phone, properties.map_link AS properties_map_link, properties.description AS properties_description, properties.features AS properties_features, properties.property_type AS properties_property_type, properties.furnishing AS properties_furnishing, properties.private_price AS properties_private_price, properties.single_price AS properties_single_price, properties.double_price AS properties_double_price, properties.triple_price AS properties_triple_price, properties.starting_price AS properties_starting_price, properties.listing_type AS properties_listing_type, properties.is_available AS properties_is_available, properties.slug AS properties_slug, properties.is_deleted AS properties_is_deleted, properties.created_at AS properties_created_at, properties.updated_at AS properties_updated_at 
+FROM properties LEFT OUTER JOIN (SELECT reviews.property_id AS property_id, avg(reviews.rating) AS avg_rating 
+FROM reviews GROUP BY reviews.property_id) AS anon_1 ON properties.id = anon_1.property_id 
+WHERE properties.is_deleted = false AND properties.property_type != %(property_type_1)s AND properties.listing_type = %(listing_type_1)s ORDER BY coalesce(anon_1.avg_rating, %(coalesce_1)s) DESC 
+ LIMIT %(param_1)s, %(param_2)s
+INFO:sqlalchemy.engine.Engine:SELECT properties.id AS properties_id, properties.property_name AS properties_property_name, properties.location AS properties_location, properties.phone AS properties_phone, properties.map_link AS properties_map_link, properties.description AS properties_description, properties.features AS properties_features, properties.property_type AS properties_property_type, properties.furnishing AS properties_furnishing, properties.private_price AS properties_private_price, properties.single_price AS properties_single_price, properties.double_price AS properties_double_price, properties.triple_price AS properties_triple_price, properties.starting_price AS properties_starting_price, properties.listing_type AS properties_listing_type, properties.is_available AS properties_is_available, properties.slug AS properties_slug, properties.is_deleted AS properties_is_deleted, properties.created_at AS properties_created_at, properties.updated_at AS properties_updated_at 
+FROM properties LEFT OUTER JOIN (SELECT reviews.property_id AS property_id, avg(reviews.rating) AS avg_rating 
+FROM reviews GROUP BY reviews.property_id) AS anon_1 ON properties.id = anon_1.property_id 
+WHERE properties.is_deleted = false AND properties.property_type != %(property_type_1)s AND properties.listing_type = %(listing_type_1)s ORDER BY coalesce(anon_1.avg_rating, %(coalesce_1)s) DESC 
+ LIMIT %(param_1)s, %(param_2)s
+2026-02-25 17:12:05,163 INFO sqlalchemy.engine.Engine [cached since 4.541s ago] {'property_type_1': 'Plot', 'listing_type_1': 'buy', 'coalesce_1': 0, 'param_1': 0, 'param_2': 100}
+INFO:sqlalchemy.engine.Engine:[cached since 4.541s ago] {'property_type_1': 'Plot', 'listing_type_1': 'buy', 'coalesce_1': 0, 'param_1': 0, 'param_2': 100}
+2026-02-25 17:12:05,196 INFO sqlalchemy.engine.Engine SELECT property_images.id AS property_images_id, property_images.property_id AS property_images_property_id, property_images.image_url AS property_images_image_url, property_images.is_primary AS property_images_is_primary, property_images.sort_order AS property_images_sort_order, property_images.is_deleted AS property_images_is_deleted, property_images.created_at AS property_images_created_at, anon_1.properties_id AS anon_1_properties_id 
+FROM (SELECT properties.id AS properties_id 
+FROM properties LEFT OUTER JOIN (SELECT reviews.property_id AS property_id, avg(reviews.rating) AS avg_rating 
+FROM reviews GROUP BY reviews.property_id) AS anon_2 ON properties.id = anon_2.property_id 
+WHERE properties.is_deleted = false AND properties.property_type != %(property_type_1)s AND properties.listing_type = %(listing_type_1)s ORDER BY coalesce(anon_2.avg_rating, %(coalesce_1)s) DESC 
+ LIMIT %(param_1)s, %(param_2)s) AS anon_1 INNER JOIN property_images ON anon_1.properties_id = property_images.property_id
+INFO:sqlalchemy.engine.Engine:SELECT property_images.id AS property_images_id, property_images.property_id AS property_images_property_id, property_images.image_url AS property_images_image_url, property_images.is_primary AS property_images_is_primary, property_images.sort_order AS property_images_sort_order, property_images.is_deleted AS property_images_is_deleted, property_images.created_at AS property_images_created_at, anon_1.properties_id AS anon_1_properties_id 
+FROM (SELECT properties.id AS properties_id 
+FROM properties LEFT OUTER JOIN (SELECT reviews.property_id AS property_id, avg(reviews.rating) AS avg_rating 
+FROM reviews GROUP BY reviews.property_id) AS anon_2 ON properties.id = anon_2.property_id 
+WHERE properties.is_deleted = false AND properties.property_type != %(property_type_1)s AND properties.listing_type = %(listing_type_1)s ORDER BY coalesce(anon_2.avg_rating, %(coalesce_1)s) DESC 
+ LIMIT %(param_1)s, %(param_2)s) AS anon_1 INNER JOIN property_images ON anon_1.properties_id = property_images.property_id
+2026-02-25 17:12:05,196 INFO sqlalchemy.engine.Engine [cached since 4.541s ago] {'property_type_1': 'Plot', 'listing_type_1': 'buy', 'coalesce_1': 0, 'param_1': 0, 'param_2': 100}
+INFO:sqlalchemy.engine.Engine:[cached since 4.541s ago] {'property_type_1': 'Plot', 'listing_type_1': 'buy', 'coalesce_1': 0, 'param_1': 0, 'param_2': 100}
+2026-02-25 17:12:05,226 INFO sqlalchemy.engine.Engine SELECT reviews.id AS reviews_id, reviews.property_id AS reviews_property_id, reviews.rating AS reviews_rating, reviews.user_name AS reviews_user_name, reviews.property_name AS reviews_property_name, reviews.comment AS reviews_comment, reviews.created_at AS reviews_created_at, anon_1.properties_id AS anon_1_properties_id 
+FROM (SELECT properties.id AS properties_id 
+FROM properties LEFT OUTER JOIN (SELECT reviews.property_id AS property_id, avg(reviews.rating) AS avg_rating 
+FROM reviews GROUP BY reviews.property_id) AS anon_2 ON properties.id = anon_2.property_id 
+WHERE properties.is_deleted = false AND properties.property_type != %(property_type_1)s AND properties.listing_type = %(listing_type_1)s ORDER BY coalesce(anon_2.avg_rating, %(coalesce_1)s) DESC 
+ LIMIT %(param_1)s, %(param_2)s) AS anon_1 INNER JOIN reviews ON anon_1.properties_id = reviews.property_id
+INFO:sqlalchemy.engine.Engine:SELECT reviews.id AS reviews_id, reviews.property_id AS reviews_property_id, reviews.rating AS reviews_rating, reviews.user_name AS reviews_user_name, reviews.property_name AS reviews_property_name, reviews.comment AS reviews_comment, reviews.created_at AS reviews_created_at, anon_1.properties_id AS anon_1_properties_id 
+FROM (SELECT properties.id AS properties_id 
+FROM properties LEFT OUTER JOIN (SELECT reviews.property_id AS property_id, avg(reviews.rating) AS avg_rating 
+FROM reviews GROUP BY reviews.property_id) AS anon_2 ON properties.id = anon_2.property_id 
+WHERE properties.is_deleted = false AND properties.property_type != %(property_type_1)s AND properties.listing_type = %(listing_type_1)s ORDER BY coalesce(anon_2.avg_rating, %(coalesce_1)s) DESC 
+ LIMIT %(param_1)s, %(param_2)s) AS anon_1 INNER JOIN reviews ON anon_1.properties_id = reviews.property_id
+2026-02-25 17:12:05,226 INFO sqlalchemy.engine.Engine [cached since 4.538s ago] {'property_type_1': 'Plot', 'listing_type_1': 'buy', 'coalesce_1': 0, 'param_1': 0, 'param_2': 100}
+INFO:sqlalchemy.engine.Engine:[cached since 4.538s ago] {'property_type_1': 'Plot', 'listing_type_1': 'buy', 'coalesce_1': 0, 'param_1': 0, 'param_2': 100}
+INFO:     127.0.0.1:60130 - "GET /api/v1/realty/properties?listing_type=buy&exclude_property_type=Plot HTTP/1.1" 200 OK
+2026-02-25 17:12:05,268 INFO sqlalchemy.engine.Engine ROLLBACK
+INFO:sqlalchemy.engine.Engine:ROLLBACK
+2026-02-25 17:12:05,299 INFO sqlalchemy.engine.Engine BEGIN (implicit)
+INFO:sqlalchemy.engine.Engine:BEGIN (implicit)
+2026-02-25 17:12:05,300 INFO sqlalchemy.engine.Engine SELECT properties.id AS properties_id, properties.property_name AS properties_property_name, properties.location AS properties_location, properties.phone AS properties_phone, properties.map_link AS properties_map_link, properties.description AS properties_description, properties.features AS properties_features, properties.property_type AS properties_property_type, properties.furnishing AS properties_furnishing, properties.private_price AS properties_private_price, properties.single_price AS properties_single_price, properties.double_price AS properties_double_price, properties.triple_price AS properties_triple_price, properties.starting_price AS properties_starting_price, properties.listing_type AS properties_listing_type, properties.is_available AS properties_is_available, properties.slug AS properties_slug, properties.is_deleted AS properties_is_deleted, properties.created_at AS properties_created_at, properties.updated_at AS properties_updated_at 
+FROM properties LEFT OUTER JOIN (SELECT reviews.property_id AS property_id, avg(reviews.rating) AS avg_rating 
+FROM reviews GROUP BY reviews.property_id) AS anon_1 ON properties.id = anon_1.property_id 
+WHERE properties.is_deleted = false AND properties.property_type != %(property_type_1)s AND properties.listing_type = %(listing_type_1)s ORDER BY coalesce(anon_1.avg_rating, %(coalesce_1)s) DESC 
+ LIMIT %(param_1)s, %(param_2)s
+INFO:sqlalchemy.engine.Engine:SELECT properties.id AS properties_id, properties.property_name AS properties_property_name, properties.location AS properties_location, properties.phone AS properties_phone, properties.map_link AS properties_map_link, properties.description AS properties_description, properties.features AS properties_features, properties.property_type AS properties_property_type, properties.furnishing AS properties_furnishing, properties.private_price AS properties_private_price, properties.single_price AS properties_single_price, properties.double_price AS properties_double_price, properties.triple_price AS properties_triple_price, properties.starting_price AS properties_starting_price, properties.listing_type AS properties_listing_type, properties.is_available AS properties_is_available, properties.slug AS properties_slug, properties.is_deleted AS properties_is_deleted, properties.created_at AS properties_created_at, properties.updated_at AS properties_updated_at 
+FROM properties LEFT OUTER JOIN (SELECT reviews.property_id AS property_id, avg(reviews.rating) AS avg_rating 
+FROM reviews GROUP BY reviews.property_id) AS anon_1 ON properties.id = anon_1.property_id 
+WHERE properties.is_deleted = false AND properties.property_type != %(property_type_1)s AND properties.listing_type = %(listing_type_1)s ORDER BY coalesce(anon_1.avg_rating, %(coalesce_1)s) DESC 
+ LIMIT %(param_1)s, %(param_2)s
+2026-02-25 17:12:05,300 INFO sqlalchemy.engine.Engine [cached since 4.678s ago] {'property_type_1': 'Plot', 'listing_type_1': 'buy', 'coalesce_1': 0, 'param_1': 0, 'param_2': 100}
+INFO:sqlalchemy.engine.Engine:[cached since 4.678s ago] {'property_type_1': 'Plot', 'listing_type_1': 'buy', 'coalesce_1': 0, 'param_1': 0, 'param_2': 100}
+2026-02-25 17:12:05,334 INFO sqlalchemy.engine.Engine SELECT property_images.id AS property_images_id, property_images.property_id AS property_images_property_id, property_images.image_url AS property_images_image_url, property_images.is_primary AS property_images_is_primary, property_images.sort_order AS property_images_sort_order, property_images.is_deleted AS property_images_is_deleted, property_images.created_at AS property_images_created_at, anon_1.properties_id AS anon_1_properties_id 
+FROM (SELECT properties.id AS properties_id 
+FROM properties LEFT OUTER JOIN (SELECT reviews.property_id AS property_id, avg(reviews.rating) AS avg_rating 
+FROM reviews GROUP BY reviews.property_id) AS anon_2 ON properties.id = anon_2.property_id 
+WHERE properties.is_deleted = false AND properties.property_type != %(property_type_1)s AND properties.listing_type = %(listing_type_1)s ORDER BY coalesce(anon_2.avg_rating, %(coalesce_1)s) DESC 
+ LIMIT %(param_1)s, %(param_2)s) AS anon_1 INNER JOIN property_images ON anon_1.properties_id = property_images.property_id
+INFO:sqlalchemy.engine.Engine:SELECT property_images.id AS property_images_id, property_images.property_id AS property_images_property_id, property_images.image_url AS property_images_image_url, property_images.is_primary AS property_images_is_primary, property_images.sort_order AS property_images_sort_order, property_images.is_deleted AS property_images_is_deleted, property_images.created_at AS property_images_created_at, anon_1.properties_id AS anon_1_properties_id 
+FROM (SELECT properties.id AS properties_id 
+FROM properties LEFT OUTER JOIN (SELECT reviews.property_id AS property_id, avg(reviews.rating) AS avg_rating 
+FROM reviews GROUP BY reviews.property_id) AS anon_2 ON properties.id = anon_2.property_id 
+WHERE properties.is_deleted = false AND properties.property_type != %(property_type_1)s AND properties.listing_type = %(listing_type_1)s ORDER BY coalesce(anon_2.avg_rating, %(coalesce_1)s) DESC 
+ LIMIT %(param_1)s, %(param_2)s) AS anon_1 INNER JOIN property_images ON anon_1.properties_id = property_images.property_id
+2026-02-25 17:12:05,334 INFO sqlalchemy.engine.Engine [cached since 4.678s ago] {'property_type_1': 'Plot', 'listing_type_1': 'buy', 'coalesce_1': 0, 'param_1': 0, 'param_2': 100}
+INFO:sqlalchemy.engine.Engine:[cached since 4.678s ago] {'property_type_1': 'Plot', 'listing_type_1': 'buy', 'coalesce_1': 0, 'param_1': 0, 'param_2': 100}
+2026-02-25 17:12:05,368 INFO sqlalchemy.engine.Engine SELECT reviews.id AS reviews_id, reviews.property_id AS reviews_property_id, reviews.rating AS reviews_rating, reviews.user_name AS reviews_user_name, reviews.property_name AS reviews_property_name, reviews.comment AS reviews_comment, reviews.created_at AS reviews_created_at, anon_1.properties_id AS anon_1_properties_id 
+FROM (SELECT properties.id AS properties_id 
+FROM properties LEFT OUTER JOIN (SELECT reviews.property_id AS property_id, avg(reviews.rating) AS avg_rating 
+FROM reviews GROUP BY reviews.property_id) AS anon_2 ON properties.id = anon_2.property_id 
+WHERE properties.is_deleted = false AND properties.property_type != %(property_type_1)s AND properties.listing_type = %(listing_type_1)s ORDER BY coalesce(anon_2.avg_rating, %(coalesce_1)s) DESC 
+ LIMIT %(param_1)s, %(param_2)s) AS anon_1 INNER JOIN reviews ON anon_1.properties_id = reviews.property_id
+INFO:sqlalchemy.engine.Engine:SELECT reviews.id AS reviews_id, reviews.property_id AS reviews_property_id, reviews.rating AS reviews_rating, reviews.user_name AS reviews_user_name, reviews.property_name AS reviews_property_name, reviews.comment AS reviews_comment, reviews.created_at AS reviews_created_at, anon_1.properties_id AS anon_1_properties_id 
+FROM (SELECT properties.id AS properties_id 
+FROM properties LEFT OUTER JOIN (SELECT reviews.property_id AS property_id, avg(reviews.rating) AS avg_rating 
+FROM reviews GROUP BY reviews.property_id) AS anon_2 ON properties.id = anon_2.property_id 
+WHERE properties.is_deleted = false AND properties.property_type != %(property_type_1)s AND properties.listing_type = %(listing_type_1)s ORDER BY coalesce(anon_2.avg_rating, %(coalesce_1)s) DESC 
+ LIMIT %(param_1)s, %(param_2)s) AS anon_1 INNER JOIN reviews ON anon_1.properties_id = reviews.property_id
+2026-02-25 17:12:05,369 INFO sqlalchemy.engine.Engine [cached since 4.68s ago] {'property_type_1': 'Plot', 'listing_type_1': 'buy', 'coalesce_1': 0, 'param_1': 0, 'param_2': 100}
+INFO:sqlalchemy.engine.Engine:[cached since 4.68s ago] {'property_type_1': 'Plot', 'listing_type_1': 'buy', 'coalesce_1': 0, 'param_1': 0, 'param_2': 100}
+INFO:     127.0.0.1:60125 - "GET /api/v1/realty/properties?listing_type=buy&exclude_property_type=Plot HTTP/1.1" 200 OK
+2026-02-25 17:12:05,519 INFO sqlalchemy.engine.Engine ROLLBACK
+INFO:sqlalchemy.engine.Engine:ROLLBACK
+2026-02-25 17:12:09,754 INFO sqlalchemy.engine.Engine BEGIN (implicit)
+INFO:sqlalchemy.engine.Engine:BEGIN (implicit)
+2026-02-25 17:12:09,755 INFO sqlalchemy.engine.Engine SELECT properties.id AS properties_id, properties.property_name AS properties_property_name, properties.location AS properties_location, properties.phone AS properties_phone, properties.map_link AS properties_map_link, properties.description AS properties_description, properties.features AS properties_features, properties.property_type AS properties_property_type, properties.furnishing AS properties_furnishing, properties.private_price AS properties_private_price, properties.single_price AS properties_single_price, properties.double_price AS properties_double_price, properties.triple_price AS properties_triple_price, properties.starting_price AS properties_starting_price, properties.listing_type AS properties_listing_type, properties.is_available AS properties_is_available, properties.slug AS properties_slug, properties.is_deleted AS properties_is_deleted, properties.created_at AS properties_created_at, properties.updated_at AS properties_updated_at 
+FROM properties LEFT OUTER JOIN (SELECT reviews.property_id AS property_id, avg(reviews.rating) AS avg_rating 
+FROM reviews GROUP BY reviews.property_id) AS anon_1 ON properties.id = anon_1.property_id 
+WHERE properties.is_deleted = false AND properties.property_type != %(property_type_1)s AND properties.listing_type = %(listing_type_1)s ORDER BY coalesce(anon_1.avg_rating, %(coalesce_1)s) DESC 
+ LIMIT %(param_1)s, %(param_2)s
+INFO:sqlalchemy.engine.Engine:SELECT properties.id AS properties_id, properties.property_name AS properties_property_name, properties.location AS properties_location, properties.phone AS properties_phone, properties.map_link AS properties_map_link, properties.description AS properties_description, properties.features AS properties_features, properties.property_type AS properties_property_type, properties.furnishing AS properties_furnishing, properties.private_price AS properties_private_price, properties.single_price AS properties_single_price, properties.double_price AS properties_double_price, properties.triple_price AS properties_triple_price, properties.starting_price AS properties_starting_price, properties.listing_type AS properties_listing_type, properties.is_available AS properties_is_available, properties.slug AS properties_slug, properties.is_deleted AS properties_is_deleted, properties.created_at AS properties_created_at, properties.updated_at AS properties_updated_at 
+FROM properties LEFT OUTER JOIN (SELECT reviews.property_id AS property_id, avg(reviews.rating) AS avg_rating 
+FROM reviews GROUP BY reviews.property_id) AS anon_1 ON properties.id = anon_1.property_id 
+WHERE properties.is_deleted = false AND properties.property_type != %(property_type_1)s AND properties.listing_type = %(listing_type_1)s ORDER BY coalesce(anon_1.avg_rating, %(coalesce_1)s) DESC 
+ LIMIT %(param_1)s, %(param_2)s
+2026-02-25 17:12:09,755 INFO sqlalchemy.engine.Engine [cached since 9.132s ago] {'property_type_1': 'PG', 'listing_type_1': 'rent', 'coalesce_1': 0, 'param_1': 0, 'param_2': 100}
+INFO:sqlalchemy.engine.Engine:[cached since 9.132s ago] {'property_type_1': 'PG', 'listing_type_1': 'rent', 'coalesce_1': 0, 'param_1': 0, 'param_2': 100}
+2026-02-25 17:12:09,789 INFO sqlalchemy.engine.Engine SELECT property_images.id AS property_images_id, property_images.property_id AS property_images_property_id, property_images.image_url AS property_images_image_url, property_images.is_primary AS property_images_is_primary, property_images.sort_order AS property_images_sort_order, property_images.is_deleted AS property_images_is_deleted, property_images.created_at AS property_images_created_at, anon_1.properties_id AS anon_1_properties_id 
+FROM (SELECT properties.id AS properties_id 
+FROM properties LEFT OUTER JOIN (SELECT reviews.property_id AS property_id, avg(reviews.rating) AS avg_rating 
+FROM reviews GROUP BY reviews.property_id) AS anon_2 ON properties.id = anon_2.property_id 
+WHERE properties.is_deleted = false AND properties.property_type != %(property_type_1)s AND properties.listing_type = %(listing_type_1)s ORDER BY coalesce(anon_2.avg_rating, %(coalesce_1)s) DESC 
+ LIMIT %(param_1)s, %(param_2)s) AS anon_1 INNER JOIN property_images ON anon_1.properties_id = property_images.property_id
+INFO:sqlalchemy.engine.Engine:SELECT property_images.id AS property_images_id, property_images.property_id AS property_images_property_id, property_images.image_url AS property_images_image_url, property_images.is_primary AS property_images_is_primary, property_images.sort_order AS property_images_sort_order, property_images.is_deleted AS property_images_is_deleted, property_images.created_at AS property_images_created_at, anon_1.properties_id AS anon_1_properties_id 
+FROM (SELECT properties.id AS properties_id 
+FROM properties LEFT OUTER JOIN (SELECT reviews.property_id AS property_id, avg(reviews.rating) AS avg_rating 
+FROM reviews GROUP BY reviews.property_id) AS anon_2 ON properties.id = anon_2.property_id 
+WHERE properties.is_deleted = false AND properties.property_type != %(property_type_1)s AND properties.listing_type = %(listing_type_1)s ORDER BY coalesce(anon_2.avg_rating, %(coalesce_1)s) DESC 
+ LIMIT %(param_1)s, %(param_2)s) AS anon_1 INNER JOIN property_images ON anon_1.properties_id = property_images.property_id
+2026-02-25 17:12:09,789 INFO sqlalchemy.engine.Engine [cached since 9.133s ago] {'property_type_1': 'PG', 'listing_type_1': 'rent', 'coalesce_1': 0, 'param_1': 0, 'param_2': 100}
+INFO:sqlalchemy.engine.Engine:[cached since 9.133s ago] {'property_type_1': 'PG', 'listing_type_1': 'rent', 'coalesce_1': 0, 'param_1': 0, 'param_2': 100}
+2026-02-25 17:12:09,821 INFO sqlalchemy.engine.Engine SELECT reviews.id AS reviews_id, reviews.property_id AS reviews_property_id, reviews.rating AS reviews_rating, reviews.user_name AS reviews_user_name, reviews.property_name AS reviews_property_name, reviews.comment AS reviews_comment, reviews.created_at AS reviews_created_at, anon_1.properties_id AS anon_1_properties_id 
+FROM (SELECT properties.id AS properties_id 
+FROM properties LEFT OUTER JOIN (SELECT reviews.property_id AS property_id, avg(reviews.rating) AS avg_rating 
+FROM reviews GROUP BY reviews.property_id) AS anon_2 ON properties.id = anon_2.property_id 
+WHERE properties.is_deleted = false AND properties.property_type != %(property_type_1)s AND properties.listing_type = %(listing_type_1)s ORDER BY coalesce(anon_2.avg_rating, %(coalesce_1)s) DESC 
+ LIMIT %(param_1)s, %(param_2)s) AS anon_1 INNER JOIN reviews ON anon_1.properties_id = reviews.property_id
+INFO:sqlalchemy.engine.Engine:SELECT reviews.id AS reviews_id, reviews.property_id AS reviews_property_id, reviews.rating AS reviews_rating, reviews.user_name AS reviews_user_name, reviews.property_name AS reviews_property_name, reviews.comment AS reviews_comment, reviews.created_at AS reviews_created_at, anon_1.properties_id AS anon_1_properties_id 
+FROM (SELECT properties.id AS properties_id 
+FROM properties LEFT OUTER JOIN (SELECT reviews.property_id AS property_id, avg(reviews.rating) AS avg_rating 
+FROM reviews GROUP BY reviews.property_id) AS anon_2 ON properties.id = anon_2.property_id 
+WHERE properties.is_deleted = false AND properties.property_type != %(property_type_1)s AND properties.listing_type = %(listing_type_1)s ORDER BY coalesce(anon_2.avg_rating, %(coalesce_1)s) DESC 
+ LIMIT %(param_1)s, %(param_2)s) AS anon_1 INNER JOIN reviews ON anon_1.properties_id = reviews.property_id
+2026-02-25 17:12:09,821 INFO sqlalchemy.engine.Engine [cached since 9.133s ago] {'property_type_1': 'PG', 'listing_type_1': 'rent', 'coalesce_1': 0, 'param_1': 0, 'param_2': 100}
+INFO:sqlalchemy.engine.Engine:[cached since 9.133s ago] {'property_type_1': 'PG', 'listing_type_1': 'rent', 'coalesce_1': 0, 'param_1': 0, 'param_2': 100}
+INFO:     127.0.0.1:60125 - "GET /api/v1/realty/properties?listing_type=rent&exclude_property_type=PG HTTP/1.1" 200 OK
+2026-02-25 17:12:09,876 INFO sqlalchemy.engine.Engine ROLLBACK
+INFO:sqlalchemy.engine.Engine:ROLLBACK
+2026-02-25 17:12:09,908 INFO sqlalchemy.engine.Engine BEGIN (implicit)
+INFO:sqlalchemy.engine.Engine:BEGIN (implicit)
+2026-02-25 17:12:09,908 INFO sqlalchemy.engine.Engine SELECT properties.id AS properties_id, properties.property_name AS properties_property_name, properties.location AS properties_location, properties.phone AS properties_phone, properties.map_link AS properties_map_link, properties.description AS properties_description, properties.features AS properties_features, properties.property_type AS properties_property_type, properties.furnishing AS properties_furnishing, properties.private_price AS properties_private_price, properties.single_price AS properties_single_price, properties.double_price AS properties_double_price, properties.triple_price AS properties_triple_price, properties.starting_price AS properties_starting_price, properties.listing_type AS properties_listing_type, properties.is_available AS properties_is_available, properties.slug AS properties_slug, properties.is_deleted AS properties_is_deleted, properties.created_at AS properties_created_at, properties.updated_at AS properties_updated_at 
+FROM properties LEFT OUTER JOIN (SELECT reviews.property_id AS property_id, avg(reviews.rating) AS avg_rating 
+FROM reviews GROUP BY reviews.property_id) AS anon_1 ON properties.id = anon_1.property_id 
+WHERE properties.is_deleted = false AND properties.property_type != %(property_type_1)s AND properties.listing_type = %(listing_type_1)s ORDER BY coalesce(anon_1.avg_rating, %(coalesce_1)s) DESC 
+ LIMIT %(param_1)s, %(param_2)s
+INFO:sqlalchemy.engine.Engine:SELECT properties.id AS properties_id, properties.property_name AS properties_property_name, properties.location AS properties_location, properties.phone AS properties_phone, properties.map_link AS properties_map_link, properties.description AS properties_description, properties.features AS properties_features, properties.property_type AS properties_property_type, properties.furnishing AS properties_furnishing, properties.private_price AS properties_private_price, properties.single_price AS properties_single_price, properties.double_price AS properties_double_price, properties.triple_price AS properties_triple_price, properties.starting_price AS properties_starting_price, properties.listing_type AS properties_listing_type, properties.is_available AS properties_is_available, properties.slug AS properties_slug, properties.is_deleted AS properties_is_deleted, properties.created_at AS properties_created_at, properties.updated_at AS properties_updated_at 
+FROM properties LEFT OUTER JOIN (SELECT reviews.property_id AS property_id, avg(reviews.rating) AS avg_rating 
+FROM reviews GROUP BY reviews.property_id) AS anon_1 ON properties.id = anon_1.property_id 
+WHERE properties.is_deleted = false AND properties.property_type != %(property_type_1)s AND properties.listing_type = %(listing_type_1)s ORDER BY coalesce(anon_1.avg_rating, %(coalesce_1)s) DESC 
+ LIMIT %(param_1)s, %(param_2)s
+2026-02-25 17:12:09,908 INFO sqlalchemy.engine.Engine [cached since 9.286s ago] {'property_type_1': 'PG', 'listing_type_1': 'rent', 'coalesce_1': 0, 'param_1': 0, 'param_2': 100}
+INFO:sqlalchemy.engine.Engine:[cached since 9.286s ago] {'property_type_1': 'PG', 'listing_type_1': 'rent', 'coalesce_1': 0, 'param_1': 0, 'param_2': 100}
+2026-02-25 17:12:09,947 INFO sqlalchemy.engine.Engine SELECT property_images.id AS property_images_id, property_images.property_id AS property_images_property_id, property_images.image_url AS property_images_image_url, property_images.is_primary AS property_images_is_primary, property_images.sort_order AS property_images_sort_order, property_images.is_deleted AS property_images_is_deleted, property_images.created_at AS property_images_created_at, anon_1.properties_id AS anon_1_properties_id 
+FROM (SELECT properties.id AS properties_id 
+FROM properties LEFT OUTER JOIN (SELECT reviews.property_id AS property_id, avg(reviews.rating) AS avg_rating 
+FROM reviews GROUP BY reviews.property_id) AS anon_2 ON properties.id = anon_2.property_id 
+WHERE properties.is_deleted = false AND properties.property_type != %(property_type_1)s AND properties.listing_type = %(listing_type_1)s ORDER BY coalesce(anon_2.avg_rating, %(coalesce_1)s) DESC 
+ LIMIT %(param_1)s, %(param_2)s) AS anon_1 INNER JOIN property_images ON anon_1.properties_id = property_images.property_id
+INFO:sqlalchemy.engine.Engine:SELECT property_images.id AS property_images_id, property_images.property_id AS property_images_property_id, property_images.image_url AS property_images_image_url, property_images.is_primary AS property_images_is_primary, property_images.sort_order AS property_images_sort_order, property_images.is_deleted AS property_images_is_deleted, property_images.created_at AS property_images_created_at, anon_1.properties_id AS anon_1_properties_id 
+FROM (SELECT properties.id AS properties_id 
+FROM properties LEFT OUTER JOIN (SELECT reviews.property_id AS property_id, avg(reviews.rating) AS avg_rating 
+FROM reviews GROUP BY reviews.property_id) AS anon_2 ON properties.id = anon_2.property_id 
+WHERE properties.is_deleted = false AND properties.property_type != %(property_type_1)s AND properties.listing_type = %(listing_type_1)s ORDER BY coalesce(anon_2.avg_rating, %(coalesce_1)s) DESC 
+ LIMIT %(param_1)s, %(param_2)s) AS anon_1 INNER JOIN property_images ON anon_1.properties_id = property_images.property_id
+2026-02-25 17:12:09,947 INFO sqlalchemy.engine.Engine [cached since 9.291s ago] {'property_type_1': 'PG', 'listing_type_1': 'rent', 'coalesce_1': 0, 'param_1': 0, 'param_2': 100}
+INFO:sqlalchemy.engine.Engine:[cached since 9.291s ago] {'property_type_1': 'PG', 'listing_type_1': 'rent', 'coalesce_1': 0, 'param_1': 0, 'param_2': 100}
+2026-02-25 17:12:09,977 INFO sqlalchemy.engine.Engine SELECT reviews.id AS reviews_id, reviews.property_id AS reviews_property_id, reviews.rating AS reviews_rating, reviews.user_name AS reviews_user_name, reviews.property_name AS reviews_property_name, reviews.comment AS reviews_comment, reviews.created_at AS reviews_created_at, anon_1.properties_id AS anon_1_properties_id 
+FROM (SELECT properties.id AS properties_id 
+FROM properties LEFT OUTER JOIN (SELECT reviews.property_id AS property_id, avg(reviews.rating) AS avg_rating 
+FROM reviews GROUP BY reviews.property_id) AS anon_2 ON properties.id = anon_2.property_id 
+WHERE properties.is_deleted = false AND properties.property_type != %(property_type_1)s AND properties.listing_type = %(listing_type_1)s ORDER BY coalesce(anon_2.avg_rating, %(coalesce_1)s) DESC 
+ LIMIT %(param_1)s, %(param_2)s) AS anon_1 INNER JOIN reviews ON anon_1.properties_id = reviews.property_id
+INFO:sqlalchemy.engine.Engine:SELECT reviews.id AS reviews_id, reviews.property_id AS reviews_property_id, reviews.rating AS reviews_rating, reviews.user_name AS reviews_user_name, reviews.property_name AS reviews_property_name, reviews.comment AS reviews_comment, reviews.created_at AS reviews_created_at, anon_1.properties_id AS anon_1_properties_id 
+FROM (SELECT properties.id AS properties_id 
+FROM properties LEFT OUTER JOIN (SELECT reviews.property_id AS property_id, avg(reviews.rating) AS avg_rating 
+FROM reviews GROUP BY reviews.property_id) AS anon_2 ON properties.id = anon_2.property_id 
+WHERE properties.is_deleted = false AND properties.property_type != %(property_type_1)s AND properties.listing_type = %(listing_type_1)s ORDER BY coalesce(anon_2.avg_rating, %(coalesce_1)s) DESC 
+ LIMIT %(param_1)s, %(param_2)s) AS anon_1 INNER JOIN reviews ON anon_1.properties_id = reviews.property_id
+2026-02-25 17:12:09,977 INFO sqlalchemy.engine.Engine [cached since 9.289s ago] {'property_type_1': 'PG', 'listing_type_1': 'rent', 'coalesce_1': 0, 'param_1': 0, 'param_2': 100}
+INFO:sqlalchemy.engine.Engine:[cached since 9.289s ago] {'property_type_1': 'PG', 'listing_type_1': 'rent', 'coalesce_1': 0, 'param_1': 0, 'param_2': 100}
+INFO:     127.0.0.1:60125 - "GET /api/v1/realty/properties?listing_type=rent&exclude_property_type=PG HTTP/1.1" 200 OK
+2026-02-25 17:12:10,040 INFO sqlalchemy.engine.Engine ROLLBACK
+INFO:sqlalchemy.engine.Engine:ROLLBACK
+INFO:     127.0.0.1:60900 - "GET /api/v1/realty/contacts HTTP/1.1" 500 Internal Server Error
+ERROR:    Exception in ASGI application
+Traceback (most recent call last):
+  File "/Users/maheswaranm/no-broker-backend/.venv/lib/python3.9/site-packages/sqlalchemy/pool/base.py", line 1311, in _checkout
+    raise exc.InvalidatePoolError()
+sqlalchemy.exc.InvalidatePoolError: ()
+
+During handling of the above exception, another exception occurred:
+
+Traceback (most recent call last):
+  File "/Users/maheswaranm/no-broker-backend/.venv/lib/python3.9/site-packages/pymysql/connections.py", line 661, in connect
+    sock = socket.create_connection(
+  File "/Library/Developer/CommandLineTools/Library/Frameworks/Python3.framework/Versions/3.9/lib/python3.9/socket.py", line 843, in create_connection
+    raise err
+  File "/Library/Developer/CommandLineTools/Library/Frameworks/Python3.framework/Versions/3.9/lib/python3.9/socket.py", line 831, in create_connection
+    sock.connect(sa)
+ConnectionRefusedError: [Errno 61] Connection refused
+
+During handling of the above exception, another exception occurred:
+
+Traceback (most recent call last):
+  File "/Users/maheswaranm/no-broker-backend/.venv/lib/python3.9/site-packages/sqlalchemy/engine/base.py", line 143, in __init__
+    self._dbapi_connection = engine.raw_connection()
+  File "/Users/maheswaranm/no-broker-backend/.venv/lib/python3.9/site-packages/sqlalchemy/engine/base.py", line 3309, in raw_connection
+    return self.pool.connect()
+  File "/Users/maheswaranm/no-broker-backend/.venv/lib/python3.9/site-packages/sqlalchemy/pool/base.py", line 447, in connect
+    return _ConnectionFairy._checkout(self)
+  File "/Users/maheswaranm/no-broker-backend/.venv/lib/python3.9/site-packages/sqlalchemy/pool/base.py", line 1356, in _checkout
+    del fairy
+  File "/Users/maheswaranm/no-broker-backend/.venv/lib/python3.9/site-packages/sqlalchemy/util/langhelpers.py", line 224, in __exit__
+    raise exc_value.with_traceback(exc_tb)
+  File "/Users/maheswaranm/no-broker-backend/.venv/lib/python3.9/site-packages/sqlalchemy/pool/base.py", line 1342, in _checkout
+    fairy._connection_record.get_connection()
+  File "/Users/maheswaranm/no-broker-backend/.venv/lib/python3.9/site-packages/sqlalchemy/pool/base.py", line 836, in get_connection
+    self.__connect()
+  File "/Users/maheswaranm/no-broker-backend/.venv/lib/python3.9/site-packages/sqlalchemy/pool/base.py", line 900, in __connect
+    pool.logger.debug("Error on connect(): %s", e)
+  File "/Users/maheswaranm/no-broker-backend/.venv/lib/python3.9/site-packages/sqlalchemy/util/langhelpers.py", line 224, in __exit__
+    raise exc_value.with_traceback(exc_tb)
+  File "/Users/maheswaranm/no-broker-backend/.venv/lib/python3.9/site-packages/sqlalchemy/pool/base.py", line 895, in __connect
+    self.dbapi_connection = connection = pool._invoke_creator(self)
+  File "/Users/maheswaranm/no-broker-backend/.venv/lib/python3.9/site-packages/sqlalchemy/engine/create.py", line 661, in connect
+    return dialect.connect(*cargs, **cparams)
+  File "/Users/maheswaranm/no-broker-backend/.venv/lib/python3.9/site-packages/sqlalchemy/engine/default.py", line 630, in connect
+    return self.loaded_dbapi.connect(*cargs, **cparams)  # type: ignore[no-any-return]  # NOQA: E501
+  File "/Users/maheswaranm/no-broker-backend/.venv/lib/python3.9/site-packages/pymysql/connections.py", line 365, in __init__
+    self.connect()
+  File "/Users/maheswaranm/no-broker-backend/.venv/lib/python3.9/site-packages/pymysql/connections.py", line 723, in connect
+    raise exc
+pymysql.err.OperationalError: (2003, "Can't connect to MySQL server on '127.0.0.1' ([Errno 61] Connection refused)")
+
+The above exception was the direct cause of the following exception:
+
+Traceback (most recent call last):
+  File "/Users/maheswaranm/no-broker-backend/.venv/lib/python3.9/site-packages/uvicorn/protocols/http/h11_impl.py", line 409, in run_asgi
+    result = await app(  # type: ignore[func-returns-value]
+  File "/Users/maheswaranm/no-broker-backend/.venv/lib/python3.9/site-packages/uvicorn/middleware/proxy_headers.py", line 60, in __call__
+    return await self.app(scope, receive, send)
+  File "/Users/maheswaranm/no-broker-backend/.venv/lib/python3.9/site-packages/fastapi/applications.py", line 1135, in __call__
+    await super().__call__(scope, receive, send)
+  File "/Users/maheswaranm/no-broker-backend/.venv/lib/python3.9/site-packages/starlette/applications.py", line 113, in __call__
+    await self.middleware_stack(scope, receive, send)
+  File "/Users/maheswaranm/no-broker-backend/.venv/lib/python3.9/site-packages/starlette/middleware/errors.py", line 186, in __call__
+    raise exc
+  File "/Users/maheswaranm/no-broker-backend/.venv/lib/python3.9/site-packages/starlette/middleware/errors.py", line 164, in __call__
+    await self.app(scope, receive, _send)
+  File "/Users/maheswaranm/no-broker-backend/.venv/lib/python3.9/site-packages/starlette/middleware/cors.py", line 85, in __call__
+    await self.app(scope, receive, send)
+  File "/Users/maheswaranm/no-broker-backend/.venv/lib/python3.9/site-packages/starlette/middleware/exceptions.py", line 63, in __call__
+    await wrap_app_handling_exceptions(self.app, conn)(scope, receive, send)
+  File "/Users/maheswaranm/no-broker-backend/.venv/lib/python3.9/site-packages/starlette/_exception_handler.py", line 53, in wrapped_app
+    raise exc
+  File "/Users/maheswaranm/no-broker-backend/.venv/lib/python3.9/site-packages/starlette/_exception_handler.py", line 42, in wrapped_app
+    await app(scope, receive, sender)
+  File "/Users/maheswaranm/no-broker-backend/.venv/lib/python3.9/site-packages/fastapi/middleware/asyncexitstack.py", line 18, in __call__
+    await self.app(scope, receive, send)
+  File "/Users/maheswaranm/no-broker-backend/.venv/lib/python3.9/site-packages/starlette/routing.py", line 716, in __call__
+    await self.middleware_stack(scope, receive, send)
+  File "/Users/maheswaranm/no-broker-backend/.venv/lib/python3.9/site-packages/starlette/routing.py", line 736, in app
+    await route.handle(scope, receive, send)
+  File "/Users/maheswaranm/no-broker-backend/.venv/lib/python3.9/site-packages/starlette/routing.py", line 290, in handle
+    await self.app(scope, receive, send)
+  File "/Users/maheswaranm/no-broker-backend/.venv/lib/python3.9/site-packages/fastapi/routing.py", line 115, in app
+    await wrap_app_handling_exceptions(app, request)(scope, receive, send)
+  File "/Users/maheswaranm/no-broker-backend/.venv/lib/python3.9/site-packages/starlette/_exception_handler.py", line 53, in wrapped_app
+    raise exc
+  File "/Users/maheswaranm/no-broker-backend/.venv/lib/python3.9/site-packages/starlette/_exception_handler.py", line 42, in wrapped_app
+    await app(scope, receive, sender)
+  File "/Users/maheswaranm/no-broker-backend/.venv/lib/python3.9/site-packages/fastapi/routing.py", line 101, in app
+    response = await f(request)
+  File "/Users/maheswaranm/no-broker-backend/.venv/lib/python3.9/site-packages/fastapi/routing.py", line 355, in app
+    raw_response = await run_endpoint_function(
+  File "/Users/maheswaranm/no-broker-backend/.venv/lib/python3.9/site-packages/fastapi/routing.py", line 245, in run_endpoint_function
+    return await run_in_threadpool(dependant.call, **values)
+  File "/Users/maheswaranm/no-broker-backend/.venv/lib/python3.9/site-packages/starlette/concurrency.py", line 38, in run_in_threadpool
+    return await anyio.to_thread.run_sync(func)
+  File "/Users/maheswaranm/no-broker-backend/.venv/lib/python3.9/site-packages/anyio/to_thread.py", line 63, in run_sync
+    return await get_async_backend().run_sync_in_worker_thread(
+  File "/Users/maheswaranm/no-broker-backend/.venv/lib/python3.9/site-packages/anyio/_backends/_asyncio.py", line 2502, in run_sync_in_worker_thread
+    return await future
+  File "/Users/maheswaranm/no-broker-backend/.venv/lib/python3.9/site-packages/anyio/_backends/_asyncio.py", line 986, in run
+    result = context.run(func, *args)
+  File "/Users/maheswaranm/no-broker-backend/app/api/realty.py", line 38, in list_contacts
+    contacts = realty_repo.get_contacts(
+  File "/Users/maheswaranm/no-broker-backend/app/repo/realty.py", line 17, in get_contacts
+    return query.offset(skip).limit(limit).all()
+  File "/Users/maheswaranm/no-broker-backend/.venv/lib/python3.9/site-packages/sqlalchemy/orm/query.py", line 2704, in all
+    return self._iter().all()  # type: ignore
+  File "/Users/maheswaranm/no-broker-backend/.venv/lib/python3.9/site-packages/sqlalchemy/orm/query.py", line 2857, in _iter
+    result: Union[ScalarResult[_T], Result[_T]] = self.session.execute(
+  File "/Users/maheswaranm/no-broker-backend/.venv/lib/python3.9/site-packages/sqlalchemy/orm/session.py", line 2351, in execute
+    return self._execute_internal(
+  File "/Users/maheswaranm/no-broker-backend/.venv/lib/python3.9/site-packages/sqlalchemy/orm/session.py", line 2239, in _execute_internal
+    conn = self._connection_for_bind(bind)
+  File "/Users/maheswaranm/no-broker-backend/.venv/lib/python3.9/site-packages/sqlalchemy/orm/session.py", line 2108, in _connection_for_bind
+    return trans._connection_for_bind(engine, execution_options)
+  File "<string>", line 2, in _connection_for_bind
+  File "/Users/maheswaranm/no-broker-backend/.venv/lib/python3.9/site-packages/sqlalchemy/orm/state_changes.py", line 137, in _go
+    ret_value = fn(self, *arg, **kw)
+  File "/Users/maheswaranm/no-broker-backend/.venv/lib/python3.9/site-packages/sqlalchemy/orm/session.py", line 1187, in _connection_for_bind
+    conn = bind.connect()
+  File "/Users/maheswaranm/no-broker-backend/.venv/lib/python3.9/site-packages/sqlalchemy/engine/base.py", line 3285, in connect
+    return self._connection_cls(self)
+  File "/Users/maheswaranm/no-broker-backend/.venv/lib/python3.9/site-packages/sqlalchemy/engine/base.py", line 145, in __init__
+    Connection._handle_dbapi_exception_noconnection(
+  File "/Users/maheswaranm/no-broker-backend/.venv/lib/python3.9/site-packages/sqlalchemy/engine/base.py", line 2448, in _handle_dbapi_exception_noconnection
+    raise sqlalchemy_exception.with_traceback(exc_info[2]) from e
+  File "/Users/maheswaranm/no-broker-backend/.venv/lib/python3.9/site-packages/sqlalchemy/engine/base.py", line 143, in __init__
+    self._dbapi_connection = engine.raw_connection()
+  File "/Users/maheswaranm/no-broker-backend/.venv/lib/python3.9/site-packages/sqlalchemy/engine/base.py", line 3309, in raw_connection
+    return self.pool.connect()
+  File "/Users/maheswaranm/no-broker-backend/.venv/lib/python3.9/site-packages/sqlalchemy/pool/base.py", line 447, in connect
+    return _ConnectionFairy._checkout(self)
+  File "/Users/maheswaranm/no-broker-backend/.venv/lib/python3.9/site-packages/sqlalchemy/pool/base.py", line 1356, in _checkout
+    del fairy
+  File "/Users/maheswaranm/no-broker-backend/.venv/lib/python3.9/site-packages/sqlalchemy/util/langhelpers.py", line 224, in __exit__
+    raise exc_value.with_traceback(exc_tb)
+  File "/Users/maheswaranm/no-broker-backend/.venv/lib/python3.9/site-packages/sqlalchemy/pool/base.py", line 1342, in _checkout
+    fairy._connection_record.get_connection()
+  File "/Users/maheswaranm/no-broker-backend/.venv/lib/python3.9/site-packages/sqlalchemy/pool/base.py", line 836, in get_connection
+    self.__connect()
+  File "/Users/maheswaranm/no-broker-backend/.venv/lib/python3.9/site-packages/sqlalchemy/pool/base.py", line 900, in __connect
+    pool.logger.debug("Error on connect(): %s", e)
+  File "/Users/maheswaranm/no-broker-backend/.venv/lib/python3.9/site-packages/sqlalchemy/util/langhelpers.py", line 224, in __exit__
+    raise exc_value.with_traceback(exc_tb)
+  File "/Users/maheswaranm/no-broker-backend/.venv/lib/python3.9/site-packages/sqlalchemy/pool/base.py", line 895, in __connect
+    self.dbapi_connection = connection = pool._invoke_creator(self)
+  File "/Users/maheswaranm/no-broker-backend/.venv/lib/python3.9/site-packages/sqlalchemy/engine/create.py", line 661, in connect
+    return dialect.connect(*cargs, **cparams)
+  File "/Users/maheswaranm/no-broker-backend/.venv/lib/python3.9/site-packages/sqlalchemy/engine/default.py", line 630, in connect
+    return self.loaded_dbapi.connect(*cargs, **cparams)  # type: ignore[no-any-return]  # NOQA: E501
+  File "/Users/maheswaranm/no-broker-backend/.venv/lib/python3.9/site-packages/pymysql/connections.py", line 365, in __init__
+    self.connect()
+  File "/Users/maheswaranm/no-broker-backend/.venv/lib/python3.9/site-packages/pymysql/connections.py", line 723, in connect
+    raise exc
+sqlalchemy.exc.OperationalError: (pymysql.err.OperationalError) (2003, "Can't connect to MySQL server on '127.0.0.1' ([Errno 61] Connection refused)")
+(Background on this error at: https://sqlalche.me/e/20/e3q8)
+2026-02-25 18:59:14,059 INFO sqlalchemy.engine.Engine BEGIN (implicit)
+INFO:sqlalchemy.engine.Engine:BEGIN (implicit)
+2026-02-25 18:59:14,063 INFO sqlalchemy.engine.Engine SELECT properties.id AS properties_id, properties.property_name AS properties_property_name, properties.location AS properties_location, properties.phone AS properties_phone, properties.map_link AS properties_map_link, properties.description AS properties_description, properties.features AS properties_features, properties.property_type AS properties_property_type, properties.furnishing AS properties_furnishing, properties.private_price AS properties_private_price, properties.single_price AS properties_single_price, properties.double_price AS properties_double_price, properties.triple_price AS properties_triple_price, properties.starting_price AS properties_starting_price, properties.listing_type AS properties_listing_type, properties.is_available AS properties_is_available, properties.slug AS properties_slug, properties.is_deleted AS properties_is_deleted, properties.created_at AS properties_created_at, properties.updated_at AS properties_updated_at 
+FROM properties LEFT OUTER JOIN (SELECT reviews.property_id AS property_id, avg(reviews.rating) AS avg_rating 
+FROM reviews GROUP BY reviews.property_id) AS anon_1 ON properties.id = anon_1.property_id 
+WHERE properties.is_deleted = false ORDER BY coalesce(anon_1.avg_rating, %(coalesce_1)s) DESC 
+ LIMIT %(param_1)s, %(param_2)s
+INFO:sqlalchemy.engine.Engine:SELECT properties.id AS properties_id, properties.property_name AS properties_property_name, properties.location AS properties_location, properties.phone AS properties_phone, properties.map_link AS properties_map_link, properties.description AS properties_description, properties.features AS properties_features, properties.property_type AS properties_property_type, properties.furnishing AS properties_furnishing, properties.private_price AS properties_private_price, properties.single_price AS properties_single_price, properties.double_price AS properties_double_price, properties.triple_price AS properties_triple_price, properties.starting_price AS properties_starting_price, properties.listing_type AS properties_listing_type, properties.is_available AS properties_is_available, properties.slug AS properties_slug, properties.is_deleted AS properties_is_deleted, properties.created_at AS properties_created_at, properties.updated_at AS properties_updated_at 
+FROM properties LEFT OUTER JOIN (SELECT reviews.property_id AS property_id, avg(reviews.rating) AS avg_rating 
+FROM reviews GROUP BY reviews.property_id) AS anon_1 ON properties.id = anon_1.property_id 
+WHERE properties.is_deleted = false ORDER BY coalesce(anon_1.avg_rating, %(coalesce_1)s) DESC 
+ LIMIT %(param_1)s, %(param_2)s
+2026-02-25 18:59:14,063 INFO sqlalchemy.engine.Engine [cached since 5400s ago] {'coalesce_1': 0, 'param_1': 0, 'param_2': 100}
+INFO:sqlalchemy.engine.Engine:[cached since 5400s ago] {'coalesce_1': 0, 'param_1': 0, 'param_2': 100}
+2026-02-25 18:59:14,119 INFO sqlalchemy.engine.Engine SELECT property_images.id AS property_images_id, property_images.property_id AS property_images_property_id, property_images.image_url AS property_images_image_url, property_images.is_primary AS property_images_is_primary, property_images.sort_order AS property_images_sort_order, property_images.is_deleted AS property_images_is_deleted, property_images.created_at AS property_images_created_at, anon_1.properties_id AS anon_1_properties_id 
+FROM (SELECT properties.id AS properties_id 
+FROM properties LEFT OUTER JOIN (SELECT reviews.property_id AS property_id, avg(reviews.rating) AS avg_rating 
+FROM reviews GROUP BY reviews.property_id) AS anon_2 ON properties.id = anon_2.property_id 
+WHERE properties.is_deleted = false ORDER BY coalesce(anon_2.avg_rating, %(coalesce_1)s) DESC 
+ LIMIT %(param_1)s, %(param_2)s) AS anon_1 INNER JOIN property_images ON anon_1.properties_id = property_images.property_id
+INFO:sqlalchemy.engine.Engine:SELECT property_images.id AS property_images_id, property_images.property_id AS property_images_property_id, property_images.image_url AS property_images_image_url, property_images.is_primary AS property_images_is_primary, property_images.sort_order AS property_images_sort_order, property_images.is_deleted AS property_images_is_deleted, property_images.created_at AS property_images_created_at, anon_1.properties_id AS anon_1_properties_id 
+FROM (SELECT properties.id AS properties_id 
+FROM properties LEFT OUTER JOIN (SELECT reviews.property_id AS property_id, avg(reviews.rating) AS avg_rating 
+FROM reviews GROUP BY reviews.property_id) AS anon_2 ON properties.id = anon_2.property_id 
+WHERE properties.is_deleted = false ORDER BY coalesce(anon_2.avg_rating, %(coalesce_1)s) DESC 
+ LIMIT %(param_1)s, %(param_2)s) AS anon_1 INNER JOIN property_images ON anon_1.properties_id = property_images.property_id
+2026-02-25 18:59:14,119 INFO sqlalchemy.engine.Engine [cached since 5400s ago] {'coalesce_1': 0, 'param_1': 0, 'param_2': 100}
+INFO:sqlalchemy.engine.Engine:[cached since 5400s ago] {'coalesce_1': 0, 'param_1': 0, 'param_2': 100}
+2026-02-25 18:59:14,149 INFO sqlalchemy.engine.Engine SELECT reviews.id AS reviews_id, reviews.property_id AS reviews_property_id, reviews.rating AS reviews_rating, reviews.user_name AS reviews_user_name, reviews.property_name AS reviews_property_name, reviews.comment AS reviews_comment, reviews.created_at AS reviews_created_at, anon_1.properties_id AS anon_1_properties_id 
+FROM (SELECT properties.id AS properties_id 
+FROM properties LEFT OUTER JOIN (SELECT reviews.property_id AS property_id, avg(reviews.rating) AS avg_rating 
+FROM reviews GROUP BY reviews.property_id) AS anon_2 ON properties.id = anon_2.property_id 
+WHERE properties.is_deleted = false ORDER BY coalesce(anon_2.avg_rating, %(coalesce_1)s) DESC 
+ LIMIT %(param_1)s, %(param_2)s) AS anon_1 INNER JOIN reviews ON anon_1.properties_id = reviews.property_id
+INFO:sqlalchemy.engine.Engine:SELECT reviews.id AS reviews_id, reviews.property_id AS reviews_property_id, reviews.rating AS reviews_rating, reviews.user_name AS reviews_user_name, reviews.property_name AS reviews_property_name, reviews.comment AS reviews_comment, reviews.created_at AS reviews_created_at, anon_1.properties_id AS anon_1_properties_id 
+FROM (SELECT properties.id AS properties_id 
+FROM properties LEFT OUTER JOIN (SELECT reviews.property_id AS property_id, avg(reviews.rating) AS avg_rating 
+FROM reviews GROUP BY reviews.property_id) AS anon_2 ON properties.id = anon_2.property_id 
+WHERE properties.is_deleted = false ORDER BY coalesce(anon_2.avg_rating, %(coalesce_1)s) DESC 
+ LIMIT %(param_1)s, %(param_2)s) AS anon_1 INNER JOIN reviews ON anon_1.properties_id = reviews.property_id
+2026-02-25 18:59:14,149 INFO sqlalchemy.engine.Engine [cached since 5400s ago] {'coalesce_1': 0, 'param_1': 0, 'param_2': 100}
+INFO:sqlalchemy.engine.Engine:[cached since 5400s ago] {'coalesce_1': 0, 'param_1': 0, 'param_2': 100}
+INFO:     127.0.0.1:50837 - "GET /api/v1/realty/properties HTTP/1.1" 200 OK
+2026-02-25 18:59:14,293 INFO sqlalchemy.engine.Engine ROLLBACK
+INFO:sqlalchemy.engine.Engine:ROLLBACK
+INFO:     127.0.0.1:50848 - "POST /api/v1/realty/properties HTTP/1.1" 401 Unauthorized
+2026-02-25 18:59:36,247 INFO sqlalchemy.engine.Engine BEGIN (implicit)
+INFO:sqlalchemy.engine.Engine:BEGIN (implicit)
+2026-02-25 18:59:36,248 INFO sqlalchemy.engine.Engine SELECT properties.id AS properties_id, properties.property_name AS properties_property_name, properties.location AS properties_location, properties.phone AS properties_phone, properties.map_link AS properties_map_link, properties.description AS properties_description, properties.features AS properties_features, properties.property_type AS properties_property_type, properties.furnishing AS properties_furnishing, properties.private_price AS properties_private_price, properties.single_price AS properties_single_price, properties.double_price AS properties_double_price, properties.triple_price AS properties_triple_price, properties.starting_price AS properties_starting_price, properties.listing_type AS properties_listing_type, properties.is_available AS properties_is_available, properties.slug AS properties_slug, properties.is_deleted AS properties_is_deleted, properties.created_at AS properties_created_at, properties.updated_at AS properties_updated_at 
+FROM properties LEFT OUTER JOIN (SELECT reviews.property_id AS property_id, avg(reviews.rating) AS avg_rating 
+FROM reviews GROUP BY reviews.property_id) AS anon_1 ON properties.id = anon_1.property_id 
+WHERE properties.is_deleted = false ORDER BY coalesce(anon_1.avg_rating, %(coalesce_1)s) DESC 
+ LIMIT %(param_1)s, %(param_2)s
+INFO:sqlalchemy.engine.Engine:SELECT properties.id AS properties_id, properties.property_name AS properties_property_name, properties.location AS properties_location, properties.phone AS properties_phone, properties.map_link AS properties_map_link, properties.description AS properties_description, properties.features AS properties_features, properties.property_type AS properties_property_type, properties.furnishing AS properties_furnishing, properties.private_price AS properties_private_price, properties.single_price AS properties_single_price, properties.double_price AS properties_double_price, properties.triple_price AS properties_triple_price, properties.starting_price AS properties_starting_price, properties.listing_type AS properties_listing_type, properties.is_available AS properties_is_available, properties.slug AS properties_slug, properties.is_deleted AS properties_is_deleted, properties.created_at AS properties_created_at, properties.updated_at AS properties_updated_at 
+FROM properties LEFT OUTER JOIN (SELECT reviews.property_id AS property_id, avg(reviews.rating) AS avg_rating 
+FROM reviews GROUP BY reviews.property_id) AS anon_1 ON properties.id = anon_1.property_id 
+WHERE properties.is_deleted = false ORDER BY coalesce(anon_1.avg_rating, %(coalesce_1)s) DESC 
+ LIMIT %(param_1)s, %(param_2)s
+2026-02-25 18:59:36,249 INFO sqlalchemy.engine.Engine [cached since 5422s ago] {'coalesce_1': 0, 'param_1': 0, 'param_2': 100}
+INFO:sqlalchemy.engine.Engine:[cached since 5422s ago] {'coalesce_1': 0, 'param_1': 0, 'param_2': 100}
+2026-02-25 18:59:36,298 INFO sqlalchemy.engine.Engine SELECT property_images.id AS property_images_id, property_images.property_id AS property_images_property_id, property_images.image_url AS property_images_image_url, property_images.is_primary AS property_images_is_primary, property_images.sort_order AS property_images_sort_order, property_images.is_deleted AS property_images_is_deleted, property_images.created_at AS property_images_created_at, anon_1.properties_id AS anon_1_properties_id 
+FROM (SELECT properties.id AS properties_id 
+FROM properties LEFT OUTER JOIN (SELECT reviews.property_id AS property_id, avg(reviews.rating) AS avg_rating 
+FROM reviews GROUP BY reviews.property_id) AS anon_2 ON properties.id = anon_2.property_id 
+WHERE properties.is_deleted = false ORDER BY coalesce(anon_2.avg_rating, %(coalesce_1)s) DESC 
+ LIMIT %(param_1)s, %(param_2)s) AS anon_1 INNER JOIN property_images ON anon_1.properties_id = property_images.property_id
+INFO:sqlalchemy.engine.Engine:SELECT property_images.id AS property_images_id, property_images.property_id AS property_images_property_id, property_images.image_url AS property_images_image_url, property_images.is_primary AS property_images_is_primary, property_images.sort_order AS property_images_sort_order, property_images.is_deleted AS property_images_is_deleted, property_images.created_at AS property_images_created_at, anon_1.properties_id AS anon_1_properties_id 
+FROM (SELECT properties.id AS properties_id 
+FROM properties LEFT OUTER JOIN (SELECT reviews.property_id AS property_id, avg(reviews.rating) AS avg_rating 
+FROM reviews GROUP BY reviews.property_id) AS anon_2 ON properties.id = anon_2.property_id 
+WHERE properties.is_deleted = false ORDER BY coalesce(anon_2.avg_rating, %(coalesce_1)s) DESC 
+ LIMIT %(param_1)s, %(param_2)s) AS anon_1 INNER JOIN property_images ON anon_1.properties_id = property_images.property_id
+2026-02-25 18:59:36,299 INFO sqlalchemy.engine.Engine [cached since 5422s ago] {'coalesce_1': 0, 'param_1': 0, 'param_2': 100}
+INFO:sqlalchemy.engine.Engine:[cached since 5422s ago] {'coalesce_1': 0, 'param_1': 0, 'param_2': 100}
+2026-02-25 18:59:36,329 INFO sqlalchemy.engine.Engine SELECT reviews.id AS reviews_id, reviews.property_id AS reviews_property_id, reviews.rating AS reviews_rating, reviews.user_name AS reviews_user_name, reviews.property_name AS reviews_property_name, reviews.comment AS reviews_comment, reviews.created_at AS reviews_created_at, anon_1.properties_id AS anon_1_properties_id 
+FROM (SELECT properties.id AS properties_id 
+FROM properties LEFT OUTER JOIN (SELECT reviews.property_id AS property_id, avg(reviews.rating) AS avg_rating 
+FROM reviews GROUP BY reviews.property_id) AS anon_2 ON properties.id = anon_2.property_id 
+WHERE properties.is_deleted = false ORDER BY coalesce(anon_2.avg_rating, %(coalesce_1)s) DESC 
+ LIMIT %(param_1)s, %(param_2)s) AS anon_1 INNER JOIN reviews ON anon_1.properties_id = reviews.property_id
+INFO:sqlalchemy.engine.Engine:SELECT reviews.id AS reviews_id, reviews.property_id AS reviews_property_id, reviews.rating AS reviews_rating, reviews.user_name AS reviews_user_name, reviews.property_name AS reviews_property_name, reviews.comment AS reviews_comment, reviews.created_at AS reviews_created_at, anon_1.properties_id AS anon_1_properties_id 
+FROM (SELECT properties.id AS properties_id 
+FROM properties LEFT OUTER JOIN (SELECT reviews.property_id AS property_id, avg(reviews.rating) AS avg_rating 
+FROM reviews GROUP BY reviews.property_id) AS anon_2 ON properties.id = anon_2.property_id 
+WHERE properties.is_deleted = false ORDER BY coalesce(anon_2.avg_rating, %(coalesce_1)s) DESC 
+ LIMIT %(param_1)s, %(param_2)s) AS anon_1 INNER JOIN reviews ON anon_1.properties_id = reviews.property_id
+2026-02-25 18:59:36,329 INFO sqlalchemy.engine.Engine [cached since 5422s ago] {'coalesce_1': 0, 'param_1': 0, 'param_2': 100}
+INFO:sqlalchemy.engine.Engine:[cached since 5422s ago] {'coalesce_1': 0, 'param_1': 0, 'param_2': 100}
+INFO:     127.0.0.1:50855 - "GET /api/v1/realty/properties HTTP/1.1" 200 OK
+2026-02-25 18:59:36,472 INFO sqlalchemy.engine.Engine ROLLBACK
+INFO:sqlalchemy.engine.Engine:ROLLBACK
+2026-02-25 19:00:00,760 INFO sqlalchemy.engine.Engine BEGIN (implicit)
+INFO:sqlalchemy.engine.Engine:BEGIN (implicit)
+2026-02-25 19:00:00,761 INFO sqlalchemy.engine.Engine SELECT properties.id AS properties_id, properties.property_name AS properties_property_name, properties.location AS properties_location, properties.phone AS properties_phone, properties.map_link AS properties_map_link, properties.description AS properties_description, properties.features AS properties_features, properties.property_type AS properties_property_type, properties.furnishing AS properties_furnishing, properties.private_price AS properties_private_price, properties.single_price AS properties_single_price, properties.double_price AS properties_double_price, properties.triple_price AS properties_triple_price, properties.starting_price AS properties_starting_price, properties.listing_type AS properties_listing_type, properties.is_available AS properties_is_available, properties.slug AS properties_slug, properties.is_deleted AS properties_is_deleted, properties.created_at AS properties_created_at, properties.updated_at AS properties_updated_at 
+FROM properties LEFT OUTER JOIN (SELECT reviews.property_id AS property_id, avg(reviews.rating) AS avg_rating 
+FROM reviews GROUP BY reviews.property_id) AS anon_1 ON properties.id = anon_1.property_id 
+WHERE properties.is_deleted = false ORDER BY coalesce(anon_1.avg_rating, %(coalesce_1)s) DESC 
+ LIMIT %(param_1)s, %(param_2)s
+INFO:sqlalchemy.engine.Engine:SELECT properties.id AS properties_id, properties.property_name AS properties_property_name, properties.location AS properties_location, properties.phone AS properties_phone, properties.map_link AS properties_map_link, properties.description AS properties_description, properties.features AS properties_features, properties.property_type AS properties_property_type, properties.furnishing AS properties_furnishing, properties.private_price AS properties_private_price, properties.single_price AS properties_single_price, properties.double_price AS properties_double_price, properties.triple_price AS properties_triple_price, properties.starting_price AS properties_starting_price, properties.listing_type AS properties_listing_type, properties.is_available AS properties_is_available, properties.slug AS properties_slug, properties.is_deleted AS properties_is_deleted, properties.created_at AS properties_created_at, properties.updated_at AS properties_updated_at 
+FROM properties LEFT OUTER JOIN (SELECT reviews.property_id AS property_id, avg(reviews.rating) AS avg_rating 
+FROM reviews GROUP BY reviews.property_id) AS anon_1 ON properties.id = anon_1.property_id 
+WHERE properties.is_deleted = false ORDER BY coalesce(anon_1.avg_rating, %(coalesce_1)s) DESC 
+ LIMIT %(param_1)s, %(param_2)s
+2026-02-25 19:00:00,761 INFO sqlalchemy.engine.Engine [cached since 5447s ago] {'coalesce_1': 0, 'param_1': 0, 'param_2': 100}
+INFO:sqlalchemy.engine.Engine:[cached since 5447s ago] {'coalesce_1': 0, 'param_1': 0, 'param_2': 100}
+2026-02-25 19:00:00,813 INFO sqlalchemy.engine.Engine SELECT property_images.id AS property_images_id, property_images.property_id AS property_images_property_id, property_images.image_url AS property_images_image_url, property_images.is_primary AS property_images_is_primary, property_images.sort_order AS property_images_sort_order, property_images.is_deleted AS property_images_is_deleted, property_images.created_at AS property_images_created_at, anon_1.properties_id AS anon_1_properties_id 
+FROM (SELECT properties.id AS properties_id 
+FROM properties LEFT OUTER JOIN (SELECT reviews.property_id AS property_id, avg(reviews.rating) AS avg_rating 
+FROM reviews GROUP BY reviews.property_id) AS anon_2 ON properties.id = anon_2.property_id 
+WHERE properties.is_deleted = false ORDER BY coalesce(anon_2.avg_rating, %(coalesce_1)s) DESC 
+ LIMIT %(param_1)s, %(param_2)s) AS anon_1 INNER JOIN property_images ON anon_1.properties_id = property_images.property_id
+INFO:sqlalchemy.engine.Engine:SELECT property_images.id AS property_images_id, property_images.property_id AS property_images_property_id, property_images.image_url AS property_images_image_url, property_images.is_primary AS property_images_is_primary, property_images.sort_order AS property_images_sort_order, property_images.is_deleted AS property_images_is_deleted, property_images.created_at AS property_images_created_at, anon_1.properties_id AS anon_1_properties_id 
+FROM (SELECT properties.id AS properties_id 
+FROM properties LEFT OUTER JOIN (SELECT reviews.property_id AS property_id, avg(reviews.rating) AS avg_rating 
+FROM reviews GROUP BY reviews.property_id) AS anon_2 ON properties.id = anon_2.property_id 
+WHERE properties.is_deleted = false ORDER BY coalesce(anon_2.avg_rating, %(coalesce_1)s) DESC 
+ LIMIT %(param_1)s, %(param_2)s) AS anon_1 INNER JOIN property_images ON anon_1.properties_id = property_images.property_id
+2026-02-25 19:00:00,813 INFO sqlalchemy.engine.Engine [cached since 5447s ago] {'coalesce_1': 0, 'param_1': 0, 'param_2': 100}
+INFO:sqlalchemy.engine.Engine:[cached since 5447s ago] {'coalesce_1': 0, 'param_1': 0, 'param_2': 100}
+2026-02-25 19:00:00,843 INFO sqlalchemy.engine.Engine SELECT reviews.id AS reviews_id, reviews.property_id AS reviews_property_id, reviews.rating AS reviews_rating, reviews.user_name AS reviews_user_name, reviews.property_name AS reviews_property_name, reviews.comment AS reviews_comment, reviews.created_at AS reviews_created_at, anon_1.properties_id AS anon_1_properties_id 
+FROM (SELECT properties.id AS properties_id 
+FROM properties LEFT OUTER JOIN (SELECT reviews.property_id AS property_id, avg(reviews.rating) AS avg_rating 
+FROM reviews GROUP BY reviews.property_id) AS anon_2 ON properties.id = anon_2.property_id 
+WHERE properties.is_deleted = false ORDER BY coalesce(anon_2.avg_rating, %(coalesce_1)s) DESC 
+ LIMIT %(param_1)s, %(param_2)s) AS anon_1 INNER JOIN reviews ON anon_1.properties_id = reviews.property_id
+INFO:sqlalchemy.engine.Engine:SELECT reviews.id AS reviews_id, reviews.property_id AS reviews_property_id, reviews.rating AS reviews_rating, reviews.user_name AS reviews_user_name, reviews.property_name AS reviews_property_name, reviews.comment AS reviews_comment, reviews.created_at AS reviews_created_at, anon_1.properties_id AS anon_1_properties_id 
+FROM (SELECT properties.id AS properties_id 
+FROM properties LEFT OUTER JOIN (SELECT reviews.property_id AS property_id, avg(reviews.rating) AS avg_rating 
+FROM reviews GROUP BY reviews.property_id) AS anon_2 ON properties.id = anon_2.property_id 
+WHERE properties.is_deleted = false ORDER BY coalesce(anon_2.avg_rating, %(coalesce_1)s) DESC 
+ LIMIT %(param_1)s, %(param_2)s) AS anon_1 INNER JOIN reviews ON anon_1.properties_id = reviews.property_id
+2026-02-25 19:00:00,843 INFO sqlalchemy.engine.Engine [cached since 5447s ago] {'coalesce_1': 0, 'param_1': 0, 'param_2': 100}
+INFO:sqlalchemy.engine.Engine:[cached since 5447s ago] {'coalesce_1': 0, 'param_1': 0, 'param_2': 100}
+INFO:     127.0.0.1:50877 - "GET /api/v1/realty/properties HTTP/1.1" 200 OK
+2026-02-25 19:00:00,986 INFO sqlalchemy.engine.Engine ROLLBACK
+INFO:sqlalchemy.engine.Engine:ROLLBACK
+INFO:     127.0.0.1:50877 - "POST /api/v1/realty/properties HTTP/1.1" 401 Unauthorized
+INFO:     127.0.0.1:50891 - "POST /api/v1/realty/properties HTTP/1.1" 401 Unauthorized

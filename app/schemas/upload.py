@@ -7,4 +7,5 @@ class UploadRequest(BaseModel):
 class UploadResponse(BaseModel):
     upload_url: str
     file_key: str
+    public_url: str
 

@@ -81,7 +81,7 @@ class ContactResponse(ContactBase):
 
 class PropertyImageBase(BaseModel):
     """Base schema for PropertyImage."""
-    image_url: str = Field(..., max_length=500)
+    image_url: str = Field(..., max_length=1000)
     is_primary: bool = False
     sort_order: int = Field(default=0, ge=0)
 
@@ -93,7 +93,7 @@ class PropertyImageCreate(PropertyImageBase):
 
 class PropertyImageUpdate(BaseModel):
     """Schema for updating an existing property image."""
-    image_url: Optional[str] = Field(None, max_length=500)
+    image_url: Optional[str] = Field(None, max_length=1000)
     is_primary: Optional[bool] = None
     sort_order: Optional[int] = Field(None, ge=0)
 
