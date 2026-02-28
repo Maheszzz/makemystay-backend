@@ -106,91 +106,85 @@ class EmailService:
             <meta charset="utf-8">
             <meta name="viewport" content="width=device-width, initial-scale=1.0">
             <style>
-                body {{ font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; line-height: 1.6; color: #334155; margin: 0; padding: 0; background-color: #f8fafc; }}
-                .container {{ max-width: 600px; margin: 40px auto; background: #ffffff; border-radius: 12px; overflow: hidden; box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06); }}
-                .header {{ background: linear-gradient(135deg, #ef4444 0%, #dc2626 100%); padding: 32px 40px; text-align: center; color: white; }}
-                .header h1 {{ margin: 0; font-size: 24px; font-weight: 700; letter-spacing: -0.025em; }}
-                .header p {{ margin: 8px 0 0 0; font-size: 15px; opacity: 0.9; }}
-                .content {{ padding: 40px; }}
-                .greeting {{ font-size: 18px; font-weight: 600; color: #0f172a; margin-top: 0; }}
-                .details-card {{ background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; padding: 24px; margin: 32px 0; }}
-                .detail-row {{ display: flex; align-items: flex-start; margin-bottom: 16px; }}
-                .detail-row:last-child {{ margin-bottom: 0; }}
-                .detail-icon {{ font-size: 20px; margin-right: 12px; line-height: 1.2; }}
-                .detail-text {{ margin: 0; font-size: 15px; color: #334155; }}
-                .detail-label {{ display: block; font-size: 12px; font-weight: 600; color: #64748b; text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 4px; }}
-                .detail-value {{ font-size: 16px; font-weight: 500; color: #0f172a; }}
-                .btn {{ display: inline-block; background: #ef4444; color: #ffffff !important; text-decoration: none; padding: 12px 24px; border-radius: 6px; font-weight: 600; font-size: 15px; text-align: center; margin-top: 8px; box-shadow: 0 4px 6px -1px rgba(239, 68, 68, 0.2); transition: all 0.2s; }}
-                .btn:hover {{ background: #dc2626; }}
-                .btn-secondary {{ display: inline-block; background: #ffffff; color: #475569 !important; text-decoration: none; padding: 10px 20px; border-radius: 6px; font-weight: 500; font-size: 14px; text-align: center; border: 1px solid #cbd5e1; margin-right: 8px; margin-bottom: 8px; }}
-                .calendar-section {{ margin-top: 24px; padding-top: 24px; border-top: 1px dashed #e2e8f0; }}
-                .expectations {{ margin: 32px 0; }}
-                .expectations h3 {{ font-size: 16px; color: #0f172a; margin-bottom: 16px; }}
-                .expectations ul {{ padding-left: 20px; margin: 0; color: #475569; }}
-                .expectations li {{ margin-bottom: 8px; font-size: 15px; }}
-                .footer {{ background: #0f172a; color: #94a3b8; padding: 32px 40px; text-align: center; font-size: 14px; }}
-                .footer h4 {{ color: white; margin: 0 0 8px 0; font-size: 16px; }}
-                .footer p {{ margin: 0 0 16px 0; }}
-                .footer-links {{ margin-top: 16px; padding-top: 16px; border-top: 1px solid #1e293b; }}
-                .footer-links a {{ color: #e2e8f0; text-decoration: none; }}
+                body {{ font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif; background-color: #f4f5f7; margin: 0; padding: 0; color: #333333; }}
+                .container {{ max-width: 600px; margin: 30px auto; background-color: #ffffff; border: 1px solid #e5e7eb; border-top: 4px solid #ef4444; border-radius: 4px; box-shadow: 0 1px 3px rgba(0,0,0,0.05); }}
+                .header {{ padding: 20px 30px; border-bottom: 1px solid #f0f0f0; }}
+                .brand-logo {{ font-size: 18px; font-weight: bold; color: #111827; margin: 0; letter-spacing: -0.5px; }}
+                .content {{ padding: 30px; line-height: 1.6; font-size: 14px; color: #4b5563; }}
+                .greeting {{ font-size: 16px; color: #111827; margin-top: 0; margin-bottom: 15px; }}
+                h2.title {{ font-size: 20px; color: #111827; margin-top: 0; margin-bottom: 25px; font-weight: 500; }}
+                
+                .meeting-box {{ background-color: #f9fafb; border: 1px solid #e5e7eb; border-radius: 6px; padding: 20px; margin-bottom: 25px; }}
+                .meeting-table {{ width: 100%; border-collapse: collapse; }}
+                .meeting-table td {{ padding: 8px 0; vertical-align: top; font-size: 14px; }}
+                .label-cell {{ width: 100px; color: #6b7280; font-weight: 500; }}
+                .value-cell {{ color: #111827; font-weight: 500; }}
+                
+                .btn-primary {{ display: inline-block; background-color: #ef4444; color: #ffffff !important; text-decoration: none; padding: 10px 24px; border-radius: 4px; font-weight: bold; font-size: 14px; margin-top: 15px; border: 1px solid #dc2626; }}
+                .btn-secondary {{ display: inline-block; background-color: #ffffff; color: #4b5563 !important; text-decoration: none; padding: 8px 16px; border-radius: 4px; font-weight: 500; font-size: 13px; margin-top: 10px; margin-right: 10px; border: 1px solid #d1d5db; }}
+                
+                .agenda-section {{ margin-top: 25px; }}
+                .agenda-title {{ font-weight: bold; color: #374151; margin-bottom: 10px; font-size: 14px; }}
+                .agenda-list {{ margin: 0; padding-left: 20px; color: #4b5563; }}
+                .agenda-list li {{ margin-bottom: 5px; }}
+                
+                .footer {{ background-color: #f9fafb; padding: 20px 30px; border-top: 1px solid #e5e7eb; text-align: center; color: #6b7280; font-size: 12px; border-bottom-left-radius: 4px; border-bottom-right-radius: 4px; }}
+                .footer a {{ color: #ef4444; text-decoration: none; }}
+                .footer p {{ margin: 5px 0; }}
             </style>
         </head>
         <body>
             <div class="container">
                 <div class="header">
-                    <h1>MakeMyStay.ai</h1>
-                    <p>Demo Scheduled Successfully 🎉</p>
+                    <p class="brand-logo">MakeMyStay.ai</p>
                 </div>
                 
                 <div class="content">
-                    <p class="greeting">Hi {booking_data.name},</p>
-                    <p>Thank you for scheduling a demo with MakeMyStay. We're excited to show you how our platform can transform your rental business.</p>
+                    <h2 class="title">Demo Meeting Confirmed</h2>
+                    <p class="greeting">Hello {booking_data.name.split(' ')[0]},</p>
+                    <p style="margin-bottom: 25px;">Your requested product demo has been successfully scheduled. Please find the meeting details below.</p>
                     
-                    <div class="details-card">
-                        <div class="detail-row">
-                            <span class="detail-icon">📅</span>
-                            <div class="detail-text">
-                                <span class="detail-label">Date</span>
-                                <span class="detail-value">{date_str}</span>
-                            </div>
-                        </div>
-                        <div class="detail-row">
-                            <span class="detail-icon">🕒</span>
-                            <div class="detail-text">
-                                <span class="detail-label">Time</span>
-                                <span class="detail-value">{time_str} ({booking_data.selected_slot.strftime("%Z")} / UTC)</span>
-                            </div>
-                        </div>
-                        <div style="margin-top: 24px; text-align: center;">
-                            <a href="{meet_link}" class="btn">🎥 Join Google Meet</a>
-                        </div>
+                    <div class="meeting-box">
+                        <table class="meeting-table">
+                            <tr>
+                                <td class="label-cell">Date:</td>
+                                <td class="value-cell">{date_str}</td>
+                            </tr>
+                            <tr>
+                                <td class="label-cell">Time:</td>
+                                <td class="value-cell">{time_str}</td>
+                            </tr>
+                            <tr>
+                                <td class="label-cell">Host:</td>
+                                <td class="value-cell">MakeMyStay.ai Growth Team</td>
+                            </tr>
+                        </table>
                         
-                        <div class="calendar-section">
-                            <p style="font-size: 14px; font-weight: 500; color: #64748b; margin-top: 0; margin-bottom: 12px;">Add to your calendar:</p>
-                            <a href="{gcal_link}" class="btn-secondary">🇬 Google Calendar</a>
-                            <a href="{outlook_link}" class="btn-secondary">📧 Outlook</a>
+                        <a href="{meet_link}" class="btn-primary">Join Meeting</a>
+                        
+                        <div style="margin-top: 20px; border-top: 1px solid #e5e7eb; padding-top: 15px;">
+                            <span style="font-size: 13px; color: #6b7280; display: block; margin-bottom: 5px;">Save to calendar:</span>
+                            <a href="{gcal_link}" class="btn-secondary">Google Calendar</a>
+                            <a href="{outlook_link}" class="btn-secondary">Outlook Calendar</a>
                         </div>
                     </div>
                     
-                    <div class="expectations">
-                        <h3>In this demo, we'll show you:</h3>
-                        <ul>
-                            <li>How to automate entire booking workflows</li>
-                            <li>Strategies to reduce broker dependency</li>
-                            <li>Tools to increase occupancy and streamline operations</li>
-                            <li>Our comprehensive revenue analytics dashboard</li>
+                    <div class="agenda-section">
+                        <p class="agenda-title">Agenda:</p>
+                        <ul class="agenda-list">
+                            <li>Platform overview and feature walkthrough.</li>
+                            <li>Automating your booking and tenant management workflows.</li>
+                            <li>Effective strategies for reducing broker dependency.</li>
+                            <li>Q&A session.</li>
                         </ul>
                     </div>
                     
-                    <p>If you need to reschedule or have any questions beforehand, please reply directly to this email.</p>
+                    <p style="margin-top: 25px; color: #6b7280; font-size: 13px;">If you need to cancel or propose a new time, please reply to this email.</p>
                 </div>
                 
                 <div class="footer">
-                    <h4>Need help before the demo?</h4>
-                    <p>💬 Contact Support: connect@makemystay.ai</p>
-                    <div class="footer-links">
-                        <p>© 2026 MakeMyStay.ai - Premium Rental Automation Platform</p>
-                    </div>
+                    <p>This is an automated message from MakeMyStay.ai. For assistance, contact <a href="mailto:connect@makemystay.ai">connect@makemystay.ai</a>.</p>
+                    <p>&copy; {datetime.now().year} MakeMyStay.ai. All rights reserved.</p>
                 </div>
             </div>
         </body>
