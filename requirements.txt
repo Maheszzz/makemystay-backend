@@ -33,3 +33,5 @@ wrapt==2.0.1
 razorpay
 
 
+fastapi-mail
+pytz

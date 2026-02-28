@@ -1,8 +1,9 @@
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, status, BackgroundTasks
 from sqlalchemy.orm import Session
 from app.configs.db_config import get_db
 from app.models.demo import DemoBooking
 from app.schemas.demo import DemoBookingCreate, DemoBookingResponse, ScheduleDemoResponse
+from app.utils.email_utils import email_service
 import uuid
 
 router = APIRouter(tags=["Demo"])
@@ -10,6 +11,7 @@ router = APIRouter(tags=["Demo"])
 @router.post("/schedule-demo", response_model=ScheduleDemoResponse)
 async def schedule_demo(
     booking: DemoBookingCreate,
+    background_tasks: BackgroundTasks,
     db: Session = Depends(get_db)
 ):
     # Check if slot is already booked (basic check)
@@ -45,6 +47,10 @@ async def schedule_demo(
         db.add(db_booking)
         db.commit()
         db.refresh(db_booking)
+        
+        # Add email sending to background tasks
+        background_tasks.add_task(email_service.send_booking_confirmation, booking, meet_link)
+        
     except Exception as e:
         db.rollback()
         raise HTTPException(
