@@ -2,7 +2,7 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 from app.configs.db_config import get_db
 from app.models.demo import DemoBooking
-from app.schemas.demo import DemoBookingCreate, ScheduleDemoResponse
+from app.schemas.demo import DemoBookingCreate, DemoBookingResponse, ScheduleDemoResponse
 import uuid
 
 router = APIRouter(tags=["Demo"])
@@ -57,3 +57,14 @@ async def schedule_demo(
         meet_link=meet_link,
         scheduled_at=db_booking.selected_slot
     )
+
+@router.get("/schedule-demo", response_model=list[DemoBookingResponse])
+async def get_all_demos(
+    skip: int = 0,
+    limit: int = 100,
+    db: Session = Depends(get_db)
+):
+    """Get all scheduled demos (Admin only ideally, but public for now for simplicity)"""
+    bookings = db.query(DemoBooking).order_by(DemoBooking.selected_slot.desc()).offset(skip).limit(limit).all()
+    return bookings
+
