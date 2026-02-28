@@ -5,6 +5,7 @@ from fastapi_mail import FastMail, MessageSchema, ConnectionConfig, MessageType
 from pydantic import EmailStr
 from typing import List
 from app.schemas.demo import DemoBookingCreate
+from app.schemas.realty import ContactCreate
 from loguru import logger
 import pytz
 from dotenv import load_dotenv
@@ -250,6 +251,61 @@ class EmailService:
             logger.info(f"Admin notification sent for {booking_data.name}")
         except Exception as e:
             logger.error(f"Failed to send email: {str(e)}")
+
+    async def send_contact_notification(self, contact_data: ContactCreate):
+        """Send notification to admin when someone contacts through the website."""
+        
+        # Email to Admin
+        admin_html = f"""
+        <!DOCTYPE html>
+        <html>
+        <head>
+            <style>
+                body {{ font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; line-height: 1.6; color: #333; }}
+                .container {{ max-width: 600px; margin: 20px auto; padding: 20px; border: 1px solid #e5e7eb; border-radius: 8px; }}
+                .header {{ border-bottom: 2px solid #ef4444; padding-bottom: 10px; margin-bottom: 20px; }}
+                .header h2 {{ margin: 0; color: #111827; }}
+                .data-row {{ margin-bottom: 10px; }}
+                .label {{ font-weight: 600; color: #4b5563; display: inline-block; width: 120px; }}
+                .value {{ color: #111827; }}
+                .message-box {{ margin-top: 15px; padding: 15px; background-color: #f9fafb; border: 1px solid #e5e7eb; border-radius: 6px; }}
+            </style>
+        </head>
+        <body>
+            <div class="container">
+                <div class="header">
+                    <h2>📨 New Website Contact</h2>
+                </div>
+                
+                <div class="data-row"><span class="label">Name:</span> <span class="value">{contact_data.name_}</span></div>
+                <div class="data-row"><span class="label">Email:</span> <span class="value"><a href="mailto:{contact_data.email}">{contact_data.email}</a></span></div>
+                <div class="data-row"><span class="label">Phone:</span> <span class="value">{contact_data.phone}</span></div>
+                <div class="data-row"><span class="label">Location:</span> <span class="value">{contact_data.location or 'N/A'}</span></div>
+                <div class="data-row"><span class="label">Property Type:</span> <span class="value">{contact_data.property_type or 'N/A'}</span></div>
+                
+                <div class="data-row" style="margin-top: 20px;"><span class="label">Message:</span></div>
+                <div class="message-box">
+                    {contact_data.message}
+                </div>
+            </div>
+        </body>
+        </html>
+        """
+
+        admin_message = MessageSchema(
+            subject=f"New Website Contact: {contact_data.name_}",
+            recipients=[self.conf.MAIL_FROM], # Sending to company email
+            body=admin_html,
+            subtype=MessageType.html
+        )
+
+        fm = FastMail(self.conf)
+        
+        try:
+            await fm.send_message(admin_message)
+            logger.info(f"Admin notification sent for new contact: {contact_data.name_}")
+        except Exception as e:
+            logger.error(f"Failed to send contact email: {str(e)}")
 
 email_service = EmailService()
 
