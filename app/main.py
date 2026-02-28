@@ -11,6 +11,7 @@ from app.api.realty import realty_router
 from app.api.auth import router as auth_router
 from app.models.payment import Payment # Import to ensure table creation
 from app.models.user import User # Import to ensure table creation
+from app.models.demo import DemoBooking # Import to ensure table creation
 import os
 import logging
 from dotenv import load_dotenv
@@ -93,6 +94,8 @@ from app.api.upload import router as upload_router
 app.include_router(upload_router, prefix="/api/v1")
 from app.api.payment import router as payment_router
 app.include_router(payment_router, prefix="/api/v1")
+from app.api.demo import router as demo_router
+app.include_router(demo_router, prefix="/api/v1")
 
 
 
