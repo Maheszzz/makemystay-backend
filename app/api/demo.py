@@ -4,6 +4,7 @@ from app.configs.db_config import get_db
 from app.models.demo import DemoBooking
 from app.schemas.demo import DemoBookingCreate, DemoBookingResponse, ScheduleDemoResponse
 from app.utils.email_utils import email_service
+from app.utils.zoho_crm_service import zoho_crm_service
 import uuid
 
 router = APIRouter(tags=["Demo"])
@@ -50,6 +51,8 @@ async def schedule_demo(
         
         # Add email sending to background tasks
         background_tasks.add_task(email_service.send_booking_confirmation, booking, meet_link)
+        # Sync with Zoho CRM (Create lead / Update lead and create event)
+        background_tasks.add_task(zoho_crm_service.create_demo_event, db_booking)
         
     except Exception as e:
         db.rollback()
