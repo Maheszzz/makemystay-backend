@@ -17,6 +17,7 @@ from app.schemas.realty import (
 from app.repo import realty as realty_repo
 from app.core.exceptions import NotFoundException, DatabaseError
 from app.core import security
+from app.api.retell import trigger_outbound_call
 
 realty_router = APIRouter(tags=["Realty"])
 
@@ -78,6 +79,20 @@ def create_contact(
         background_tasks.add_task(email_service.send_contact_notification, contact)
         # Sync with Zoho CRM
         background_tasks.add_task(zoho_crm_service.create_or_update_lead, contact)
+        
+        # Trigger outbound AI phone call in the background
+        prompt_message = contact.message or ""
+        # Adding some extra context about property type if provided
+        # (Assuming the frontend form includes unit/property details in the message, or it's just raw message)
+        background_tasks.add_task(
+            trigger_outbound_call,
+            name=contact.name_,
+            phone=contact.phone,
+            location=contact.location or "",
+            property_type=contact.property_type or "",
+            message=prompt_message
+        )
+        
         return new_contact
     except SQLAlchemyError as e:
         raise DatabaseError(f"Failed to create contact: {str(e)}")

@@ -45,6 +45,7 @@ app.add_middleware(
     allow_origins=[
         "http://localhost:3000", 
         "http://localhost:5173",
+        "http://localhost:5174",
         "https://makemystay.ai",
         "https://www.makemystay.ai",
         ],  # In production, replace with specific origins
@@ -94,8 +95,6 @@ from app.api.upload import router as upload_router
 app.include_router(upload_router, prefix="/api/v1")
 from app.api.payment import router as payment_router
 app.include_router(payment_router, prefix="/api/v1")
-from app.api.demo import router as demo_router
-app.include_router(demo_router, prefix="/api/v1")
 
 
 
