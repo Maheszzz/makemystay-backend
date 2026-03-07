@@ -15,6 +15,7 @@ async def schedule_demo(
     background_tasks: BackgroundTasks,
     db: Session = Depends(get_db)
 ):
+
     # Check if slot is already booked (basic check)
     existing_booking = db.query(DemoBooking).filter(
         DemoBooking.selected_slot == booking.selected_slot,
