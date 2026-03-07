@@ -142,7 +142,7 @@ class ZohoCRMService:
                     "Phone": getattr(contact_data, 'phone', ''),
                     "Company": getattr(contact_data, 'company', 'Individual'),
                     "Description": description,
-                    "Lead_Source": "Website",
+                    "Lead_Source": getattr(contact_data, 'lead_source', None) or "Website",
                     "City": location,
                 }
             ],
