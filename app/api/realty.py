@@ -92,6 +92,8 @@ def create_contact(
             property_type=contact.property_type or "",
             message=prompt_message
         )
+        # Log the call in Zoho CRM Calls module
+        background_tasks.add_task(zoho_crm_service.log_call, contact)
         
         return new_contact
     except SQLAlchemyError as e:

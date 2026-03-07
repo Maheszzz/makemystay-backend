@@ -95,6 +95,10 @@ from app.api.upload import router as upload_router
 app.include_router(upload_router, prefix="/api/v1")
 from app.api.payment import router as payment_router
 app.include_router(payment_router, prefix="/api/v1")
+from app.api.demo import router as demo_router
+app.include_router(demo_router, prefix="/api/v1")
+from app.api.retell import retell_router
+app.include_router(retell_router, prefix="/api/v1")
 
 
 
