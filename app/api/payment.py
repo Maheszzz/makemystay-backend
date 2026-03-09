@@ -4,12 +4,15 @@ import hashlib
 import hmac
 from typing import Optional
 from fastapi import APIRouter, HTTPException, Depends, Request
+from fastapi.responses import FileResponse
 from sqlalchemy.orm import Session
 from app.schemas.payment import ServiceFeeValidationRequest, ValidationResponse, PaymentInitiationRequest, PaymentResponse
 from app.configs.db_config import get_db
 from app.models.payment import Payment
 from loguru import logger
 from pydantic import BaseModel
+from reportlab.pdfgen import canvas
+from datetime import datetime
 
 router = APIRouter()
 
@@ -132,7 +135,7 @@ async def verify_payment(req: Request, db: Session = Depends(get_db)):
             payment.signature = razorpay_signature
             db.commit()
             
-        return {"status": "success"}
+        return {"status": "success", "payment_id": razorpay_payment_id}
     except razorpay.errors.SignatureVerificationError:
         # Update DB to failed if possible
         payment = db.query(Payment).filter(Payment.order_id == razorpay_order_id).first()
@@ -146,3 +149,48 @@ async def verify_payment(req: Request, db: Session = Depends(get_db)):
     except Exception as e:
         logger.error(f"Error verifying payment: {e}")
         raise HTTPException(status_code=500, detail="Internal server error")
+
+def create_receipt_pdf(payment: Payment):
+    os.makedirs("receipts", exist_ok=True)
+    file_path = f"receipts/{payment.payment_id}.pdf"
+    
+    c = canvas.Canvas(file_path)
+    c.drawString(100, 750, "MakeMyStay")
+    c.drawString(100, 735, "-" * 50)
+    c.drawString(100, 700, f"Receipt ID : MMS-{datetime.now().year}-{payment.id:04d}")
+    c.drawString(100, 680, f"Payment ID : {payment.payment_id}")
+    c.drawString(100, 660, f"Customer   : {payment.payer_name or 'N/A'}")
+    c.drawString(100, 640, f"Phone      : {payment.payer_phone or 'N/A'}")
+    c.drawString(100, 620, f"Amount     : Rs. {payment.amount}")
+    
+    try:
+        date_str = payment.created_at.strftime('%d %b %Y') if payment.created_at else datetime.now().strftime('%d %b %Y')
+    except:
+        date_str = datetime.now().strftime('%d %b %Y')
+        
+    c.drawString(100, 600, f"Date       : {date_str}")
+    c.drawString(100, 580, f"Status     : {str(payment.status).capitalize()}")
+    c.drawString(100, 565, "-" * 50)
+    c.drawString(100, 530, "Thank you for booking with us")
+    
+    c.save()
+    return file_path
+
+@router.get("/payments/receipt/{payment_id}")
+def download_receipt(payment_id: str, db: Session = Depends(get_db)):
+    payment = db.query(Payment).filter(Payment.payment_id == payment_id).first()
+    if not payment:
+        raise HTTPException(status_code=404, detail="Payment not found")
+        
+    if payment.status != 'success':
+        raise HTTPException(status_code=400, detail="Payment is not successful")
+        
+    path = f"receipts/{payment_id}.pdf"
+    if not os.path.exists(path):
+        create_receipt_pdf(payment)
+        
+    return FileResponse(
+        path,
+        media_type="application/pdf",
+        filename=f"receipt-{payment_id}.pdf"
+    )
