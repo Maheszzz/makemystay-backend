@@ -5,3 +5,5 @@ logs
 .vscode
 .venv
 .env.production
+.env.local
+

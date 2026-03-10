@@ -1,5 +1,5 @@
 """Realty API endpoints for Contacts, Properties, and Property Images."""
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, Query, BackgroundTasks
 from sqlalchemy.orm import Session
 from sqlalchemy.exc import SQLAlchemyError
 from typing import List, Optional
@@ -15,6 +15,7 @@ from app.schemas.realty import (
 from app.repo import realty as realty_repo
 from app.core.exceptions import NotFoundException, DatabaseError
 from app.core import security
+from app.api.retell import trigger_outbound_call
 
 realty_router = APIRouter(tags=["Realty"])
 
@@ -56,7 +57,11 @@ def get_contact(contact_id: int, db: Session = Depends(get_mysql_db)):
 
 
 @realty_router.post("/realty/contacts", response_model=ContactResponse, status_code=201)
-def create_contact(contact: ContactCreate, db: Session = Depends(get_mysql_db)):
+def create_contact(
+    contact: ContactCreate, 
+    background_tasks: BackgroundTasks,
+    db: Session = Depends(get_mysql_db)
+):
     """
     Create a new contact.
     
@@ -67,7 +72,22 @@ def create_contact(contact: ContactCreate, db: Session = Depends(get_mysql_db)):
     - **status**: Contact status (optional, defaults to 'new')
     """
     try:
-        return realty_repo.create_contact(db, contact.model_dump(by_alias=False))
+        new_contact = realty_repo.create_contact(db, contact.model_dump(by_alias=False))
+        
+        # Trigger outbound AI phone call in the background
+        prompt_message = contact.message or ""
+        # Adding some extra context about property type if provided
+        # (Assuming the frontend form includes unit/property details in the message, or it's just raw message)
+        background_tasks.add_task(
+            trigger_outbound_call,
+            name=contact.name_,
+            phone=contact.phone,
+            location=contact.location or "",
+            property_type=contact.property_type or "",
+            message=prompt_message
+        )
+        
+        return new_contact
     except SQLAlchemyError as e:
         raise DatabaseError(f"Failed to create contact: {str(e)}")
 
