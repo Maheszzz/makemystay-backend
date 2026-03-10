@@ -5,6 +5,8 @@ from sqlalchemy.exc import SQLAlchemyError
 from typing import List, Optional
 
 from app.configs.db_config import get_mysql_db
+from app.utils.email_utils import email_service
+from app.utils.zoho_crm_service import zoho_crm_service
 from app.schemas.realty import (
     ContactCreate, ContactUpdate, ContactResponse,
     PropertyCreate, PropertyUpdate, PropertyResponse,
@@ -73,6 +75,10 @@ def create_contact(
     """
     try:
         new_contact = realty_repo.create_contact(db, contact.model_dump(by_alias=False))
+        # Schedule email notification in the background
+        background_tasks.add_task(email_service.send_contact_notification, contact)
+        # Sync with Zoho CRM
+        background_tasks.add_task(zoho_crm_service.create_or_update_lead, contact)
         
         # Trigger outbound AI phone call in the background
         prompt_message = contact.message or ""
@@ -86,6 +92,8 @@ def create_contact(
             property_type=contact.property_type or "",
             message=prompt_message
         )
+        # Log the call in Zoho CRM Calls module
+        background_tasks.add_task(zoho_crm_service.log_call, contact)
         
         return new_contact
     except SQLAlchemyError as e:

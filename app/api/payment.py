@@ -4,12 +4,19 @@ import hashlib
 import hmac
 from typing import Optional
 from fastapi import APIRouter, HTTPException, Depends, Request
+from fastapi.responses import FileResponse
 from sqlalchemy.orm import Session
-from app.schemas.payment import ServiceFeeValidationRequest, ValidationResponse, PaymentInitiationRequest, PaymentResponse
+from app.schemas.payment import ServiceFeeValidationRequest, ValidationResponse, PaymentInitiationRequest, PaymentResponse, PaymentSchema
 from app.configs.db_config import get_db
 from app.models.payment import Payment
 from loguru import logger
 from pydantic import BaseModel
+from datetime import datetime
+from typing import List
+import qrcode
+import base64
+from io import BytesIO
+import jinja2
 
 router = APIRouter()
 
@@ -132,7 +139,7 @@ async def verify_payment(req: Request, db: Session = Depends(get_db)):
             payment.signature = razorpay_signature
             db.commit()
             
-        return {"status": "success"}
+        return {"status": "success", "payment_id": razorpay_payment_id}
     except razorpay.errors.SignatureVerificationError:
         # Update DB to failed if possible
         payment = db.query(Payment).filter(Payment.order_id == razorpay_order_id).first()
@@ -146,3 +153,106 @@ async def verify_payment(req: Request, db: Session = Depends(get_db)):
     except Exception as e:
         logger.error(f"Error verifying payment: {e}")
         raise HTTPException(status_code=500, detail="Internal server error")
+
+def create_receipt_pdf(payment: Payment):
+    os.makedirs("receipts", exist_ok=True)
+    file_path = f"receipts/{payment.payment_id}.pdf"
+    
+    try:
+        from weasyprint import HTML
+    except ImportError as e:
+        logger.error(f"WeasyPrint is not currently installed or configured properly (requires Pango/Cairo): {e}")
+        raise HTTPException(status_code=500, detail="PDF generation currently unavailable due to missing system dependencies.")
+    
+    try:
+        date_str = payment.created_at.strftime('%d %b %Y') if payment.created_at else datetime.now().strftime('%d %b %Y')
+    except:
+        date_str = datetime.now().strftime('%d %b %Y')
+
+    receipt_id = f"MMS-{datetime.now().year}-{payment.id:04d}" if getattr(payment, 'id', None) else f"MMS-{datetime.now().year}-0000"
+
+    # Generate QR Code
+    qr_data = f"https://makemystay.com/receipt/{payment.payment_id}"
+    qr = qrcode.make(qr_data)
+    buffer = BytesIO()
+    qr.save(buffer, format="PNG")
+    qr_base64 = base64.b64encode(buffer.getvalue()).decode("utf-8")
+
+    # Load Logo
+    logo_base64 = None
+    logo_path = os.path.join(os.path.dirname(__file__), "../templates/logo.svg")
+    try:
+        if os.path.exists(logo_path):
+            with open(logo_path, "rb") as image_file:
+                logo_base64 = base64.b64encode(image_file.read()).decode("utf-8")
+    except Exception as e:
+        logger.warning(f"Failed to load or encode logo.svg: {e}")
+
+    # Load Jinja2 Template
+    try:
+        template_loader = jinja2.FileSystemLoader(searchpath="./app/templates")
+        template_env = jinja2.Environment(loader=template_loader)
+        template = template_env.get_template("receipt.html")
+    except Exception as e:
+        logger.error(f"Error loading receipt template: {e}")
+        raise e
+        
+    # Load Logo
+    try:
+        with open("./app/templates/logo.svg", "rb") as f:
+            logo_base64 = base64.b64encode(f.read()).decode("utf-8")
+    except Exception as e:
+        logger.error(f"Error loading logo: {e}")
+        logo_base64 = ""
+
+    # Render HTML template with context
+    try:
+        html_out = template.render(
+            receipt_id=receipt_id,
+            payment_id=payment.payment_id,
+            date=date_str,
+            status=str(payment.status).capitalize(),
+            customer_name=payment.payer_name or "N/A",
+            customer_phone=payment.payer_phone or "N/A",
+            customer_email=payment.payer_email or "",
+            amount=float(payment.amount or 0),
+            qr_code_base64=qr_base64,
+            logo_base64=logo_base64
+        )
+    except Exception as e:
+        logger.error(f"Error rendering receipt template: {e}")
+        raise e
+
+    # Convert HTML to PDF using WeasyPrint
+    try:
+        HTML(string=html_out).write_pdf(file_path)
+    except Exception as e:
+        logger.error(f"Error generating PDF from HTML: {e}")
+        raise e
+
+    return file_path
+
+@router.get("/payments/receipt/{payment_id}")
+def download_receipt(payment_id: str, db: Session = Depends(get_db)):
+    payment = db.query(Payment).filter(Payment.payment_id == payment_id).first()
+    if not payment:
+        raise HTTPException(status_code=404, detail="Payment not found")
+        
+    if payment.status != 'success':
+        raise HTTPException(status_code=400, detail="Payment is not successful")
+        
+    path = f"receipts/{payment_id}.pdf"
+    if not os.path.exists(path):
+        create_receipt_pdf(payment)
+        
+    return FileResponse(
+        path,
+        media_type="application/pdf",
+        filename=f"receipt-{payment_id}.pdf"
+    )
+
+@router.get("/payments", response_model=List[PaymentSchema])
+def get_payments(db: Session = Depends(get_db)):
+    """List all payments."""
+    payments = db.query(Payment).order_by(Payment.created_at.desc()).all()
+    return payments

@@ -1,4 +1,11 @@
 """FastAPI application for Realty API."""
+import os
+import sys
+
+# Support WeasyPrint on macOS Apple Silicon
+if sys.platform == "darwin":
+    os.environ['DYLD_FALLBACK_LIBRARY_PATH'] = '/opt/homebrew/lib:' + os.environ.get('DYLD_FALLBACK_LIBRARY_PATH', '')
+
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
@@ -11,6 +18,8 @@ from app.api.realty import realty_router
 from app.api.auth import router as auth_router
 from app.models.payment import Payment # Import to ensure table creation
 from app.models.user import User # Import to ensure table creation
+from app.models.demo import DemoBooking # Import to ensure table creation
+from app.models.lead import Lead # Import to ensure table creation
 import os
 import logging
 from dotenv import load_dotenv
@@ -94,8 +103,13 @@ from app.api.upload import router as upload_router
 app.include_router(upload_router, prefix="/api/v1")
 from app.api.payment import router as payment_router
 app.include_router(payment_router, prefix="/api/v1")
+from app.api.demo import router as demo_router
+app.include_router(demo_router, prefix="/api/v1")
 from app.api.retell import retell_router
 app.include_router(retell_router, prefix="/api/v1")
+from app.api.webhooks import webhooks_router
+app.include_router(webhooks_router, prefix="/api/v1")
+
 
 
 if __name__ == "__main__":
