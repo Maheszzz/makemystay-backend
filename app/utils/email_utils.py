@@ -2,8 +2,6 @@ import os
 import urllib.parse
 from datetime import datetime
 from fastapi_mail import FastMail, MessageSchema, ConnectionConfig, MessageType
-from pydantic import EmailStr
-from typing import List
 from app.schemas.demo import DemoBookingCreate
 from app.schemas.realty import ContactCreate
 from loguru import logger

@@ -152,7 +152,7 @@ def seed():
                 
                 # Link to DB (Backend handles deduplication now)
                 add_image_to_property(match['id'], key, is_primary=False) 
-                print(f"     Linked Success!")
+                print("     Linked Success!")
             except Exception as e:
                 print(f"     ❌ Error: {e}")
         else:

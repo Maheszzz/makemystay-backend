@@ -16,7 +16,6 @@ load_dotenv()
 
 # MySQL Configuration for Realty Database
 # Build connection URL from individual environment variables
-import urllib.parse
 
 DB_USER = os.getenv("DB_USER")
 DB_PASSWORD = os.getenv("DB_PASSWORD")

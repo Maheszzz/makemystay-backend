@@ -1,11 +1,10 @@
 import sys
 import os
-from sqlalchemy.orm import Session
 
 # Add parent directory to path
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from app.configs.db_config import mysql_engine, get_mysql_db
+from app.configs.db_config import get_mysql_db
 from app.repo import realty as realty_repo
 from app.schemas.realty import ReviewResponse
 

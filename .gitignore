@@ -7,3 +7,9 @@ logs
 .env.production
 .env.local
 
+# Python standard ignores
+*.pyc
+*.pyo
+*.pyd
+*.log
+.pytest_cache/

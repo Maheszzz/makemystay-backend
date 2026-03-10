@@ -1,12 +1,10 @@
 import os
 import razorpay
-import hashlib
-import hmac
 from typing import Optional
 from fastapi import APIRouter, HTTPException, Depends, Request
 from fastapi.responses import FileResponse
 from sqlalchemy.orm import Session
-from app.schemas.payment import ServiceFeeValidationRequest, ValidationResponse, PaymentInitiationRequest, PaymentResponse, PaymentSchema
+from app.schemas.payment import ServiceFeeValidationRequest, ValidationResponse, PaymentSchema
 from app.configs.db_config import get_db
 from app.models.payment import Payment
 from loguru import logger

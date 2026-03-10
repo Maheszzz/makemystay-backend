@@ -58,7 +58,6 @@ def generate_upload_url(
         )
 
         # Use the CloudFront utility to get the proper URL (it falls back to S3 public URL if no CF)
-        from app.utils.cloudfront import get_cloudfront_signed_url
         
         # We pass a long expiry since these URLs will be stored in the DB, 
         # but if CloudFront isn't configured, it falls back to a public S3 URL anyway.

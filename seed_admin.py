@@ -1,7 +1,6 @@
 from app.configs.db_config import MySQLSessionLocal
 from app.repo.user import create_user, get_user_by_email
 from app.core.security import get_password_hash
-import sys
 
 def seed_admin():
     db = MySQLSessionLocal()

@@ -4,7 +4,6 @@ This script imports property data from a CSV/text format into the MySQL database
 """
 
 import mysql.connector
-from datetime import datetime
 
 # Database connection
 db_config = {
