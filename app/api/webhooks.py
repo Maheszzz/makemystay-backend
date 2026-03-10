@@ -4,7 +4,8 @@ Supports: Housing.com, 99acres, MagicBricks, Meta Ads, Website, Brokers, etc.
 All sources hit one parameterized endpoint: POST /webhooks/leads/{source}
 """
 import os
-from fastapi import APIRouter, Header, HTTPException, BackgroundTasks, Depends, Query, Request
+import xml.etree.ElementTree as ET
+from fastapi import APIRouter, Header, HTTPException, BackgroundTasks, Depends, Query, Request, Response
 from sqlalchemy.orm import Session
 from loguru import logger
 from typing import Optional, List
@@ -38,13 +39,17 @@ def _get_display_source(source: str) -> str:
 # ------------------------------------------------------------------ #
 #  API Key auth
 # ------------------------------------------------------------------ #
-def _verify_api_key(x_api_key: str = Header(..., alias="X-API-Key")):
+def _verify_api_key(x_api_key: Optional[str], api_key: Optional[str]):
     """Validate the API key sent by the lead source."""
+    key_to_check = x_api_key or api_key
+    if not key_to_check:
+        raise HTTPException(status_code=401, detail="Missing API key")
+
     expected_key = os.getenv("HOUSING_WEBHOOK_API_KEY", "")
     if not expected_key:
         logger.error("HOUSING_WEBHOOK_API_KEY is not configured in environment.")
         raise HTTPException(status_code=500, detail="Webhook not configured")
-    if x_api_key != expected_key:
+    if key_to_check != expected_key:
         raise HTTPException(status_code=401, detail="Invalid API key")
 
 
@@ -79,38 +84,17 @@ class _CRMLeadAdapter:
         self.lead_source = _get_display_source(source)
 
 
-# ================================================================== #
-#  POST /webhooks/leads/{source}  —  Universal Lead Webhook
-# ================================================================== #
-@webhooks_router.post(
-    "/webhooks/leads/{source}",
-    response_model=LeadWebhookResponse,
-    summary="Universal Lead Push Webhook",
-)
-async def receive_lead(
+# ------------------------------------------------------------------ #
+#  Shared Lead Pipeline
+# ------------------------------------------------------------------ #
+def _process_lead_pipeline(
     source: str,
     payload: LeadCreate,
     background_tasks: BackgroundTasks,
-    request: Request,
-    x_api_key: str = Header(..., alias="X-API-Key"),
-    db: Session = Depends(get_mysql_db),
+    db: Session,
 ):
-    """
-    Receives lead data from any source and processes it through the pipeline:
-
-    1. **Authenticate** via `X-API-Key` header
-    2. **Store** in MySQL `leads` table
-    3. **Sync** to Zoho CRM (background)
-    4. **Trigger AI call** via Retell AI (background, if enabled)
-
-    Path parameter `{source}` identifies the platform:
-    `housing`, `99acres`, `magicbricks`, `meta`, `website`, `broker`, etc.
-    """
-    # --- Auth ---
-    _verify_api_key(x_api_key)
-
     source_normalized = source.lower().strip()
-    logger.info(f"Lead webhook [{source_normalized}]: {payload.model_dump()}")
+    logger.info(f"Lead pipeline [{source_normalized}]: {payload.model_dump()}")
 
     # --- 1. Combine message fields ---
     combined_message = payload.message or ""
@@ -175,10 +159,129 @@ async def receive_lead(
         # Log call in Zoho CRM
         background_tasks.add_task(zoho_crm_service.log_call, adapter)
 
+    return db_lead
+
+
+# ================================================================== #
+#  POST /webhooks/leads/{source}  —  Universal Lead Webhook
+# ================================================================== #
+@webhooks_router.post(
+    "/webhooks/leads/{source}",
+    response_model=LeadWebhookResponse,
+    summary="Universal Lead Push Webhook",
+)
+async def receive_lead(
+    source: str,
+    payload: LeadCreate,
+    background_tasks: BackgroundTasks,
+    request: Request,
+    x_api_key: Optional[str] = Header(None, alias="X-API-Key"),
+    api_key: Optional[str] = Query(None, description="API Key via query param"),
+    db: Session = Depends(get_mysql_db),
+):
+    """
+    Receives lead data from any source and processes it through the pipeline:
+
+    1. **Authenticate** via `X-API-Key` header or `api_key` param
+    2. **Store** in MySQL `leads` table
+    3. **Sync** to Zoho CRM (background)
+    4. **Trigger AI call** via Retell AI (background, if enabled)
+
+    Path parameter `{source}` identifies the platform:
+    `housing`, `99acres`, `magicbricks`, `meta`, `website`, `broker`, etc.
+    """
+    _verify_api_key(x_api_key, api_key)
+
+    db_lead = _process_lead_pipeline(source, payload, background_tasks, db)
+
     return LeadWebhookResponse(
         status="ok",
-        message=f"Lead received from {_get_display_source(source_normalized)} and queued for processing",
+        message=f"Lead received from {_get_display_source(source)} and queued for processing",
         lead_id=db_lead.id,
+    )
+
+
+# ================================================================== #
+#  POST /webhooks/99acres  —  99acres Bulk XML Webhook
+# ================================================================== #
+@webhooks_router.post(
+    "/webhooks/99acres",
+    summary="99acres XML Push Integration",
+)
+async def receive_99acres_xml(
+    request: Request,
+    background_tasks: BackgroundTasks,
+    x_api_key: Optional[str] = Header(None, alias="X-API-Key"),
+    api_key: Optional[str] = Query(None, description="API Key via query param"),
+    db: Session = Depends(get_mysql_db),
+):
+    """
+    Receives an XML payload of multiple leads from 99acres and returns an XML response.
+    Expects API Key via `api_key` query parameter or `X-API-Key` header.
+    """
+    _verify_api_key(x_api_key, api_key)
+
+    body = await request.body()
+    try:
+        root = ET.fromstring(body)
+    except ET.ParseError as e:
+        logger.error(f"Failed to parse 99acres XML: {e}")
+        return Response(content="<xml><error>Invalid XML</error></xml>", media_type="application/xml", status_code=400)
+
+    # Build response XML
+    resp_root = ET.Element("xml")
+
+    # Process each query
+    for qry in root.findall("Qry"):
+        def _get_text(tag: str) -> str:
+            elem = qry.find(tag)
+            return elem.text if elem is not None and elem.text else ""
+
+        qry_id = _get_text("QryId")
+        if not qry_id:
+            continue
+
+        phone = _get_text("Phone")
+        if not phone:
+            logger.warning(f"99acres lead {qry_id} has no phone number, skipping.")
+            # Still acknowledge with Y to prevent retries
+            resp_qry = ET.SubElement(resp_root, "QryResp")
+            ET.SubElement(resp_qry, "QryId").text = qry_id
+            ET.SubElement(resp_qry, "status").text = "Y"
+            continue
+
+        project_parts = []
+        project_val = _get_text("Project")
+        if project_val:
+            project_parts.append(f"Project ID: {project_val}")
+        cmpct_val = _get_text("CmpctLabl")
+        if cmpct_val:
+            project_parts.append(cmpct_val)
+
+        payload = LeadCreate(
+            name=_get_text("Name"),
+            email=_get_text("Email"),
+            phone=phone,
+            message=_get_text("QryInfo"),
+            project_name=" | ".join(project_parts) if project_parts else None,
+        )
+
+        # Catch specific failures and mark "N" in return XML only for error logic
+        try:
+            _process_lead_pipeline("99acres", payload, background_tasks, db)
+            
+            resp_qry = ET.SubElement(resp_root, "QryResp")
+            ET.SubElement(resp_qry, "QryId").text = qry_id
+            ET.SubElement(resp_qry, "status").text = "Y"
+        except Exception as e:
+            logger.error(f"Failed to process 99acres lead {qry_id}: {e}")
+            resp_qry = ET.SubElement(resp_root, "QryResp")
+            ET.SubElement(resp_qry, "QryId").text = qry_id
+            ET.SubElement(resp_qry, "status").text = "N"
+
+    return Response(
+        content=ET.tostring(resp_root, encoding="utf-8", xml_declaration=False), 
+        media_type="application/xml"
     )
 
 
