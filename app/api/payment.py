@@ -178,6 +178,16 @@ def create_receipt_pdf(payment: Payment):
     qr.save(buffer, format="PNG")
     qr_base64 = base64.b64encode(buffer.getvalue()).decode("utf-8")
 
+    # Load Logo
+    logo_base64 = None
+    logo_path = os.path.join(os.path.dirname(__file__), "../templates/logo.svg")
+    try:
+        if os.path.exists(logo_path):
+            with open(logo_path, "rb") as image_file:
+                logo_base64 = base64.b64encode(image_file.read()).decode("utf-8")
+    except Exception as e:
+        logger.warning(f"Failed to load or encode logo.svg: {e}")
+
     # Load Jinja2 Template
     try:
         template_loader = jinja2.FileSystemLoader(searchpath="./app/templates")
@@ -186,6 +196,14 @@ def create_receipt_pdf(payment: Payment):
     except Exception as e:
         logger.error(f"Error loading receipt template: {e}")
         raise e
+        
+    # Load Logo
+    try:
+        with open("./app/templates/logo.svg", "rb") as f:
+            logo_base64 = base64.b64encode(f.read()).decode("utf-8")
+    except Exception as e:
+        logger.error(f"Error loading logo: {e}")
+        logo_base64 = ""
 
     # Render HTML template with context
     try:
@@ -198,7 +216,8 @@ def create_receipt_pdf(payment: Payment):
             customer_phone=payment.payer_phone or "N/A",
             customer_email=payment.payer_email or "",
             amount=float(payment.amount or 0),
-            qr_code_base64=qr_base64
+            qr_code_base64=qr_base64,
+            logo_base64=logo_base64
         )
     except Exception as e:
         logger.error(f"Error rendering receipt template: {e}")

@@ -1,4 +1,11 @@
 """FastAPI application for Realty API."""
+import os
+import sys
+
+# Support WeasyPrint on macOS Apple Silicon
+if sys.platform == "darwin":
+    os.environ['DYLD_FALLBACK_LIBRARY_PATH'] = '/opt/homebrew/lib:' + os.environ.get('DYLD_FALLBACK_LIBRARY_PATH', '')
+
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse

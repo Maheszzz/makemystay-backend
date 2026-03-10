@@ -3,7 +3,6 @@
 
 <head>
     <meta charset="UTF-8">
-    <title>MakeMyStay Receipt</title>
     <style>
         body {
             font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif;
@@ -13,280 +12,220 @@
             background-color: #fff;
         }
 
-        .container {
-            max-width: 800px;
-            margin: auto;
-            border: 1px solid #eee;
-            border-radius: 8px;
-            padding: 30px;
-            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.05);
-        }
-
         .header {
             text-align: center;
-            border-bottom: 2px solid #0056b3;
+            border-bottom: 2px dashed #ddd;
             padding-bottom: 20px;
-            margin-bottom: 20px;
+            margin-bottom: 30px;
         }
 
         .header h1 {
+            color: #D92027;
+            /* MakeMyStay Brand Color */
             margin: 0;
-            color: #0056b3;
-            font-size: 32px;
+            font-size: 28px;
             letter-spacing: 1px;
         }
 
         .header p {
-            margin: 5px 0 0 0;
-            color: #666;
-            font-size: 14px;
+            margin: 5px 0 0;
+            color: #777;
+            font-size: 12px;
         }
 
-        .info-section {
-            display: flex;
-            justify-content: space-between;
+        .info-grid {
+            display: table;
+            width: 100%;
             margin-bottom: 30px;
         }
 
-        .info-block {
-            width: 48%;
+        .info-column {
+            display: table-cell;
+            width: 50%;
         }
 
-        .info-block h3 {
-            margin-top: 0;
-            margin-bottom: 15px;
-            color: #444;
-            font-size: 16px;
-            border-bottom: 1px solid #ddd;
-            padding-bottom: 5px;
-        }
-
-        table.meta-table,
-        table.bill-table {
-            width: 100%;
-            border-collapse: collapse;
-        }
-
-        table.meta-table td {
-            padding: 5px 0;
-            font-size: 14px;
-        }
-
-        table.meta-table td strong {
+        .info-label {
+            font-weight: bold;
+            color: #555;
             display: inline-block;
-            width: 120px;
+            width: 100px;
+            margin-bottom: 8px;
         }
 
-        table.items-table {
+        .info-value {
+            color: #111;
+        }
+
+        .section-title {
+            text-transform: uppercase;
+            font-size: 14px;
+            font-weight: bold;
+            color: #D92027;
+            border-bottom: 1px solid #eee;
+            padding-bottom: 8px;
+            margin-bottom: 15px;
+            margin-top: 30px;
+        }
+
+        table {
             width: 100%;
             border-collapse: collapse;
             margin-bottom: 30px;
         }
 
-        table.items-table th {
-            background-color: #f8f9fa;
-            color: #333;
-            padding: 12px;
+        th,
+        td {
             text-align: left;
-            border-bottom: 2px solid #ddd;
-            font-size: 14px;
-        }
-
-        table.items-table td {
             padding: 12px;
             border-bottom: 1px solid #eee;
-            font-size: 15px;
         }
 
-        table.items-table td.amount {
-            text-align: right;
+        th {
+            background-color: #f9f9f9;
+            color: #555;
             font-weight: bold;
+            text-transform: uppercase;
+            font-size: 12px;
         }
 
-        table.items-table th.amount {
+        .text-right {
             text-align: right;
         }
 
-        .totals-block {
-            float: right;
-            width: 50%;
-            margin-bottom: 30px;
-        }
-
-        .totals-table {
-            width: 100%;
-            border-collapse: collapse;
-        }
-
-        .totals-table td {
-            padding: 8px 12px;
-            text-align: right;
-            font-size: 15px;
-        }
-
-        .totals-table .total-row td {
-            font-size: 18px;
+        .total-row td {
             font-weight: bold;
-            color: #0056b3;
-            border-top: 2px solid #ddd;
+            font-size: 16px;
+            border-top: 2px solid #333;
+            border-bottom: 2px solid #333;
         }
 
         .status-badge {
             display: inline-block;
             padding: 5px 12px;
-            background-color: #d4edda;
-            color: #155724;
-            border-radius: 4px;
-            font-size: 14px;
+            border-radius: 20px;
+            font-size: 12px;
             font-weight: bold;
             text-transform: uppercase;
+            color: #fff;
         }
 
-        .status-badge.failed {
-            background-color: #f8d7da;
-            color: #721c24;
+        .status-success {
+            background-color: #10B981;
         }
 
-        .status-badge.pending {
-            background-color: #fff3cd;
-            color: #856404;
+        .status-pending {
+            background-color: #F59E0B;
         }
 
-        .clear {
-            clear: both;
-        }
-
-        .footer {
-            margin-top: 40px;
-            text-align: center;
-            border-top: 1px solid #eee;
-            padding-top: 20px;
+        .status-failed {
+            background-color: #EF4444;
         }
 
         .qr-section {
-            margin-top: 20px;
+            text-align: center;
+            margin-top: 40px;
+            padding: 20px;
+            background-color: #f9f9f9;
+            border-radius: 12px;
         }
 
         .qr-section img {
-            width: 130px;
-            height: 130px;
-            border: 1px solid #eee;
-            padding: 5px;
-            border-radius: 4px;
+            max-width: 150px;
+            height: auto;
+            margin-bottom: 10px;
         }
 
         .qr-section p {
-            margin: 10px 0 0 0;
-            font-size: 13px;
+            font-size: 12px;
             color: #666;
+            margin: 0;
         }
 
-        .thank-you {
-            margin-top: 25px;
-            font-size: 18px;
-            font-weight: bold;
-            color: #444;
-        }
-
-        .contact {
-            margin-top: 5px;
-            font-size: 14px;
-            color: #777;
+        .footer {
+            text-align: center;
+            margin-top: 40px;
+            padding-top: 20px;
+            border-top: 1px solid #eee;
+            font-size: 12px;
+            color: #888;
         }
     </style>
 </head>
 
 <body>
-    <div class="container">
-        <div class="header">
-            <h1>MakeMyStay</h1>
-            <p>www.makemystay.com</p>
+
+    <div class="header">
+        {% if logo_base64 %}
+        <div><img src="data:image/svg+xml;base64,{{ logo_base64 }}" alt="MakeMyStay Logo"
+                style="max-height: 60px; margin-bottom: 5px;"></div>
+        {% else %}
+        <h1>MakeMyStay</h1>
+        {% endif %}
+        <p>www.makemystay.ai</p>
+    </div>
+
+    <div class="info-grid">
+        <div class="info-column">
+            <div><span class="info-label">Receipt ID:</span> <span class="info-value">{{ receipt_id }}</span></div>
+            <div><span class="info-label">Payment ID:</span> <span class="info-value">{{ payment_id }}</span></div>
+            <div><span class="info-label">Date:</span> <span class="info-value">{{ date }}</span></div>
         </div>
-
-        <div class="info-section">
-            <div class="info-block">
-                <h3>Receipt Details</h3>
-                <table class="meta-table">
-                    <tr>
-                        <td><strong>Receipt ID:</strong></td>
-                        <td>{{ receipt_id }}</td>
-                    </tr>
-                    <tr>
-                        <td><strong>Payment ID:</strong></td>
-                        <td>{{ payment_id }}</td>
-                    </tr>
-                    <tr>
-                        <td><strong>Date:</strong></td>
-                        <td>{{ date }}</td>
-                    </tr>
-                    <tr>
-                        <td><strong>Status:</strong></td>
-                        <td>
-                            <span class="status-badge {{ status|lower }}">{{ status }}</span>
-                        </td>
-                    </tr>
-                </table>
+        <div class="info-column" style="text-align: right;">
+            <div style="text-align: left; display: inline-block;">
+                <div style="font-weight: bold; margin-bottom: 8px; color: #555;">Bill To:</div>
+                <div><span class="info-value" style="font-weight: bold;">{{ customer_name }}</span></div>
+                <div><span class="info-value">{{ customer_phone }}</span></div>
+                <div><span class="info-value">{{ customer_email }}</span></div>
             </div>
-
-            <div class="info-block">
-                <h3>Bill To</h3>
-                <table class="meta-table">
-                    <tr>
-                        <td><strong>Customer Name:</strong></td>
-                        <td>{{ customer_name }}</td>
-                    </tr>
-                    <tr>
-                        <td><strong>Phone:</strong></td>
-                        <td>{{ customer_phone }}</td>
-                    </tr>
-                    {% if customer_email %}
-                    <tr>
-                        <td><strong>Email:</strong></td>
-                        <td>{{ customer_email }}</td>
-                    </tr>
-                    {% endif %}
-                </table>
-            </div>
-        </div>
-
-        <table class="items-table">
-            <thead>
-                <tr>
-                    <th>Description</th>
-                    <th class="amount">Amount</th>
-                </tr>
-            </thead>
-            <tbody>
-                <tr>
-                    <td>Property Booking<br><small style="color: #666;">Service and Platform fee</small></td>
-                    <td class="amount">₹{{ "%.2f"|format(amount) }}</td>
-                </tr>
-            </tbody>
-        </table>
-
-        <div class="totals-block">
-            <table class="totals-table">
-                <tr class="total-row">
-                    <td>Total</td>
-                    <td>₹{{ "%.2f"|format(amount) }}</td>
-                </tr>
-            </table>
-        </div>
-
-        <div class="clear"></div>
-
-        <div class="footer">
-            {% if qr_code_base64 %}
-            <div class="qr-section">
-                <img src="data:image/png;base64,{{ qr_code_base64 }}" alt="QR Code" />
-                <p>Scan QR for payment details</p>
-            </div>
-            {% endif %}
-
-            <div class="thank-you">Thank you for booking with us</div>
-            <div class="contact">support@makemystay.com</div>
         </div>
     </div>
+
+    <div class="section-title">Payment Details</div>
+
+    <table>
+        <thead>
+            <tr>
+                <th>Description</th>
+                <th class="text-right">Amount</th>
+            </tr>
+        </thead>
+        <tbody>
+            <tr>
+                <td>Property Booking</td>
+                <td class="text-right">₹{{ '{:,.2f}'.format(amount) }}</td>
+            </tr>
+            <tr class="total-row">
+                <td>Total Paid</td>
+                <td class="text-right">₹{{ '{:,.2f}'.format(amount) }}</td>
+            </tr>
+        </tbody>
+    </table>
+
+    <div style="display: table; width: 100%;">
+        <div style="display: table-cell; width: 50%;">
+            <span class="info-label">Status:</span>
+            <span class="status-badge 
+                {% if status | lower == 'success' %} status-success
+                {% elif status | lower == 'pending' %} status-pending
+                {% else %} status-failed {% endif %}
+            ">
+                {{ status }}
+            </span>
+        </div>
+    </div>
+
+    {% if qr_code_base64 %}
+    <div class="qr-section">
+        <img src="data:image/png;base64,{{ qr_code_base64 }}" alt="QR Code">
+        <p>Scan QR to verify receipt online</p>
+    </div>
+    {% endif %}
+
+    <div class="footer">
+        <p><strong>Thank you for booking with MakeMyStay!</strong></p>
+        <p>If you have any questions regarding this receipt, please contact <strong>support@makemystay.ai</strong></p>
+    </div>
+
 </body>
 
 </html>
