@@ -40,7 +40,7 @@ cd $REMOTE_DIR
 
 echo "🔧 Installing system packages..."
 sudo apt update -y
-sudo apt install -y python3 python3-venv python3-pip
+sudo apt install -y python3 python3-venv python3-pip libpango-1.0-0 libpangoft2-1.0-0 libgdk-pixbuf2.0-0 libffi-dev shared-mime-info
 
 echo "🐍 Creating venv (if missing)..."
 if [ ! -d "$VENV_DIR" ]; then
