@@ -3,18 +3,29 @@
 Supports: Housing.com, 99acres, MagicBricks, Meta Ads, Website, Brokers, etc.
 All sources hit one parameterized endpoint: POST /webhooks/leads/{source}
 """
+
 import os
 import xml.etree.ElementTree as ET
-from fastapi import APIRouter, Header, HTTPException, BackgroundTasks, Depends, Query, Request, Response
-from sqlalchemy.orm import Session
-from loguru import logger
-from typing import Optional, List
+from typing import List, Optional
 
-from app.configs.db_config import get_mysql_db
-from app.schemas.lead import LeadCreate, LeadResponse, LeadWebhookResponse, LeadStatus
-from app.repo import lead as lead_repo
-from app.utils.zoho_crm_service import zoho_crm_service
+from fastapi import (
+    APIRouter,
+    BackgroundTasks,
+    Depends,
+    Header,
+    HTTPException,
+    Query,
+    Request,
+    Response,
+)
+from loguru import logger
+from sqlalchemy.orm import Session
+
 from app.api.retell import trigger_outbound_call
+from app.configs.db_config import get_mysql_db
+from app.repo import lead as lead_repo
+from app.schemas.lead import LeadCreate, LeadResponse, LeadStatus, LeadWebhookResponse
+from app.utils.zoho_crm_service import zoho_crm_service
 
 webhooks_router = APIRouter(tags=["Webhooks / Leads"])
 
@@ -99,7 +110,11 @@ def _process_lead_pipeline(
     # --- 1. Combine message fields ---
     combined_message = payload.message or ""
     if payload.requirement:
-        combined_message += f" | Requirement: {payload.requirement}" if combined_message else payload.requirement
+        combined_message += (
+            f" | Requirement: {payload.requirement}"
+            if combined_message
+            else payload.requirement
+        )
 
     # --- 2. Store in MySQL ---
     lead_data = {
@@ -134,19 +149,26 @@ def _process_lead_pipeline(
             # Update the DB record with Zoho ID
             try:
                 from app.configs.db_config import MySQLSessionLocal
+
                 with MySQLSessionLocal() as session:
                     lead_obj = lead_repo.get_lead_by_id(session, lead_id_ref)
                     if lead_obj:
-                        lead_repo.update_lead(session, lead_obj, {"zoho_lead_id": zoho_lead_id})
+                        lead_repo.update_lead(
+                            session, lead_obj, {"zoho_lead_id": zoho_lead_id}
+                        )
             except Exception as e:
-                logger.error(f"Failed to update zoho_lead_id for Lead #{lead_id_ref}: {e}")
+                logger.error(
+                    f"Failed to update zoho_lead_id for Lead #{lead_id_ref}: {e}"
+                )
         else:
             logger.error(f"Failed to sync Lead #{lead_id_ref} to Zoho CRM")
 
     background_tasks.add_task(_sync_to_crm)
 
     # --- 4. AI calling (background, if enabled) ---
-    enable_ai_calling = os.getenv("ENABLE_AI_CALLING_FOR_LEADS", "false").lower() == "true"
+    enable_ai_calling = (
+        os.getenv("ENABLE_AI_CALLING_FOR_LEADS", "false").lower() == "true"
+    )
     if enable_ai_calling:
         background_tasks.add_task(
             trigger_outbound_call,
@@ -226,13 +248,18 @@ async def receive_99acres_xml(
         root = ET.fromstring(body)
     except ET.ParseError as e:
         logger.error(f"Failed to parse 99acres XML: {e}")
-        return Response(content="<xml><error>Invalid XML</error></xml>", media_type="application/xml", status_code=400)
+        return Response(
+            content="<xml><error>Invalid XML</error></xml>",
+            media_type="application/xml",
+            status_code=400,
+        )
 
     # Build response XML
     resp_root = ET.Element("xml")
 
     # Process each query
     for qry in root.findall("Qry"):
+
         def _get_text(tag: str) -> str:
             elem = qry.find(tag)
             return elem.text if elem is not None and elem.text else ""
@@ -269,7 +296,7 @@ async def receive_99acres_xml(
         # Catch specific failures and mark "N" in return XML only for error logic
         try:
             _process_lead_pipeline("99acres", payload, background_tasks, db)
-            
+
             resp_qry = ET.SubElement(resp_root, "QryResp")
             ET.SubElement(resp_qry, "QryId").text = qry_id
             ET.SubElement(resp_qry, "status").text = "Y"
@@ -280,8 +307,8 @@ async def receive_99acres_xml(
             ET.SubElement(resp_qry, "status").text = "N"
 
     return Response(
-        content=ET.tostring(resp_root, encoding="utf-8", xml_declaration=False), 
-        media_type="application/xml"
+        content=ET.tostring(resp_root, encoding="utf-8", xml_declaration=False),
+        media_type="application/xml",
     )
 
 
@@ -296,7 +323,9 @@ async def receive_99acres_xml(
 def list_leads(
     skip: int = Query(0, ge=0),
     limit: int = Query(100, ge=1, le=500),
-    source: Optional[str] = Query(None, description="Filter by source (housing, 99acres, etc.)"),
+    source: Optional[str] = Query(
+        None, description="Filter by source (housing, 99acres, etc.)"
+    ),
     status: Optional[LeadStatus] = Query(None, description="Filter by status"),
     db: Session = Depends(get_mysql_db),
 ):

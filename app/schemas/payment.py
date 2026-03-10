@@ -1,6 +1,8 @@
-from pydantic import BaseModel
-from typing import Optional
 from datetime import datetime
+from typing import Optional
+
+from pydantic import BaseModel
+
 
 class ServiceFeeValidationRequest(BaseModel):
     property_id: int
@@ -8,9 +10,11 @@ class ServiceFeeValidationRequest(BaseModel):
     service_fee_amount: float
     service_fee_type: str  # 'sharing', 'private', 'fixed'
 
+
 class ValidationResponse(BaseModel):
     valid: bool
     message: str
+
 
 class PaymentInitiationRequest(BaseModel):
     amount: float
@@ -21,10 +25,12 @@ class PaymentInitiationRequest(BaseModel):
     payer_email: Optional[str] = None
     details: Optional[dict] = None
 
+
 class PaymentResponse(BaseModel):
     transaction_id: str
     status: str
     message: str
+
 
 class PaymentSchema(BaseModel):
     id: int
@@ -42,4 +48,3 @@ class PaymentSchema(BaseModel):
 
     class Config:
         from_attributes = True
-

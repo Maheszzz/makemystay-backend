@@ -1,17 +1,17 @@
 # MySQL Configuration for Realty Database
 # Build connection URL from individual environment variables
+import os
 import urllib.parse
 
-from sqlalchemy.orm import declarative_base, sessionmaker
-from sqlalchemy import create_engine
-import os
-from loguru import logger
 from dotenv import load_dotenv
+from loguru import logger
+from sqlalchemy import create_engine
+from sqlalchemy.orm import declarative_base, sessionmaker
+
 from app.configs.log_config import setup_logger
 
 setup_logger()
 load_dotenv()
-
 
 
 # MySQL Configuration for Realty Database
@@ -26,7 +26,9 @@ DB_NAME = os.getenv("DB_NAME")
 # URL encode the password to handle special characters like @, #, etc.
 encoded_password = urllib.parse.quote_plus(DB_PASSWORD) if DB_PASSWORD else ""
 
-MYSQL_DATABASE_URL = f"mysql+pymysql://{DB_USER}:{encoded_password}@{DB_HOST}:{DB_PORT}/{DB_NAME}"
+MYSQL_DATABASE_URL = (
+    f"mysql+pymysql://{DB_USER}:{encoded_password}@{DB_HOST}:{DB_PORT}/{DB_NAME}"
+)
 
 logger.info(f"Creating MySQL engine for {DB_HOST}:{DB_PORT}/{DB_NAME}")
 mysql_engine = create_engine(MYSQL_DATABASE_URL, echo=True, pool_pre_ping=True)
@@ -36,6 +38,7 @@ MySQLSessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=mysql_e
 
 logger.info("Creating MySQL declarative base")
 MySQLBase = declarative_base()
+
 
 def get_mysql_db():
     db = MySQLSessionLocal()

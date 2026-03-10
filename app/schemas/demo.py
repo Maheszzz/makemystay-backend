@@ -1,6 +1,8 @@
-from pydantic import BaseModel, EmailStr
 from datetime import datetime
 from typing import Optional
+
+from pydantic import BaseModel, EmailStr
+
 
 class DemoBookingCreate(BaseModel):
     name: str
@@ -9,6 +11,7 @@ class DemoBookingCreate(BaseModel):
     company: Optional[str] = None
     units: Optional[str] = None
     selected_slot: datetime
+
 
 class DemoBookingResponse(BaseModel):
     id: int
@@ -21,9 +24,10 @@ class DemoBookingResponse(BaseModel):
     status: str
     meeting_link: Optional[str] = None
     created_at: datetime
-    
+
     class Config:
         from_attributes = True
+
 
 class ScheduleDemoResponse(BaseModel):
     message: str

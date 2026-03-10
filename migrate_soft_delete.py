@@ -1,6 +1,7 @@
 from app.configs.db_config import MySQLSessionLocal
 from app.models.realty import Property, PropertyImage
 
+
 def migrate_soft_delete():
     db = MySQLSessionLocal()
     try:
@@ -15,6 +16,7 @@ def migrate_soft_delete():
         db.rollback()
     finally:
         db.close()
+
 
 if __name__ == "__main__":
     migrate_soft_delete()

@@ -1,8 +1,10 @@
 """Pydantic schemas for the unified lead pipeline."""
-from typing import Optional
+
 from datetime import datetime
-from pydantic import BaseModel, Field
 from enum import Enum
+from typing import Optional
+
+from pydantic import BaseModel, Field
 
 
 class LeadStatus(str, Enum):
@@ -20,6 +22,7 @@ class LeadCreate(BaseModel):
     All other fields are optional so the endpoint gracefully accepts whatever
     the source sends.
     """
+
     name: Optional[str] = Field(None, max_length=200)
     email: Optional[str] = Field(None, max_length=200)
     phone: str = Field(..., min_length=10, max_length=20)
@@ -34,6 +37,7 @@ class LeadCreate(BaseModel):
 
 class LeadResponse(BaseModel):
     """Full lead response with ID, timestamps, and CRM sync status."""
+
     id: int
     name: Optional[str] = None
     phone: str
@@ -56,6 +60,7 @@ class LeadResponse(BaseModel):
 
 class LeadWebhookResponse(BaseModel):
     """Response returned by the webhook endpoint."""
+
     status: str
     message: str
     lead_id: Optional[int] = None

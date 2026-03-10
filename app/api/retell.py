@@ -1,6 +1,7 @@
 """Retell AI API endpoints for creating web calls and outbound phone calls."""
 
 import os
+
 import httpx
 from fastapi import APIRouter, HTTPException
 from loguru import logger
@@ -36,9 +37,7 @@ async def create_web_call():
                     "Authorization": f"Bearer {RETELL_API_KEY}",
                     "Content-Type": "application/json",
                 },
-                json={
-                    "agent_id": RETELL_AGENT_ID
-                },
+                json={"agent_id": RETELL_AGENT_ID},
                 timeout=10.0,
             )
 
@@ -53,8 +52,7 @@ async def create_web_call():
     except httpx.HTTPStatusError as e:
         logger.error(f"Retell API error: {e.response.text}")
         raise HTTPException(
-            status_code=e.response.status_code,
-            detail="Retell API error"
+            status_code=e.response.status_code, detail="Retell API error"
         )
 
     except httpx.RequestError as e:
@@ -93,7 +91,7 @@ async def trigger_outbound_call(
     phone: str,
     location: str = "",
     property_type: str = "",
-    message: str = ""
+    message: str = "",
 ):
     """
     Trigger outbound AI call using Retell.
@@ -114,13 +112,12 @@ async def trigger_outbound_call(
         "from_number": RETELL_FROM_NUMBER,
         "to_number": formatted_phone,
         "agent_id": RETELL_AGENT_ID,
-
         "retell_llm_dynamic_variables": {
             "name": name,
             "location": location,
             "property_type": property_type,
-            "requirement": message or "interested in property options"
-        }
+            "requirement": message or "interested in property options",
+        },
     }
 
     try:

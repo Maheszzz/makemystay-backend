@@ -1,13 +1,14 @@
 from app.configs.db_config import MySQLSessionLocal
-from app.repo.user import create_user, get_user_by_email
 from app.core.security import get_password_hash
+from app.repo.user import create_user, get_user_by_email
+
 
 def seed_admin():
     db = MySQLSessionLocal()
     try:
         admin_email = "admin@makemystay.ai"
-        admin_password = "AdminChangeMe123!" # Default password
-        
+        admin_password = "AdminChangeMe123!"  # Default password
+
         existing_user = get_user_by_email(db, admin_email)
         if existing_user:
             print(f"User {admin_email} already exists.")
@@ -17,9 +18,9 @@ def seed_admin():
             "email": admin_email,
             "password_hash": get_password_hash(admin_password),
             "role": "admin",
-            "full_name": "System Admin"
+            "full_name": "System Admin",
         }
-        
+
         create_user(db, user_data)
         print(f"Admin user created: {admin_email}")
         print(f"Default Password: {admin_password}")
@@ -28,6 +29,7 @@ def seed_admin():
         print(f"Error seeding admin: {e}")
     finally:
         db.close()
+
 
 if __name__ == "__main__":
     seed_admin()

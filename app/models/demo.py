@@ -1,6 +1,8 @@
-from sqlalchemy import Column, Integer, String, DateTime
+from sqlalchemy import Column, DateTime, Integer, String
 from sqlalchemy.sql import func
+
 from app.configs.db_config import MySQLBase
+
 
 class DemoBooking(MySQLBase):
     __tablename__ = "demo_bookings"

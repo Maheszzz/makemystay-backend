@@ -1,7 +1,9 @@
 """Repository layer for Lead operations."""
-from sqlalchemy.orm import Session
-from sqlalchemy.exc import SQLAlchemyError
+
 from typing import List, Optional
+
+from sqlalchemy.exc import SQLAlchemyError
+from sqlalchemy.orm import Session
 
 from app.models.lead import Lead
 

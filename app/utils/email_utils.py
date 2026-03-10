@@ -1,15 +1,18 @@
 import os
 import urllib.parse
 from datetime import datetime
-from fastapi_mail import FastMail, MessageSchema, ConnectionConfig, MessageType
-from app.schemas.demo import DemoBookingCreate
-from app.schemas.realty import ContactCreate
-from loguru import logger
+
 import pytz
 from dotenv import load_dotenv
+from fastapi_mail import ConnectionConfig, FastMail, MessageSchema, MessageType
+from loguru import logger
+
+from app.schemas.demo import DemoBookingCreate
+from app.schemas.realty import ContactCreate
 
 # Ensure environment variables are loaded when this module is imported
 load_dotenv()
+
 
 class EmailService:
     def __init__(self):
@@ -23,50 +26,64 @@ class EmailService:
             MAIL_STARTTLS=False,
             MAIL_SSL_TLS=True,
             USE_CREDENTIALS=True,
-            VALIDATE_CERTS=True
+            VALIDATE_CERTS=True,
         )
 
     def _format_datetime_ist(self, dt: datetime) -> tuple[str, str]:
         """Formats a datetime object to IST and returns (date_str, time_str)"""
         if dt.tzinfo is None:
             dt = pytz.utc.localize(dt)
-        ist_tz = pytz.timezone('Asia/Kolkata')
+        ist_tz = pytz.timezone("Asia/Kolkata")
         dt_ist = dt.astimezone(ist_tz)
-        
+
         date_str = dt_ist.strftime("%d %B %Y")
         time_str = dt_ist.strftime("%I:%M %p IST")
         return date_str, time_str
 
-    def _generate_google_calendar_link(self, title: str, start_dt: datetime, end_dt: datetime, details: str, location: str) -> str:
+    def _generate_google_calendar_link(
+        self,
+        title: str,
+        start_dt: datetime,
+        end_dt: datetime,
+        details: str,
+        location: str,
+    ) -> str:
         """Generates a Google Calendar event link"""
         # Google calendar expects UTC format with 'Z' appended
         if start_dt.tzinfo is None:
             start_dt = pytz.utc.localize(start_dt)
         if end_dt.tzinfo is None:
             end_dt = pytz.utc.localize(end_dt)
-            
+
         start_utc = start_dt.astimezone(pytz.utc).strftime("%Y%m%dT%H%M%SZ")
         end_utc = end_dt.astimezone(pytz.utc).strftime("%Y%m%dT%H%M%SZ")
-        
+
         base_url = "https://calendar.google.com/calendar/render?action=TEMPLATE"
         params = {
             "text": title,
             "dates": f"{start_utc}/{end_utc}",
             "details": details,
-            "location": location
+            "location": location,
         }
         return base_url + "&" + urllib.parse.urlencode(params)
-    
-    def _generate_outlook_calendar_link(self, title: str, start_dt: datetime, end_dt: datetime, details: str, location: str) -> str:
+
+    def _generate_outlook_calendar_link(
+        self,
+        title: str,
+        start_dt: datetime,
+        end_dt: datetime,
+        details: str,
+        location: str,
+    ) -> str:
         """Generates an Outlook Calendar event link"""
         if start_dt.tzinfo is None:
             start_dt = pytz.utc.localize(start_dt)
         if end_dt.tzinfo is None:
             end_dt = pytz.utc.localize(end_dt)
-            
+
         start_utc = start_dt.astimezone(pytz.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
         end_utc = end_dt.astimezone(pytz.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
-        
+
         base_url = "https://outlook.live.com/calendar/0/deeplink/compose"
         params = {
             "path": "/calendar/action/compose",
@@ -75,27 +92,34 @@ class EmailService:
             "enddt": end_utc,
             "subject": title,
             "body": details,
-            "location": location
+            "location": location,
         }
         return base_url + "?" + urllib.parse.urlencode(params)
 
-    async def send_booking_confirmation(self, booking_data: DemoBookingCreate, meet_link: str):
+    async def send_booking_confirmation(
+        self, booking_data: DemoBookingCreate, meet_link: str
+    ):
         """Send confirmation email to the user and notification to admin."""
-        
+
         # Format date and time
         start_time = booking_data.selected_slot
         # Assuming demo is 30 mins
         import datetime as dt_mod
+
         end_time = start_time + dt_mod.timedelta(minutes=30)
-        
+
         date_str, time_str = self._format_datetime_ist(start_time)
-        
+
         # Details for calendar
         cal_title = "MakeMyStay Platform Demo"
         cal_details = f"Demo session with the MakeMyStay team.\\n\\nName: {booking_data.name}\\nCompany: {booking_data.company}\\n\\nMeeting Link: {meet_link}"
-        
-        gcal_link = self._generate_google_calendar_link(cal_title, start_time, end_time, cal_details, meet_link)
-        outlook_link = self._generate_outlook_calendar_link(cal_title, start_time, end_time, cal_details, meet_link)
+
+        gcal_link = self._generate_google_calendar_link(
+            cal_title, start_time, end_time, cal_details, meet_link
+        )
+        outlook_link = self._generate_outlook_calendar_link(
+            cal_title, start_time, end_time, cal_details, meet_link
+        )
 
         # 1. Email to User
         user_html = f"""
@@ -194,7 +218,7 @@ class EmailService:
             subject=f"Your MakeMyStay Demo is Confirmed – {date_str} at {dt_mod.datetime.strptime(time_str, '%I:%M %p IST').strftime('%I %p')}",
             recipients=[booking_data.email],
             body=user_html,
-            subtype=MessageType.html
+            subtype=MessageType.html,
         )
 
         # 2. Email to Admin (Internal notification - keeping it functional but clean)
@@ -235,13 +259,13 @@ class EmailService:
 
         admin_message = MessageSchema(
             subject=f"New Demo Booking: {booking_data.company or booking_data.name} - {date_str}",
-            recipients=[os.getenv("MAIL_FROM")], # Sending to company email
+            recipients=[os.getenv("MAIL_FROM")],  # Sending to company email
             body=admin_html,
-            subtype=MessageType.html
+            subtype=MessageType.html,
         )
 
         fm = FastMail(self.conf)
-        
+
         try:
             await fm.send_message(user_message)
             logger.info(f"Confirmation email sent to {booking_data.email}")
@@ -252,7 +276,7 @@ class EmailService:
 
     async def send_contact_notification(self, contact_data: ContactCreate):
         """Send notification to admin when someone contacts through the website."""
-        
+
         # Email to Admin
         admin_html = f"""
         <!DOCTYPE html>
@@ -292,18 +316,20 @@ class EmailService:
 
         admin_message = MessageSchema(
             subject=f"New Website Contact: {contact_data.name_}",
-            recipients=[self.conf.MAIL_FROM], # Sending to company email
+            recipients=[self.conf.MAIL_FROM],  # Sending to company email
             body=admin_html,
-            subtype=MessageType.html
+            subtype=MessageType.html,
         )
 
         fm = FastMail(self.conf)
-        
+
         try:
             await fm.send_message(admin_message)
-            logger.info(f"Admin notification sent for new contact: {contact_data.name_}")
+            logger.info(
+                f"Admin notification sent for new contact: {contact_data.name_}"
+            )
         except Exception as e:
             logger.error(f"Failed to send contact email: {str(e)}")
 
-email_service = EmailService()
 
+email_service = EmailService()
