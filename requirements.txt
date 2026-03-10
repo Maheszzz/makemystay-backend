@@ -31,7 +31,9 @@ typing_extensions==4.15.0
 uvicorn==0.39.0
 wrapt==2.0.1
 razorpay
-reportlab
+qrcode[pil]
+jinja2
+weasyprint
 
 fastapi-mail
 pytz

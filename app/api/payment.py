@@ -6,13 +6,17 @@ from typing import Optional
 from fastapi import APIRouter, HTTPException, Depends, Request
 from fastapi.responses import FileResponse
 from sqlalchemy.orm import Session
-from app.schemas.payment import ServiceFeeValidationRequest, ValidationResponse, PaymentInitiationRequest, PaymentResponse
+from app.schemas.payment import ServiceFeeValidationRequest, ValidationResponse, PaymentInitiationRequest, PaymentResponse, PaymentSchema
 from app.configs.db_config import get_db
 from app.models.payment import Payment
 from loguru import logger
 from pydantic import BaseModel
-from reportlab.pdfgen import canvas
 from datetime import datetime
+from typing import List
+import qrcode
+import base64
+from io import BytesIO
+import jinja2
 
 router = APIRouter()
 
@@ -154,26 +158,59 @@ def create_receipt_pdf(payment: Payment):
     os.makedirs("receipts", exist_ok=True)
     file_path = f"receipts/{payment.payment_id}.pdf"
     
-    c = canvas.Canvas(file_path)
-    c.drawString(100, 750, "MakeMyStay")
-    c.drawString(100, 735, "-" * 50)
-    c.drawString(100, 700, f"Receipt ID : MMS-{datetime.now().year}-{payment.id:04d}")
-    c.drawString(100, 680, f"Payment ID : {payment.payment_id}")
-    c.drawString(100, 660, f"Customer   : {payment.payer_name or 'N/A'}")
-    c.drawString(100, 640, f"Phone      : {payment.payer_phone or 'N/A'}")
-    c.drawString(100, 620, f"Amount     : Rs. {payment.amount}")
+    try:
+        from weasyprint import HTML
+    except ImportError as e:
+        logger.error(f"WeasyPrint is not currently installed or configured properly (requires Pango/Cairo): {e}")
+        raise HTTPException(status_code=500, detail="PDF generation currently unavailable due to missing system dependencies.")
     
     try:
         date_str = payment.created_at.strftime('%d %b %Y') if payment.created_at else datetime.now().strftime('%d %b %Y')
     except:
         date_str = datetime.now().strftime('%d %b %Y')
-        
-    c.drawString(100, 600, f"Date       : {date_str}")
-    c.drawString(100, 580, f"Status     : {str(payment.status).capitalize()}")
-    c.drawString(100, 565, "-" * 50)
-    c.drawString(100, 530, "Thank you for booking with us")
-    
-    c.save()
+
+    receipt_id = f"MMS-{datetime.now().year}-{payment.id:04d}" if getattr(payment, 'id', None) else f"MMS-{datetime.now().year}-0000"
+
+    # Generate QR Code
+    qr_data = f"https://makemystay.com/receipt/{payment.payment_id}"
+    qr = qrcode.make(qr_data)
+    buffer = BytesIO()
+    qr.save(buffer, format="PNG")
+    qr_base64 = base64.b64encode(buffer.getvalue()).decode("utf-8")
+
+    # Load Jinja2 Template
+    try:
+        template_loader = jinja2.FileSystemLoader(searchpath="./app/templates")
+        template_env = jinja2.Environment(loader=template_loader)
+        template = template_env.get_template("receipt.html")
+    except Exception as e:
+        logger.error(f"Error loading receipt template: {e}")
+        raise e
+
+    # Render HTML template with context
+    try:
+        html_out = template.render(
+            receipt_id=receipt_id,
+            payment_id=payment.payment_id,
+            date=date_str,
+            status=str(payment.status).capitalize(),
+            customer_name=payment.payer_name or "N/A",
+            customer_phone=payment.payer_phone or "N/A",
+            customer_email=payment.payer_email or "",
+            amount=float(payment.amount or 0),
+            qr_code_base64=qr_base64
+        )
+    except Exception as e:
+        logger.error(f"Error rendering receipt template: {e}")
+        raise e
+
+    # Convert HTML to PDF using WeasyPrint
+    try:
+        HTML(string=html_out).write_pdf(file_path)
+    except Exception as e:
+        logger.error(f"Error generating PDF from HTML: {e}")
+        raise e
+
     return file_path
 
 @router.get("/payments/receipt/{payment_id}")
@@ -194,3 +231,9 @@ def download_receipt(payment_id: str, db: Session = Depends(get_db)):
         media_type="application/pdf",
         filename=f"receipt-{payment_id}.pdf"
     )
+
+@router.get("/payments", response_model=List[PaymentSchema])
+def get_payments(db: Session = Depends(get_db)):
+    """List all payments."""
+    payments = db.query(Payment).order_by(Payment.created_at.desc()).all()
+    return payments

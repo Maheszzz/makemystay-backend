@@ -1,5 +1,6 @@
 from pydantic import BaseModel
 from typing import Optional
+from datetime import datetime
 
 class ServiceFeeValidationRequest(BaseModel):
     property_id: int
@@ -24,4 +25,21 @@ class PaymentResponse(BaseModel):
     transaction_id: str
     status: str
     message: str
+
+class PaymentSchema(BaseModel):
+    id: int
+    amount: float
+    currency: str
+    payment_type: str
+    status: str
+    order_id: str
+    payment_id: Optional[str] = None
+    payer_name: Optional[str] = None
+    payer_email: Optional[str] = None
+    payer_phone: Optional[str] = None
+    created_at: datetime
+    updated_at: datetime
+
+    class Config:
+        from_attributes = True
 
