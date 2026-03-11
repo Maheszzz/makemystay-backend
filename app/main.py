@@ -56,6 +56,8 @@ app.add_middleware(
         "http://localhost:5174",
         "https://makemystay.ai",
         "https://www.makemystay.ai",
+        "https://admin.makemystay.ai",
+        "https://api.makemystay.ai",
     ],  # In production, replace with specific origins
     allow_credentials=True,
     allow_methods=["*"],
