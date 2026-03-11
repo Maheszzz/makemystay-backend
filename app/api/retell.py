@@ -3,7 +3,7 @@
 import os
 
 import httpx
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Request
 from loguru import logger
 
 retell_router = APIRouter(tags=["Retell AI"])
@@ -148,3 +148,30 @@ async def trigger_outbound_call(
 
     except Exception as e:
         logger.error(f"Unexpected error triggering call: {str(e)}")
+
+# -----------------------------------------
+# Retell Webhook (Status / Call Events)
+# -----------------------------------------
+@retell_router.post("/retell/webhook")
+async def retell_webhook(request: Request):
+    """
+    Receives call status updates and events from Retell AI.
+    Configure this URL in the Retell Dashboard as the 'Webhook URL'.
+    """
+    try:
+        payload = await request.json()
+        event = payload.get("event")
+        call_id = payload.get("call_id")
+
+        logger.info(f"Retell Webhook: event={event}, call_id={call_id}")
+        logger.debug(f"Retell Webhook Payload: {payload}")
+
+        # You can add logic here to update lead status or log call details
+        # based on 'call_ended', 'call_started', etc.
+
+        return {"status": "ok"}
+
+    except Exception as e:
+        logger.error(f"Error processing Retell webhook: {str(e)}")
+        # Return 200 anyway to avoid Retell retries if the error is on our side or payload format
+        return {"status": "error", "message": str(e)}
