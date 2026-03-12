@@ -112,6 +112,10 @@ from app.api.webhooks import webhooks_router
 app.include_router(webhooks_router, prefix="/api/v1")
 app.include_router(webhooks_router)
 
+# Include Admin Dashboard routes
+from app.api.admin import admin_router
+app.include_router(admin_router, prefix="/api/v1")
+
 
 # ------------------------------------------------------------------ #
 #  Background cron: Housing.com lead auto-sync (every 2 min)
