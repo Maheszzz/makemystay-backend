@@ -95,20 +95,34 @@ def create_contact(
         # Sync with Zoho CRM
         background_tasks.add_task(zoho_crm_service.create_or_update_lead, contact)
 
-        # Trigger outbound AI phone call in the background
-        prompt_message = contact.message or ""
-        # Adding some extra context about property type if provided
-        # (Assuming the frontend form includes unit/property details in the message, or it's just raw message)
-        background_tasks.add_task(
-            trigger_outbound_call,
-            name=contact.name_,
-            phone=contact.phone,
-            location=contact.location or "",
-            property_type=contact.property_type or "",
-            message=prompt_message,
-        )
-        # Log the call in Zoho CRM Calls module
-        background_tasks.add_task(zoho_crm_service.log_call, contact)
+        # Trigger outbound AI phone call in the background (only if not already called)
+        if not getattr(new_contact, "is_ai_called", False):
+            prompt_message = contact.message or ""
+            background_tasks.add_task(
+                trigger_outbound_call,
+                name=contact.name_,
+                phone=contact.phone,
+                location=contact.location or "",
+                property_type=contact.property_type or "",
+                message=prompt_message,
+            )
+            # Log the call in Zoho CRM Calls module
+            background_tasks.add_task(zoho_crm_service.log_call, contact)
+
+            # Update is_ai_called status in DB
+            async def _mark_contact_ai_called():
+                try:
+                    from app.configs.db_config import MySQLSessionLocal
+                    with MySQLSessionLocal() as session:
+                        contact_obj = realty_repo.get_contact_by_id(session, new_contact.id)
+                        if contact_obj:
+                            realty_repo.update_contact(
+                                session, contact_obj, {"is_ai_called": True}
+                            )
+                except Exception as e:
+                    logger.error(f"Failed to update is_ai_called for Contact #{new_contact.id}: {e}")
+
+            background_tasks.add_task(_mark_contact_ai_called)
 
         return new_contact
     except SQLAlchemyError as e:

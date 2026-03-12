@@ -13,7 +13,12 @@ sys.path.insert(0, os.path.realpath(os.path.join(os.path.dirname(__file__), ".."
 # for 'autogenerate' support
 from app.configs.db_config import MYSQL_DATABASE_URL, Base
 
-# Important: import all models here to ensure they are registered with Base.metadata
+from app.models.lead import Lead
+from app.models.realty import Contact, Property, PropertyImage, Review
+from app.models.sync_metadata import SyncMetadata
+from app.models.user import User
+from app.models.payment import Payment
+from app.models.demo import DemoBooking
 
 # this is the Alembic Config object, which provides
 # access to the values within the .ini file in use.

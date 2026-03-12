@@ -34,6 +34,7 @@ class Contact(MySQLBase):
         default="new",
         nullable=True,
     )
+    is_ai_called = Column(Boolean, default=False)
     created_at = Column(DateTime, server_default=func.now(), nullable=True)
     updated_at = Column(
         DateTime, server_default=func.now(), onupdate=func.now(), nullable=True

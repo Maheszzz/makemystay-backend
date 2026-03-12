@@ -1,6 +1,14 @@
-"""SQLAlchemy model for the unified leads table."""
-
-from sqlalchemy import JSON, Column, DateTime, Enum, Integer, String, Text
+from sqlalchemy import (
+    JSON,
+    Boolean,
+    Column,
+    DateTime,
+    Enum,
+    Integer,
+    String,
+    Text,
+    UniqueConstraint,
+)
 from sqlalchemy.sql import func
 
 from app.configs.db_config import MySQLBase
@@ -31,8 +39,18 @@ class Lead(MySQLBase):
         index=True,
     )
     zoho_lead_id = Column(String(100), nullable=True)
+    zoho_synced = Column(Boolean, default=False)
+    is_ai_called = Column(Boolean, default=False)
+    lead_date = Column(Integer, nullable=True, index=True)
+    external_id = Column(String(100), nullable=True, index=True)
     raw_payload = Column(JSON, nullable=True)  # Store original payload for debugging
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     updated_at = Column(
         DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
+    )
+
+    __table_args__ = (
+        UniqueConstraint(
+            "phone", "lead_date", "external_id", name="uq_lead_phone_date_ext"
+        ),
     )

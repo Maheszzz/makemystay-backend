@@ -332,4 +332,60 @@ class EmailService:
             logger.error(f"Failed to send contact email: {str(e)}")
 
 
+    async def send_sync_error_alert(self, source: str, error_msg: str):
+        """Send urgent notification to admin if a high-priority sync job fails."""
+        
+        admin_html = f"""
+        <!DOCTYPE html>
+        <html>
+        <head>
+            <style>
+                body {{ font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; line-height: 1.6; color: #333; }}
+                .container {{ max-width: 600px; margin: 20px auto; padding: 20px; border: 2px solid #ef4444; border-radius: 8px; }}
+                .header {{ background-color: #fef2f2; padding: 10px; margin-bottom: 20px; text-align: center; border-radius: 4px; }}
+                .header h2 {{ margin: 0; color: #991b1b; }}
+                .content {{ font-size: 15px; }}
+                .error-box {{ margin-top: 15px; padding: 15px; background-color: #fff1f2; border: 1px solid #fecdd3; border-radius: 6px; color: #9f1239; font-family: monospace; }}
+                .footer {{ margin-top: 20px; font-size: 12px; color: #6b7280; border-top: 1px solid #e5e7eb; padding-top: 10px; }}
+            </style>
+        </head>
+        <body>
+            <div class="container">
+                <div class="header">
+                    <h2>⚠️ Critical Sync Failure: {source.title()}</h2>
+                </div>
+                
+                <div class="content">
+                    <p>The background lead sync job for <strong>{source}</strong> has encountered a failure and has been paused or is reporting errors.</p>
+                    
+                    <div class="error-box">
+                        {error_msg}
+                    </div>
+                    
+                    <p><strong>Action Required:</strong> Please check the server logs or the <code>sync_metadata</code> table for details. This could be due to an expired API key or a network issue.</p>
+                </div>
+                
+                <div class="footer">
+                    Sent automatically by MakeMyStay.ai Monitoring System.
+                </div>
+            </div>
+        </body>
+        </html>
+        """
+
+        message = MessageSchema(
+            subject=f"🚨 ALERT: {source.title()} Sync Job Failed",
+            recipients=[self.conf.MAIL_FROM],
+            body=admin_html,
+            subtype=MessageType.html,
+        )
+
+        fm = FastMail(self.conf)
+        try:
+            await fm.send_message(message)
+            logger.warning(f"Sync error alert sent for {source}")
+        except Exception as e:
+            logger.error(f"Failed to send sync error alert: {str(e)}")
+
+
 email_service = EmailService()

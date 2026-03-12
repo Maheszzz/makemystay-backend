@@ -129,6 +129,8 @@ def _process_lead_pipeline(
         "budget": payload.budget,
         "message": combined_message,
         "status": "new",
+        "lead_date": payload.lead_date,
+        "external_id": payload.external_id,
         "raw_payload": payload.model_dump(),
     }
 
@@ -154,7 +156,10 @@ def _process_lead_pipeline(
                     lead_obj = lead_repo.get_lead_by_id(session, lead_id_ref)
                     if lead_obj:
                         lead_repo.update_lead(
-                            session, lead_obj, {"zoho_lead_id": zoho_lead_id}
+                            session, lead_obj, {
+                                "zoho_lead_id": zoho_lead_id,
+                                "zoho_synced": True
+                            }
                         )
             except Exception as e:
                 logger.error(
@@ -165,21 +170,8 @@ def _process_lead_pipeline(
 
     background_tasks.add_task(_sync_to_crm)
 
-    # --- 4. AI calling (background, if enabled) ---
-    enable_ai_calling = (
-        os.getenv("ENABLE_AI_CALLING_FOR_LEADS", "false").lower() == "true"
-    )
-    if enable_ai_calling:
-        background_tasks.add_task(
-            trigger_outbound_call,
-            name=payload.name or "Customer",
-            phone=payload.phone,
-            location=payload.location or payload.city or "",
-            property_type=payload.property_type or "",
-            message=combined_message or "Interested in property",
-        )
-        # Log call in Zoho CRM
-        background_tasks.add_task(zoho_crm_service.log_call, adapter)
+    # Note: AI calling logic (Maya) has been moved exclusively to the website contact form
+    # in app/api/realty.py as per user request.
 
     return db_lead
 
@@ -226,6 +218,31 @@ async def receive_lead(
 # ================================================================== #
 #  POST /webhooks/99acres  —  99acres Bulk XML Webhook
 # ================================================================== #
+@webhooks_router.get(
+    "/webhooks/99acres",
+    summary="Diagnostic for 99acres Webhook",
+)
+async def test_99acres_webhook(
+    x_api_key: Optional[str] = Header(None, alias="X-API-Key"),
+    api_key: Optional[str] = Query(None),
+):
+    """Simple GET endpoint for IT teams to verify that the webhook is reachable."""
+    try:
+        _verify_api_key(x_api_key, api_key)
+        return {
+            "status": "active",
+            "endpoint": "99acres XML Webhook",
+            "auth": "verified",
+            "message": "Send POST with XML payload to ingest leads."
+        }
+    except HTTPException as e:
+        return {
+            "status": "reachable",
+            "auth": "failed",
+            "detail": e.detail
+        }
+
+
 @webhooks_router.post(
     "/webhooks/99acres",
     summary="99acres XML Push Integration",
@@ -278,15 +295,24 @@ async def receive_99acres_xml(
             continue
 
         project_parts = []
-        project_val = _get_text("Project")
-        if project_val:
-            project_parts.append(f"Project ID: {project_val}")
+        # Support both 'Project' (generic) and 'ProjectName' / 'ProjectCode' (specific to 99acres XML)
+        p_name = _get_text("ProjectName")
+        p_code = _get_text("ProjectCode")
+        p_generic = _get_text("Project")
+        
+        if p_name:
+            project_parts.append(p_name)
+        if p_code:
+            project_parts.append(f"Code: {p_code}")
+        if not p_name and p_generic:
+            project_parts.append(p_generic)
+            
         cmpct_val = _get_text("CmpctLabl")
         if cmpct_val:
-            project_parts.append(cmpct_val)
+            project_parts.append(f"[{cmpct_val}]")
 
         payload = LeadCreate(
-            name=_get_text("Name"),
+            name=_get_text("Name") or "User",
             email=_get_text("Email"),
             phone=phone,
             message=_get_text("QryInfo"),

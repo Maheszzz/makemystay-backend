@@ -1,16 +1,8 @@
 """FastAPI application for Realty API."""
 
-import os
-import sys
-
-# Support WeasyPrint on macOS Apple Silicon
-if sys.platform == "darwin":
-    os.environ["DYLD_FALLBACK_LIBRARY_PATH"] = "/opt/homebrew/lib:" + os.environ.get(
-        "DYLD_FALLBACK_LIBRARY_PATH", ""
-    )
-
 import logging
 import os
+import sys
 
 from dotenv import load_dotenv
 from fastapi import FastAPI, Request
@@ -67,6 +59,8 @@ app.add_middleware(
 # Create Database Tables
 from app.configs.db_config import MySQLBase, mysql_engine
 
+from app.models import sync_metadata  # noqa: F401 — ensure table is registered
+
 MySQLBase.metadata.create_all(bind=mysql_engine)
 
 
@@ -110,9 +104,27 @@ app.include_router(demo_router, prefix="/api/v1")
 from app.api.retell import retell_router
 
 app.include_router(retell_router, prefix="/api/v1")
-from app.api.webhooks import webhooks_router
+from app.api.housing import housing_router
+app.include_router(housing_router, prefix="/api/v1")
 
+# Include webhooks at both /api/v1 and root for maximum reachability
+from app.api.webhooks import webhooks_router
 app.include_router(webhooks_router, prefix="/api/v1")
+app.include_router(webhooks_router)
+
+
+# ------------------------------------------------------------------ #
+#  Background cron: Housing.com lead auto-sync (every 2 min)
+# ------------------------------------------------------------------ #
+import asyncio
+
+from app.cron.fetch_housing_leads import housing_cron_loop
+
+
+@app.on_event("startup")
+async def start_housing_cron():
+    """Launch the Housing.com lead sync cron on app startup."""
+    asyncio.create_task(housing_cron_loop())
 
 
 if __name__ == "__main__":

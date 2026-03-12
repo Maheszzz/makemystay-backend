@@ -33,6 +33,8 @@ class LeadCreate(BaseModel):
     requirement: Optional[str] = Field(None, max_length=2000)
     budget: Optional[str] = Field(None, max_length=100)
     property_type: Optional[str] = Field(None, max_length=100)
+    lead_date: Optional[int] = None
+    external_id: Optional[str] = None
 
 
 class LeadResponse(BaseModel):
