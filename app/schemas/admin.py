@@ -3,6 +3,12 @@
 from typing import List, Optional
 from pydantic import BaseModel
 from app.schemas.lead import LeadResponse
+from app.schemas.realty import PropertyResponse
+
+class GlobalSearchResponse(BaseModel):
+    """Schema for global search results."""
+    properties: List[PropertyResponse]
+    leads: List[LeadResponse]
 
 class DashboardStats(BaseModel):
     """Schema for high-level dashboard metrics."""

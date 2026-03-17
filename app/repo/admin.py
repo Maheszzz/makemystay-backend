@@ -1,6 +1,6 @@
 """Repository layer for Administrative dashboard operations."""
 
-from sqlalchemy import func
+from sqlalchemy import func, or_
 from sqlalchemy.orm import Session
 from app.models.lead import Lead
 from app.models.realty import Property, Contact
@@ -27,3 +27,29 @@ def get_dashboard_stats(db: Session):
 def get_live_leads(db: Session, limit: int = 10):
     """Fetch the most recent leads for the live feed."""
     return db.query(Lead).order_by(Lead.created_at.desc()).limit(limit).all()
+
+def global_search(db: Session, query: str):
+    """Search for properties and leads matching the query."""
+    search_term = f"%{query}%"
+    
+    properties = db.query(Property).filter(
+        Property.is_deleted == False,
+        or_(
+            Property.property_name.ilike(search_term),
+            Property.location.ilike(search_term)
+        )
+    ).limit(10).all()
+    
+    leads = db.query(Lead).filter(
+        or_(
+            Lead.name.ilike(search_term),
+            Lead.email.ilike(search_term),
+            Lead.phone.ilike(search_term),
+            Lead.project_name.ilike(search_term)
+        )
+    ).limit(10).all()
+    
+    return {
+        "properties": properties,
+        "leads": leads
+    }
