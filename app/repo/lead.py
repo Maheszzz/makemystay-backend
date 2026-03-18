@@ -27,6 +27,7 @@ def get_leads(
     limit: int = 100,
     source: Optional[str] = None,
     status: Optional[str] = None,
+    assigned_to: Optional[int] = None,
 ) -> List[Lead]:
     """Retrieve leads with optional source/status filters and pagination."""
     query = db.query(Lead).order_by(Lead.created_at.desc())
@@ -34,6 +35,8 @@ def get_leads(
         query = query.filter(Lead.source == source)
     if status:
         query = query.filter(Lead.status == status)
+    if assigned_to:
+        query = query.filter(Lead.assigned_to == assigned_to)
     return query.offset(skip).limit(limit).all()
 
 

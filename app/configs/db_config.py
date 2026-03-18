@@ -1,6 +1,5 @@
 # MySQL Configuration for Realty Database
 # Build connection URL from individual environment variables
-import os
 import urllib.parse
 
 from dotenv import load_dotenv
@@ -35,8 +34,8 @@ MYSQL_DATABASE_URL = (
 
 logger.info(f"Creating MySQL engine for {DB_HOST}:{DB_PORT}/{DB_NAME}")
 mysql_engine = create_engine(
-    MYSQL_DATABASE_URL, 
-    echo=True, 
+    MYSQL_DATABASE_URL,
+    echo=True,
     pool_pre_ping=True,
     pool_size=10,
     max_overflow=20,

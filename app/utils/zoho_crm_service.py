@@ -1,4 +1,3 @@
-import os
 from datetime import datetime, timedelta
 from typing import Any, Dict, Optional
 
@@ -6,7 +5,12 @@ import httpx
 import pybreaker
 from dotenv import load_dotenv
 from loguru import logger
-from tenacity import retry, stop_after_attempt, wait_exponential, retry_if_exception_type
+from tenacity import (
+    retry,
+    retry_if_exception_type,
+    stop_after_attempt,
+    wait_exponential,
+)
 
 from app.core.config import settings
 
@@ -27,35 +31,8 @@ SOURCE_DISPLAY_NAMES = {
     "broker": "Broker Referral",
 }
 
-def _get_display_source(source: str) -> str:
-    """Return a display-friendly source name for CRM."""
-    return SOURCE_DISPLAY_NAMES.get(source.lower(), source.title())
-
-class _CRMLeadAdapter:
-    """Maps a Lead payload to the attribute interface expected by ZohoCRMService."""
-    def __init__(self, payload: Any, source: str):
-        # Handle both Pydantic models (with name_) and regular dicts/objects
-        self.name_ = getattr(payload, "name_", getattr(payload, "name", "Lead"))
-        self.name = self.name_
-        self.phone = getattr(payload, "phone", "")
-        self.email = getattr(payload, "email", "")
-        self.company = "Individual"
-
-        parts = []
-        msg = getattr(payload, "message", "")
-        if msg: parts.append(msg)
-        req = getattr(payload, "requirement", "")
-        if req: parts.append(f"Requirement: {req}")
-        proj = getattr(payload, "project_name", "")
-        if proj: parts.append(f"Project: {proj}")
-        budg = getattr(payload, "budget", "")
-        if budg: parts.append(f"Budget: {budg}")
-        self.message = " | ".join(parts) if parts else ""
-
-        self.location = getattr(payload, "location", getattr(payload, "city", ""))
-        self.property_type = getattr(payload, "property_type", "")
-        self.units = getattr(payload, "units", "")
-        self.lead_source = _get_display_source(source)
+from app.core.redis import redis_conn
+from app.utils.zoho_adapter import CRMLeadAdapter
 
 
 class ZohoCRMService:
@@ -74,20 +51,25 @@ class ZohoCRMService:
         retry=retry_if_exception_type((httpx.RequestError, httpx.TimeoutException)),
         reraise=True
     )
-    @retry(
-        stop=stop_after_attempt(3),
-        wait=wait_exponential(multiplier=1, min=2, max=10),
-        retry=retry_if_exception_type((httpx.RequestError, httpx.TimeoutException)),
-        reraise=True
-    )
     async def _get_access_token(self) -> Optional[str]:
-        """Gets or refreshes the access token using the refresh token."""
+        """Gets or refreshes the access token using the refresh token. Uses Redis for caching."""
+        # 1. Check in-memory cache
         if (
             self._access_token
             and self._token_expiry
             and datetime.now() < self._token_expiry
         ):
             return self._access_token
+
+        # 2. Check Redis cache
+        if redis_conn:
+            cached_token = redis_conn.get("zoho_access_token")
+            if cached_token:
+                self._access_token = cached_token.decode("utf-8")
+                ttl = redis_conn.ttl("zoho_access_token")
+                self._token_expiry = datetime.now() + timedelta(seconds=ttl)
+                logger.info("Zoho CRM access token retrieved from Redis.")
+                return self._access_token
 
         if not all([self.client_id, self.client_secret, self.refresh_token]):
             logger.error("Zoho CRM credentials missing in environment variables.")
@@ -106,13 +88,20 @@ class ZohoCRMService:
                 data = response.json()
 
                 if response.status_code == 200 and "access_token" in data:
-                    self._access_token = data["access_token"]
+                    token = data["access_token"]
                     expires_in = data.get("expires_in", 3600)
+
+                    self._access_token = token
                     self._token_expiry = datetime.now() + timedelta(
                         seconds=expires_in - 60
                     )
-                    logger.info("Zoho CRM access token refreshed.")
-                    return self._access_token
+
+                    # 3. Cache in Redis
+                    if redis_conn:
+                        redis_conn.set("zoho_access_token", token, ex=expires_in - 60)
+
+                    logger.info("Zoho CRM access token refreshed and cached.")
+                    return token
                 else:
                     logger.error(f"Failed to refresh Zoho CRM token: {data}")
                     return None
@@ -120,12 +109,6 @@ class ZohoCRMService:
             logger.error(f"Exception during Zoho CRM token refresh: {str(e)}")
             return None
 
-    @retry(
-        stop=stop_after_attempt(3),
-        wait=wait_exponential(multiplier=1, min=2, max=10),
-        retry=retry_if_exception_type((httpx.RequestError, httpx.TimeoutException)),
-        reraise=True
-    )
     @retry(
         stop=stop_after_attempt(3),
         wait=wait_exponential(multiplier=1, min=2, max=10),
@@ -140,7 +123,7 @@ class ZohoCRMService:
         data: Optional[Dict[str, Any]] = None,
         params: Optional[Dict[str, Any]] = None,
     ) -> Optional[Dict[str, Any]]:
-        """Utility to make authorized requests to Zoho CRM API."""
+        """Utility to make authorized university requests to Zoho CRM API."""
         token = await self._get_access_token()
         if not token:
             return None
@@ -153,7 +136,8 @@ class ZohoCRMService:
         url = f"{self.base_url}/{endpoint}"
 
         try:
-            async with httpx.AsyncClient(timeout=15.0) as client:
+            # Use shorter timeout for fail-fast
+            async with httpx.AsyncClient(timeout=10.0) as client:
                 if method.upper() == "POST":
                     response = await client.post(
                         url, json=data, headers=headers, params=params
@@ -171,6 +155,9 @@ class ZohoCRMService:
                     return response.json()
                 elif response.status_code == 204:  # No Content
                     return {}
+                elif response.status_code == 429: # Rate limit
+                    logger.error(f"Zoho CRM Rate Limit Exceeded: {response.text}")
+                    raise httpx.RequestError("Zoho CRM Rate Limit Exceeded")
                 else:
                     logger.error(
                         f"Zoho CRM API Error ({response.status_code}) [{endpoint}]: {response.text}"
@@ -180,6 +167,9 @@ class ZohoCRMService:
             logger.error(
                 f"Exception during Zoho CRM API request [{endpoint}]: {str(e)}"
             )
+            # Re-raise for retry decorator if it's a timeout/error
+            if isinstance(e, (httpx.TimeoutException, httpx.RequestError)):
+                raise e
             return None
 
     async def search_lead_by_email(self, email: str) -> Optional[str]:
@@ -193,56 +183,26 @@ class ZohoCRMService:
 
     async def create_or_update_lead(self, contact_data: Any) -> Optional[str]:
         """Creates a new Lead or updates an existing one in Zoho CRM."""
-        email = getattr(contact_data, "email", None)
+        # Use adapter for mapping if it's not already a dict
+        if isinstance(contact_data, CRMLeadAdapter):
+            payload_data = contact_data.to_zoho_payload()
+        elif hasattr(contact_data, "to_zoho_payload"):
+            payload_data = contact_data.to_zoho_payload()
+        else:
+            # Fallback for generic objects (like DemoBooking)
+            # Ideally we should use the adapter everywhere
+            adapter = CRMLeadAdapter(contact_data, getattr(contact_data, "lead_source", "Website"))
+            payload_data = adapter.to_zoho_payload()
+
+        email = payload_data.get("Email")
         if not email:
             logger.error("No email found in contact data for Zoho CRM sync.")
             return None
 
         lead_id = await self.search_lead_by_email(email)
 
-        # Parse name
-        first_name = ""
-        last_name = "User"  # Zoho requires Last Name
-
-        full_name = getattr(contact_data, "name_", getattr(contact_data, "name", ""))
-        if full_name:
-            names = full_name.split(" ", 1)
-            if len(names) > 1:
-                first_name, last_name = names[0], names[1]
-            else:
-                last_name = names[0]
-
-        # Build description with all extra context
-        description_parts = []
-        message = getattr(contact_data, "message", "")
-        if message:
-            description_parts.append(f"Message: {message}")
-        location = getattr(contact_data, "location", "")
-        if location:
-            description_parts.append(f"Location: {location}")
-        property_type = getattr(contact_data, "property_type", "")
-        if property_type:
-            description_parts.append(f"Property Type: {property_type}")
-        units = getattr(contact_data, "units", "")
-        if units:
-            description_parts.append(f"Units: {units}")
-
-        description = " | ".join(description_parts) if description_parts else ""
-
         payload = {
-            "data": [
-                {
-                    "First_Name": first_name,
-                    "Last_Name": last_name,
-                    "Email": email,
-                    "Phone": getattr(contact_data, "phone", ""),
-                    "Company": getattr(contact_data, "company", "Individual"),
-                    "Description": description,
-                    "Lead_Source": getattr(contact_data, "lead_source", None)
-                    or "Website",
-                    "City": location,
-                }
-            ],
+            "data": [payload_data],
             "trigger": ["workflow"],
         }
 

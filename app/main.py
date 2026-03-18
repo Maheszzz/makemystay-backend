@@ -1,23 +1,22 @@
 """FastAPI application for Realty API."""
 
 import logging
-import os
 from contextlib import asynccontextmanager
 
+import sentry_sdk
 from dotenv import load_dotenv
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from loguru import logger
+from prometheus_fastapi_instrumentator import Instrumentator
 from slowapi import Limiter, _rate_limit_exceeded_handler
 from slowapi.errors import RateLimitExceeded
 from slowapi.util import get_remote_address
-import sentry_sdk
-from prometheus_fastapi_instrumentator import Instrumentator
 
+from app.api.agent_routes import router as agent_router
 from app.api.auth import router as auth_router
 from app.api.realty import realty_router
-
 from app.core.config import settings
 
 # --- Settings & Logging ---
@@ -29,10 +28,14 @@ logger.info(f"ENV={settings.ENV}")
 limiter = Limiter(key_func=get_remote_address)
 
 # --- Background Scheduler ---
-from apscheduler.schedulers.background import BackgroundScheduler
-from app.cron.fetch_housing_leads import _run_housing_sync # Keep for transition if needed, but we'll use sync_all_sources
-from app.services.lead_sync_service import sync_all_sources
 import asyncio
+
+from apscheduler.schedulers.background import BackgroundScheduler
+
+from app.cron.fetch_housing_leads import (
+    _run_housing_sync,  # Keep for transition if needed, but we'll use sync_all_sources
+)
+from app.services.lead_sync_service import sync_all_sources
 
 scheduler = BackgroundScheduler()
 
@@ -63,7 +66,7 @@ async def lifespan(app: FastAPI):
     scheduler.add_job(sync_all_job, "interval", seconds=settings.HOUSING_SYNC_INTERVAL_SECONDS, id="unified_sync_job")
     # Run once immediately on startup
     scheduler.add_job(sync_all_job, id="initial_sync_job")
-    
+
     scheduler.start()
     logger.info(f"APScheduler started: unified_sync_job scheduled every {settings.HOUSING_SYNC_INTERVAL_SECONDS}s")
     yield
@@ -105,7 +108,13 @@ app.add_middleware(
 # --- Database Initialization ---
 # Create Database Tables
 from app.configs.db_config import MySQLBase, mysql_engine  # noqa: E402
-from app.models import sync_metadata, failed_job  # noqa: E402, F401
+from app.models import (  # noqa: E402, F401
+    agent,
+    failed_job,
+    lead,
+    lead_event,
+    sync_metadata,
+)
 
 MySQLBase.metadata.create_all(bind=mysql_engine)
 
@@ -162,16 +171,20 @@ from app.api.retell import retell_router  # noqa: E402
 
 app.include_router(retell_router, prefix="/api/v1")
 from app.api.housing import housing_router  # noqa: E402
+
 app.include_router(housing_router, prefix="/api/v1")
 
 # Include webhooks at both /api/v1 and root for maximum reachability
 from app.api.webhooks import webhooks_router  # noqa: E402
+
 app.include_router(webhooks_router, prefix="/api/v1")
 app.include_router(webhooks_router)
 
 # Include Admin Dashboard routes
 from app.api.admin import admin_router  # noqa: E402
+
 app.include_router(admin_router, prefix="/api/v1")
+app.include_router(agent_router, prefix="/api/v1")
 
 
 if __name__ == "__main__":

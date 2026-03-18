@@ -1,6 +1,8 @@
 import os
 from typing import Optional
+
 from pydantic_settings import BaseSettings
+
 
 class Settings(BaseSettings):
     # Database
@@ -20,7 +22,7 @@ class Settings(BaseSettings):
     AWS_REGION: Optional[str] = None
     CLOUDFRONT_DOMAIN: Optional[str] = None
     S3_BUCKET_NAME: Optional[str] = None
-    
+
     # CloudFront Configuration
     CLOUDFRONT_KEY_PAIR_ID: Optional[str] = None
     CLOUDFRONT_PRIVATE_KEY: Optional[str] = None

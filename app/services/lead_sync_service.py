@@ -6,16 +6,16 @@ and processing them through the centralized lead pipeline.
 
 import asyncio
 import time
-from datetime import datetime, timedelta
+from datetime import datetime
 
 from loguru import logger
 from sqlalchemy.orm import Session
 
 from app.configs.db_config import MySQLSessionLocal
 from app.models.sync_metadata import SyncMetadata
+from app.schemas.lead import LeadCreate
 from app.services.housing_lead_service import housing_lead_service
 from app.services.lead_processor import process_lead
-from app.schemas.lead import LeadCreate
 
 
 async def sync_all_sources():
@@ -50,7 +50,7 @@ async def sync_housing_leads(db: Session):
         now = int(time.time())
         # Default to 24 hours ago if no previous timestamp
         start_int = int(str(meta.last_lead_timestamp)) if meta.last_lead_timestamp else (now - 86400)
-        
+
         # Housing API strictly allows max 2 days difference.
         # Cap at 47 hours to stay safe.
         end_int = now
@@ -84,7 +84,7 @@ async def sync_housing_leads(db: Session):
                 lead_date=mapped.get("lead_date"),
                 external_id=mapped.get("external_id"),
             )
-            
+
             result = await process_lead(db, lead_data, source="housing", raw_payload=raw_lead)
             if result:
                 imported += 1

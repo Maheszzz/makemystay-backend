@@ -7,7 +7,6 @@ from loguru import logger
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
 
-from app.api.retell import trigger_outbound_call
 from app.configs.db_config import get_mysql_db
 from app.core import security
 from app.core.exceptions import DatabaseError, NotFoundException
@@ -28,8 +27,6 @@ from app.schemas.realty import (
     ReviewCreate,
     ReviewResponse,
 )
-from app.utils.email_utils import email_service
-from app.utils.zoho_crm_service import zoho_crm_service
 
 realty_router = APIRouter(tags=["Realty"])
 
@@ -91,7 +88,7 @@ def create_contact(
     """
     try:
         new_contact = realty_repo.create_contact(db, contact.model_dump(by_alias=False))
-        
+
         # Offload all processing to RQ
         from app.core.redis import lead_queue
         if lead_queue:

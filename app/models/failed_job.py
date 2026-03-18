@@ -1,6 +1,8 @@
-from sqlalchemy import Column, DateTime, Integer, JSON, String, Text
+from sqlalchemy import JSON, Column, DateTime, Integer, String, Text
 from sqlalchemy.sql import func
+
 from app.configs.db_config import MySQLBase
+
 
 class FailedJob(MySQLBase):
     """Table to track background job failures for observability."""

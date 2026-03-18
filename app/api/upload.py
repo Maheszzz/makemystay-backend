@@ -1,4 +1,3 @@
-import os
 import uuid
 
 import boto3
@@ -6,9 +5,8 @@ from fastapi import APIRouter, Depends, HTTPException
 from loguru import logger
 
 from app.core import security
-from app.schemas.upload import UploadRequest, UploadResponse
-
 from app.core.config import settings
+from app.schemas.upload import UploadRequest, UploadResponse
 
 router = APIRouter()
 

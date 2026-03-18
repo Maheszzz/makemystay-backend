@@ -4,11 +4,13 @@ from sqlalchemy import (
     Column,
     DateTime,
     Enum,
+    ForeignKey,
     Integer,
     String,
     Text,
     UniqueConstraint,
 )
+from sqlalchemy.orm import relationship
 from sqlalchemy.sql import func
 
 from app.configs.db_config import MySQLBase
@@ -41,12 +43,12 @@ class Lead(MySQLBase):
     crm_status = Column(
         String(20), default="pending", nullable=False, index=True
     )  # pending, queued, success, failed
-    
+
     # Marketing Analytics
     campaign = Column(String(100), nullable=True)
     ad_id = Column(String(100), nullable=True)
     property_id = Column(String(100), nullable=True) # ID of specific property if lead is for one
-    
+
     zoho_lead_id = Column(String(100), nullable=True)
     zoho_synced = Column(Boolean, default=False)
     is_ai_called = Column(Boolean, default=False)
@@ -57,6 +59,13 @@ class Lead(MySQLBase):
     updated_at = Column(
         DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
     )
+
+    # Assignment
+    assigned_to = Column(Integer, ForeignKey("agents.id"), nullable=True, index=True)
+    priority = Column(Integer, default=1, index=True)
+
+    # Relationships
+    agent = relationship("Agent", back_populates="leads")
 
     __table_args__ = (
         UniqueConstraint(

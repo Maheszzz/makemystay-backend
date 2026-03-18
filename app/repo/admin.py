@@ -2,8 +2,10 @@
 
 from sqlalchemy import func, or_
 from sqlalchemy.orm import Session
+
 from app.models.lead import Lead
-from app.models.realty import Property, Contact
+from app.models.realty import Contact, Property
+
 
 def get_dashboard_stats(db: Session):
     """Calculate aggregate metrics for the admin dashboard."""
@@ -31,7 +33,7 @@ def get_live_leads(db: Session, limit: int = 10):
 def global_search(db: Session, query: str):
     """Search for properties and leads matching the query."""
     search_term = f"%{query}%"
-    
+
     properties = db.query(Property).filter(
         Property.is_deleted.is_(False),
         or_(
@@ -39,7 +41,7 @@ def global_search(db: Session, query: str):
             Property.location.ilike(search_term)
         )
     ).limit(10).all()
-    
+
     leads = db.query(Lead).filter(
         or_(
             Lead.name.ilike(search_term),
@@ -48,7 +50,7 @@ def global_search(db: Session, query: str):
             Lead.project_name.ilike(search_term)
         )
     ).limit(10).all()
-    
+
     return {
         "properties": properties,
         "leads": leads

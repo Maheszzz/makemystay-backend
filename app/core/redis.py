@@ -1,7 +1,7 @@
 import os
+
 import redis
 from rq import Queue
-from app.core.config import settings
 
 # Initialize Redis connection
 # In a real environment, you'd get the REDIS_URL from settings

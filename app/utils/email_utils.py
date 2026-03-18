@@ -1,4 +1,3 @@
-import os
 import urllib.parse
 from datetime import datetime
 
@@ -7,10 +6,9 @@ from dotenv import load_dotenv
 from fastapi_mail import ConnectionConfig, FastMail, MessageSchema, MessageType
 from loguru import logger
 
+from app.core.config import settings
 from app.schemas.demo import DemoBookingCreate
 from app.schemas.realty import ContactCreate
-
-from app.core.config import settings
 
 # Ensure environment variables are loaded when this module is imported
 load_dotenv()
@@ -336,7 +334,7 @@ class EmailService:
 
     async def send_sync_error_alert(self, source: str, error_msg: str):
         """Send urgent notification to admin if a high-priority sync job fails."""
-        
+
         admin_html = f"""
         <!DOCTYPE html>
         <html>

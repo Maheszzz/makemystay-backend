@@ -1,4 +1,5 @@
 from loguru import logger
+
 from app.core.config import settings
 
 # Map environment strings to valid Loguru levels

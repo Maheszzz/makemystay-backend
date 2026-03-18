@@ -13,7 +13,7 @@ from loguru import logger
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
-from app.configs.db_config import get_db, get_mysql_db
+from app.configs.db_config import get_db
 from app.core.config import settings
 from app.models.payment import Payment
 from app.schemas.payment import (

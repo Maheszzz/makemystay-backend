@@ -4,13 +4,11 @@ Supports: Housing.com, 99acres, MagicBricks, Meta Ads, Website, Brokers, etc.
 All sources hit one parameterized endpoint: POST /webhooks/leads/{source}
 """
 
-import os
 import xml.etree.ElementTree as ET
 from typing import List, Optional
 
 from fastapi import (
     APIRouter,
-    BackgroundTasks,
     Depends,
     Header,
     HTTPException,
@@ -21,11 +19,11 @@ from fastapi import (
 from loguru import logger
 from sqlalchemy.orm import Session
 
+from app.adapters.acers_adapter import AcersAdapter
 from app.configs.db_config import get_mysql_db
 from app.core.config import settings
 from app.repo import lead as lead_repo
 from app.schemas.lead import LeadCreate, LeadResponse, LeadStatus, LeadWebhookResponse
-from app.utils.zoho_crm_service import _get_display_source
 from app.services.lead_processor import process_lead
 
 webhooks_router = APIRouter(tags=["Webhooks / Leads"])
@@ -73,9 +71,11 @@ async def _process_lead_pipeline(
     payload: LeadCreate,
     db: Session,
 ):
-    """Refactored to use centralized lead_processor."""
+    """Feed a lead through the centralized processor."""
     source_normalized = source.lower().strip()
-    return await process_lead(db, payload, source_normalized, raw_payload=payload.model_dump())
+    return await process_lead(
+        db, payload, source_normalized, raw_payload=payload.model_dump()
+    )
 
 
 # ================================================================== #
@@ -89,7 +89,6 @@ async def _process_lead_pipeline(
 async def receive_lead(
     source: str,
     payload: LeadCreate,
-    background_tasks: BackgroundTasks,
     request: Request,
     x_api_key: Optional[str] = Header(None, alias="X-API-Key"),
     api_key: Optional[str] = Query(None, description="API Key via query param"),
@@ -110,12 +109,16 @@ async def receive_lead(
 
     db_lead = await _process_lead_pipeline(source, payload, db)
     if not db_lead:
-        # Fallback for duplicates if needed (process_lead returns None for dups)
-        return LeadWebhookResponse(status="skipped", message="Duplicate lead detected")
+        return LeadWebhookResponse(
+            status="skipped", message="Duplicate lead detected"
+        )
 
     return LeadWebhookResponse(
         status="ok",
-        message=f"Lead received from {_get_display_source(source)} and queued for processing",
+        message=(
+            f"Lead received from {_get_display_source(source)} "
+            "and queued for processing"
+        ),
         lead_id=db_lead.id,
     )
 
@@ -138,14 +141,10 @@ async def test_99acres_webhook(
             "status": "active",
             "endpoint": "99acres XML Webhook",
             "auth": "verified",
-            "message": "Send POST with XML payload to ingest leads."
+            "message": "Send POST with XML payload to ingest leads.",
         }
     except HTTPException as e:
-        return {
-            "status": "reachable",
-            "auth": "failed",
-            "detail": e.detail
-        }
+        return {"status": "reachable", "auth": "failed", "detail": e.detail}
 
 
 @webhooks_router.post(
@@ -154,14 +153,14 @@ async def test_99acres_webhook(
 )
 async def receive_99acres_xml(
     request: Request,
-    background_tasks: BackgroundTasks,
     x_api_key: Optional[str] = Header(None, alias="X-API-Key"),
     api_key: Optional[str] = Query(None, description="API Key via query param"),
     db: Session = Depends(get_mysql_db),
 ):
     """
-    Receives an XML payload of multiple leads from 99acres and returns an XML response.
-    Expects API Key via `api_key` query parameter or `X-API-Key` header.
+    Receives an XML payload of multiple leads from 99acres and returns an
+    XML response. Expects API Key via ``api_key`` query parameter or
+    ``X-API-Key`` header.
     """
     _verify_api_key(x_api_key, api_key)
 
@@ -179,55 +178,24 @@ async def receive_99acres_xml(
     # Build response XML
     resp_root = ET.Element("xml")
 
-    # Process each query
     for qry in root.findall("Qry"):
-
-        def _get_text(tag: str) -> str:
-            elem = qry.find(tag)
-            return elem.text if elem is not None and elem.text else ""
-
-        qry_id = _get_text("QryId")
+        qry_id_elem = qry.find("QryId")
+        qry_id = qry_id_elem.text if qry_id_elem is not None and qry_id_elem.text else ""
         if not qry_id:
             continue
 
-        phone = _get_text("Phone")
-        if not phone:
+        # Use the adapter to convert XML → LeadCreate
+        lead_data = AcersAdapter.to_lead_create(qry)
+
+        if not lead_data:
             logger.warning(f"99acres lead {qry_id} has no phone number, skipping.")
-            # Still acknowledge with Y to prevent retries
             resp_qry = ET.SubElement(resp_root, "QryResp")
             ET.SubElement(resp_qry, "QryId").text = qry_id
             ET.SubElement(resp_qry, "status").text = "Y"
             continue
 
-        project_parts = []
-        # Support both 'Project' (generic) and 'ProjectName' / 'ProjectCode' (specific to 99acres XML)
-        p_name = _get_text("ProjectName")
-        p_code = _get_text("ProjectCode")
-        p_generic = _get_text("Project")
-        
-        if p_name:
-            project_parts.append(p_name)
-        if p_code:
-            project_parts.append(f"Code: {p_code}")
-        if not p_name and p_generic:
-            project_parts.append(p_generic)
-            
-        cmpct_val = _get_text("CmpctLabl")
-        if cmpct_val:
-            project_parts.append(f"[{cmpct_val}]")
-
-        payload = LeadCreate(
-            name=_get_text("Name") or "User",
-            email=_get_text("Email"),
-            phone=phone,
-            message=_get_text("QryInfo"),
-            project_name=" | ".join(project_parts) if project_parts else None,
-        )
-
-        # Catch specific failures and mark "N" in return XML only for error logic
         try:
-            await _process_lead_pipeline("99acres", payload, db)
-
+            await _process_lead_pipeline("99acres", lead_data, db)
             resp_qry = ET.SubElement(resp_root, "QryResp")
             ET.SubElement(resp_qry, "QryId").text = qry_id
             ET.SubElement(resp_qry, "status").text = "Y"
@@ -258,15 +226,19 @@ def list_leads(
         None, description="Filter by source (housing, 99acres, etc.)"
     ),
     status: Optional[LeadStatus] = Query(None, description="Filter by status"),
+    assigned_to: Optional[int] = Query(
+        None, description="Filter by assigned agent ID"
+    ),
     db: Session = Depends(get_mysql_db),
 ):
-    """List all leads with optional source/status filters."""
+    """List all leads with optional source/status/agent filters."""
     return lead_repo.get_leads(
         db,
         skip=skip,
         limit=limit,
         source=source,
         status=status.value if status else None,
+        assigned_to=assigned_to,
     )
 
 

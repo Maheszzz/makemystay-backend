@@ -17,7 +17,12 @@ import httpx
 import pybreaker
 from aiolimiter import AsyncLimiter
 from loguru import logger
-from tenacity import retry, stop_after_attempt, wait_exponential, retry_if_exception_type
+from tenacity import (
+    retry,
+    retry_if_exception_type,
+    stop_after_attempt,
+    wait_exponential,
+)
 
 from app.core.config import settings
 
@@ -58,7 +63,7 @@ def generate_hmac_hash(api_key: str, timestamp: str) -> str:
     return hmac.new(
         api_key.encode("utf-8"),
         timestamp.encode("utf-8"),
-        hashlib.sha256,  
+        hashlib.sha256,
     ).hexdigest()
 
 
@@ -122,8 +127,7 @@ class HousingLeadService:
         per_page: int = DEFAULT_PER_PAGE,
     ) -> Tuple[List[Dict[str, Any]], Optional[str]]:
         """Internal method with retry logic."""
-        import time
-        from datetime import datetime, timedelta
+        from datetime import datetime
 
         if not self.is_configured:
             return [], "Housing.com API is not configured (missing HOUSING_API_KEY or HOUSING_API_ID)"
@@ -140,22 +144,22 @@ class HousingLeadService:
             current_end = min(current_start + timedelta(hours=48), e_dt)
             chunk_start_str = str(int(current_start.timestamp()))
             chunk_end_str = str(int(current_end.timestamp()))
-            
+
             tasks.append(self._safe_fetch_single_chunk(api_url, chunk_start_str, chunk_end_str, per_page))
             current_start = current_end
 
         responses = await asyncio.gather(*tasks, return_exceptions=True)
-        
+
         for resp in responses:
             if not isinstance(resp, tuple):
                 logger.error(f"Chunk request failed with non-tuple result: {resp}")
                 continue
-            
+
             chunk_leads, error = resp
             if error:
                 logger.error(f"Chunk request failed with error: {error}")
                 continue
-            
+
             all_leads.extend(chunk_leads)
 
         return all_leads, None
@@ -186,7 +190,6 @@ class HousingLeadService:
         per_page: int,
     ) -> Tuple[List[Dict[str, Any]], Optional[str]]:
         """The actual raw network call to Housing.com."""
-        import time
         current_time = str(int(time.time()))
         hash_value = generate_hmac_hash(self.api_key, current_time)
 
@@ -209,7 +212,7 @@ class HousingLeadService:
         try:
             async with httpx.AsyncClient(timeout=REQUEST_TIMEOUT) as client:
                 response = await client.get(api_url, params=params)
-                
+
                 if response.status_code == 200:
                     data = response.json()
                     leads = data.get("leads", [])
@@ -310,16 +313,19 @@ class HousingLeadService:
         start_date: str,
         end_date: str,
         db,
-        background_tasks,
+        background_tasks=None,
         api_url: str = BUILDER_API_URL,
     ) -> Dict[str, Any]:
         """Fetch leads from Housing.com, deduplicate, and process via the pipeline.
 
+        Args:
+            background_tasks: Deprecated, kept for backward compatibility.
+
         Returns a summary dict with counts and any errors.
         """
-        from app.api.webhooks import _process_lead_pipeline
         from app.models.lead import Lead
         from app.schemas.lead import LeadCreate
+        from app.services.lead_processor import process_lead
 
         leads_raw, error = await self.fetch_leads(start_date, end_date, api_url=api_url)
 
@@ -342,10 +348,10 @@ class HousingLeadService:
             # Deduplicate: check if we already have this specific inquiry
             # We check phone + (external_id OR lead_date) for maximum accuracy
             query = db.query(Lead).filter(Lead.phone == phone, Lead.source == "housing")
-            
+
             ext_id = mapped.get("external_id")
             l_date = mapped.get("lead_date")
-            
+
             if ext_id and l_date:
                 from sqlalchemy import or_
                 query = query.filter(or_(Lead.external_id == ext_id, Lead.lead_date == l_date))
@@ -353,7 +359,7 @@ class HousingLeadService:
                 query = query.filter(Lead.external_id == ext_id)
             elif l_date:
                 query = query.filter(Lead.lead_date == l_date)
-            
+
             existing = query.first()
             if existing:
                 skipped += 1  # type: ignore[operator]
@@ -373,7 +379,7 @@ class HousingLeadService:
                     lead_date=mapped.get("lead_date"),
                     external_id=mapped.get("external_id"),
                 )
-                _process_lead_pipeline("housing", payload, background_tasks, db)
+                await process_lead(db, payload, "housing", raw_payload=raw_lead)
                 imported += 1  # type: ignore[operator]
             except Exception as e:
                 logger.error(f"Failed to process Housing.com lead (phone={phone}): {e}")

@@ -8,11 +8,11 @@ Runs a background task every 2 minutes that:
 """
 
 import asyncio
-import os
 import time
 from datetime import datetime
 
 from loguru import logger
+
 from app.core.config import settings
 
 
@@ -58,11 +58,9 @@ async def _run_housing_sync():
         # Use a simple mock for background_tasks since we're in a cron context
         # The pipeline will still store leads in DB, but Zoho/AI calling
         # needs to be handled directly
-        from unittest.mock import MagicMock
-
-        from app.api.webhooks import _process_lead_pipeline
         from app.models.lead import Lead
         from app.schemas.lead import LeadCreate
+        from app.services.lead_processor import process_lead
 
         leads_raw, error = await housing_lead_service.fetch_leads(
             start_date, end_date
@@ -73,7 +71,7 @@ async def _run_housing_sync():
             # Alert only if we were previously healthy
             if meta.status != "error":
                 asyncio.create_task(email_service.send_sync_error_alert("housing", f"API Error: {error}"))
-            
+
             meta.status = "error"
             meta.last_error = f"API Error: {error}"
             db.commit()
@@ -92,10 +90,10 @@ async def _run_housing_sync():
 
             # Deduplicate: phone + (external_id OR lead_date)
             query = db.query(Lead).filter(Lead.phone == phone, Lead.source == "housing")
-            
+
             ext_id = mapped.get("external_id")
             o_date = mapped.get("lead_date")
-            
+
             if ext_id and o_date:
                 from sqlalchemy import or_
                 query = query.filter(or_(Lead.external_id == ext_id, Lead.lead_date == o_date))
@@ -103,13 +101,13 @@ async def _run_housing_sync():
                 query = query.filter(Lead.external_id == ext_id)
             elif o_date:
                 query = query.filter(Lead.lead_date == o_date)
-                
+
             existing = query.first()
             if existing:
                 skipped += 1  # type: ignore[operator]
                 continue
 
-            # Store in DB
+            # Store in DB via centralized processor
             try:
                 payload = LeadCreate(
                     name=mapped.get("name"),
@@ -123,23 +121,9 @@ async def _run_housing_sync():
                     external_id=mapped.get("external_id"),
                 )
 
-                # Use a real background_tasks-like approach: process inline
-                bg = MagicMock()
-                zoho_tasks = []
-                bg.add_task = lambda fn, *a, **kw: zoho_tasks.append((fn, a, kw))
-
-                _process_lead_pipeline("housing", payload, bg, db)
-                imported += 1  # type: ignore[operator]
-
-                # Execute Zoho + AI tasks
-                for fn, args, kwargs in zoho_tasks:
-                    try:
-                        if asyncio.iscoroutinefunction(fn):
-                            await fn(*args, **kwargs)
-                        else:
-                            fn(*args, **kwargs)
-                    except Exception as e:
-                        logger.error(f"Background task error: {e}")
+                result = await process_lead(db, payload, "housing", raw_payload=raw_lead)
+                if result:
+                    imported += 1  # type: ignore[operator]
 
             except Exception as e:
                 logger.error(f"Housing cron: failed to process lead phone={phone}: {e}")
@@ -160,12 +144,13 @@ async def _run_housing_sync():
 
     except Exception as e:
         logger.error(f"Housing cron sync failed: {e}")
-        
+
         # Log failure for observability
         try:
-            from app.models.failed_job import FailedJob
             import traceback
-            
+
+            from app.models.failed_job import FailedJob
+
             failed = FailedJob(
                 job_name="sync_housing_job",
                 error=str(e),
@@ -179,7 +164,7 @@ async def _run_housing_sync():
         # Alert only if we were previously healthy
         if meta is not None and meta.status != "error":
             asyncio.create_task(email_service.send_sync_error_alert("housing", f"System Error: {str(e)}"))
-            
+
         if meta is not None:
             meta.status = "error"
             meta.last_error = f"System Error: {str(e)}"

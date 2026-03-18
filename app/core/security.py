@@ -1,4 +1,3 @@
-import os
 from datetime import datetime, timedelta
 from typing import Optional
 
@@ -9,9 +8,8 @@ from passlib.context import CryptContext
 from sqlalchemy.orm import Session
 
 from app.configs.db_config import get_mysql_db
-from app.repo import user as user_repo
-
 from app.core.config import settings
+from app.repo import user as user_repo
 
 # Password hashing context
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")

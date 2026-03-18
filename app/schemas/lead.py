@@ -55,6 +55,8 @@ class LeadResponse(BaseModel):
     budget: Optional[str] = None
     message: Optional[str] = None
     status: str
+    assigned_to: Optional[int] = None
+    priority: int = 1
     zoho_lead_id: Optional[str] = None
     created_at: datetime
     updated_at: Optional[datetime] = None
