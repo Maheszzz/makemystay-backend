@@ -4,18 +4,22 @@
             "*"
         ],
         "AllowedMethods": [
+            "GET",
             "PUT",
             "POST",
-            "DELETE"
+            "DELETE",
+            "HEAD"
         ],
         "AllowedOrigins": [
             "http://localhost:5173",
             "http://localhost:3000",
             "https://makemystay.ai",
-            "https://www.makemystay.ai"
+            "https://www.makemystay.ai",
+            "https://admin.makemystay.ai"
         ],
         "ExposeHeaders": [
-            "ETag"
+            "ETag",
+            "Content-Type"
         ],
         "MaxAgeSeconds": 3000
     }

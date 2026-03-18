@@ -10,6 +10,8 @@ from loguru import logger
 from app.schemas.demo import DemoBookingCreate
 from app.schemas.realty import ContactCreate
 
+from app.core.config import settings
+
 # Ensure environment variables are loaded when this module is imported
 load_dotenv()
 
@@ -17,12 +19,12 @@ load_dotenv()
 class EmailService:
     def __init__(self):
         self.conf = ConnectionConfig(
-            MAIL_USERNAME=os.getenv("MAIL_USERNAME"),
-            MAIL_PASSWORD=os.getenv("MAIL_PASSWORD"),
-            MAIL_FROM=os.getenv("MAIL_FROM"),
-            MAIL_PORT=int(os.getenv("MAIL_PORT", 465)),
-            MAIL_SERVER=os.getenv("MAIL_SERVER"),
-            MAIL_FROM_NAME=os.getenv("MAIL_FROM_NAME"),
+            MAIL_USERNAME=settings.MAIL_USERNAME,
+            MAIL_PASSWORD=settings.MAIL_PASSWORD,
+            MAIL_FROM=settings.MAIL_FROM,
+            MAIL_PORT=settings.MAIL_PORT,
+            MAIL_SERVER=settings.MAIL_SERVER,
+            MAIL_FROM_NAME=settings.MAIL_FROM_NAME,
             MAIL_STARTTLS=False,
             MAIL_SSL_TLS=True,
             USE_CREDENTIALS=True,
@@ -259,7 +261,7 @@ class EmailService:
 
         admin_message = MessageSchema(
             subject=f"New Demo Booking: {booking_data.company or booking_data.name} - {date_str}",
-            recipients=[os.getenv("MAIL_FROM")],  # Sending to company email
+            recipients=[settings.MAIL_FROM],  # Sending to company email
             body=admin_html,
             subtype=MessageType.html,
         )

@@ -3,22 +3,83 @@ from datetime import datetime, timedelta
 from typing import Any, Dict, Optional
 
 import httpx
+import pybreaker
 from dotenv import load_dotenv
 from loguru import logger
+from tenacity import retry, stop_after_attempt, wait_exponential, retry_if_exception_type
+
+from app.core.config import settings
+
+# Circuit breaker for Zoho CRM: trips after 5 failures, resets after 60s
+zoho_breaker = pybreaker.CircuitBreaker(fail_max=5, reset_timeout=60)
 
 load_dotenv()
+
+# ------------------------------------------------------------------ #
+#  Human-friendly source names for Zoho CRM Lead_Source
+# ------------------------------------------------------------------ #
+SOURCE_DISPLAY_NAMES = {
+    "housing": "Housing.com",
+    "99acres": "99acres",
+    "magicbricks": "MagicBricks",
+    "meta": "Meta Ads",
+    "website": "Website",
+    "broker": "Broker Referral",
+}
+
+def _get_display_source(source: str) -> str:
+    """Return a display-friendly source name for CRM."""
+    return SOURCE_DISPLAY_NAMES.get(source.lower(), source.title())
+
+class _CRMLeadAdapter:
+    """Maps a Lead payload to the attribute interface expected by ZohoCRMService."""
+    def __init__(self, payload: Any, source: str):
+        # Handle both Pydantic models (with name_) and regular dicts/objects
+        self.name_ = getattr(payload, "name_", getattr(payload, "name", "Lead"))
+        self.name = self.name_
+        self.phone = getattr(payload, "phone", "")
+        self.email = getattr(payload, "email", "")
+        self.company = "Individual"
+
+        parts = []
+        msg = getattr(payload, "message", "")
+        if msg: parts.append(msg)
+        req = getattr(payload, "requirement", "")
+        if req: parts.append(f"Requirement: {req}")
+        proj = getattr(payload, "project_name", "")
+        if proj: parts.append(f"Project: {proj}")
+        budg = getattr(payload, "budget", "")
+        if budg: parts.append(f"Budget: {budg}")
+        self.message = " | ".join(parts) if parts else ""
+
+        self.location = getattr(payload, "location", getattr(payload, "city", ""))
+        self.property_type = getattr(payload, "property_type", "")
+        self.units = getattr(payload, "units", "")
+        self.lead_source = _get_display_source(source)
 
 
 class ZohoCRMService:
     def __init__(self):
-        self.client_id = os.getenv("ZOHO_CRM_CLIENT_ID")
-        self.client_secret = os.getenv("ZOHO_CRM_CLIENT_SECRET")
-        self.refresh_token = os.getenv("ZOHO_CRM_REFRESH_TOKEN")
+        self.client_id = settings.ZOHO_CRM_CLIENT_ID
+        self.client_secret = settings.ZOHO_CRM_CLIENT_SECRET
+        self.refresh_token = settings.ZOHO_CRM_REFRESH_TOKEN
         self.base_url = "https://www.zohoapis.in/crm/v7"  # Upgraded from v2 to v7
         self.auth_url = "https://accounts.zoho.in/oauth/v2/token"
         self._access_token: Optional[str] = None
         self._token_expiry: Optional[datetime] = None
 
+    @retry(
+        stop=stop_after_attempt(3),
+        wait=wait_exponential(multiplier=1, min=2, max=10),
+        retry=retry_if_exception_type((httpx.RequestError, httpx.TimeoutException)),
+        reraise=True
+    )
+    @retry(
+        stop=stop_after_attempt(3),
+        wait=wait_exponential(multiplier=1, min=2, max=10),
+        retry=retry_if_exception_type((httpx.RequestError, httpx.TimeoutException)),
+        reraise=True
+    )
     async def _get_access_token(self) -> Optional[str]:
         """Gets or refreshes the access token using the refresh token."""
         if (
@@ -40,7 +101,7 @@ class ZohoCRMService:
         }
 
         try:
-            async with httpx.AsyncClient() as client:
+            async with httpx.AsyncClient(timeout=10.0) as client:
                 response = await client.post(self.auth_url, params=params)
                 data = response.json()
 
@@ -59,6 +120,19 @@ class ZohoCRMService:
             logger.error(f"Exception during Zoho CRM token refresh: {str(e)}")
             return None
 
+    @retry(
+        stop=stop_after_attempt(3),
+        wait=wait_exponential(multiplier=1, min=2, max=10),
+        retry=retry_if_exception_type((httpx.RequestError, httpx.TimeoutException)),
+        reraise=True
+    )
+    @retry(
+        stop=stop_after_attempt(3),
+        wait=wait_exponential(multiplier=1, min=2, max=10),
+        retry=retry_if_exception_type((httpx.RequestError, httpx.TimeoutException)),
+        reraise=True
+    )
+    @zoho_breaker
     async def _make_request(
         self,
         method: str,
@@ -79,7 +153,7 @@ class ZohoCRMService:
         url = f"{self.base_url}/{endpoint}"
 
         try:
-            async with httpx.AsyncClient() as client:
+            async with httpx.AsyncClient(timeout=15.0) as client:
                 if method.upper() == "POST":
                     response = await client.post(
                         url, json=data, headers=headers, params=params

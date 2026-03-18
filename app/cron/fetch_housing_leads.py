@@ -13,6 +13,7 @@ import time
 from datetime import datetime
 
 from loguru import logger
+from app.core.config import settings
 
 
 async def _run_housing_sync():
@@ -39,12 +40,16 @@ async def _run_housing_sync():
         now = int(time.time())
 
         # Use last_lead_timestamp if available, otherwise default to 2 hours ago
-        if meta.last_lead_timestamp:
-            start_date = meta.last_lead_timestamp
-        else:
-            start_date = str(now - 7200)  # 2 hours ago for first run
+        start_int = int(str(meta.last_lead_timestamp)) if meta.last_lead_timestamp is not None else (now - 7200)
 
-        end_date = str(now)
+        # Housing API strictly allows max 2 days difference.
+        # If the gap > 47 hours, cap the end_date. Successive cron runs will catch up.
+        end_int = now
+        if end_int - start_int > 170000:
+            end_int = start_int + 170000
+
+        start_date = str(start_int)
+        end_date = str(end_int)
 
         logger.info(
             f"Housing cron sync: start_date={start_date}, end_date={end_date}"
@@ -58,7 +63,6 @@ async def _run_housing_sync():
         from app.api.webhooks import _process_lead_pipeline
         from app.models.lead import Lead
         from app.schemas.lead import LeadCreate
-        from app.utils.zoho_crm_service import zoho_crm_service
 
         leads_raw, error = await housing_lead_service.fetch_leads(
             start_date, end_date
@@ -75,15 +79,15 @@ async def _run_housing_sync():
             db.commit()
             return
 
-        imported = 0
-        skipped = 0
+        imported: int = 0
+        skipped: int = 0
 
         for raw_lead in leads_raw:
             mapped = housing_lead_service.map_lead(raw_lead)
             phone = mapped.get("phone", "")
 
             if not phone or len(phone) < 10:
-                skipped += 1
+                skipped += 1  # type: ignore[operator]
                 continue
 
             # Deduplicate: phone + (external_id OR lead_date)
@@ -102,7 +106,7 @@ async def _run_housing_sync():
                 
             existing = query.first()
             if existing:
-                skipped += 1
+                skipped += 1  # type: ignore[operator]
                 continue
 
             # Store in DB
@@ -125,7 +129,7 @@ async def _run_housing_sync():
                 bg.add_task = lambda fn, *a, **kw: zoho_tasks.append((fn, a, kw))
 
                 _process_lead_pipeline("housing", payload, bg, db)
-                imported += 1
+                imported += 1  # type: ignore[operator]
 
                 # Execute Zoho + AI tasks
                 for fn, args, kwargs in zoho_tasks:
@@ -156,11 +160,27 @@ async def _run_housing_sync():
 
     except Exception as e:
         logger.error(f"Housing cron sync failed: {e}")
+        
+        # Log failure for observability
+        try:
+            from app.models.failed_job import FailedJob
+            import traceback
+            
+            failed = FailedJob(
+                job_name="sync_housing_job",
+                error=str(e),
+                stack_trace=traceback.format_exc()
+            )
+            db.add(failed)
+            db.commit()
+        except Exception as log_err:
+            logger.error(f"Failed to log failed job: {log_err}")
+
         # Alert only if we were previously healthy
-        if meta and meta.status != "error":
+        if meta is not None and meta.status != "error":
             asyncio.create_task(email_service.send_sync_error_alert("housing", f"System Error: {str(e)}"))
             
-        if meta:
+        if meta is not None:
             meta.status = "error"
             meta.last_error = f"System Error: {str(e)}"
             db.commit()
@@ -171,7 +191,7 @@ async def _run_housing_sync():
 
 async def housing_cron_loop():
     """Infinite loop that runs the Housing.com sync every 2 minutes."""
-    interval = int(os.getenv("HOUSING_SYNC_INTERVAL_SECONDS", "120"))
+    interval = settings.HOUSING_SYNC_INTERVAL_SECONDS
     logger.info(f"Housing.com cron started — syncing every {interval}s")
 
     # Wait 10 seconds after startup before first run

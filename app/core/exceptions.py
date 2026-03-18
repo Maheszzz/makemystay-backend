@@ -1,12 +1,14 @@
 """Custom exception classes for standardized error responses."""
 
+from typing import Union
+
 from fastapi import HTTPException, status
 
 
 class NotFoundException(HTTPException):
     """Raised when a requested resource is not found."""
 
-    def __init__(self, resource: str, resource_id: int):
+    def __init__(self, resource: str, resource_id: Union[int, str]):
         super().__init__(
             status_code=status.HTTP_404_NOT_FOUND,
             detail={

@@ -2,7 +2,7 @@
 
 import logging
 import os
-import sys
+from contextlib import asynccontextmanager
 
 from dotenv import load_dotenv
 from fastapi import FastAPI, Request
@@ -12,33 +12,79 @@ from loguru import logger
 from slowapi import Limiter, _rate_limit_exceeded_handler
 from slowapi.errors import RateLimitExceeded
 from slowapi.util import get_remote_address
+import sentry_sdk
+from prometheus_fastapi_instrumentator import Instrumentator
 
 from app.api.auth import router as auth_router
 from app.api.realty import realty_router
 
-# Load environment variables
+from app.core.config import settings
+
+# --- Settings & Logging ---
 load_dotenv()
-
 logging.basicConfig(level=logging.INFO)
+logger.info(f"ENV={settings.ENV}")
 
-logging.info("ENV=%s", os.getenv("ENV"))
-logging.info("DB_HOST=%s", os.getenv("DB_HOST"))
-logging.info("DB_PORT=%s", os.getenv("DB_PORT"))
-logging.info("DB_USER=%s", os.getenv("DB_USER"))
-logging.info("DB_NAME=%s", os.getenv("DB_NAME"))
-
-# Initialize rate limiter
+# --- Rate Limiter ---
 limiter = Limiter(key_func=get_remote_address)
 
+# --- Background Scheduler ---
+from apscheduler.schedulers.background import BackgroundScheduler
+from app.cron.fetch_housing_leads import _run_housing_sync # Keep for transition if needed, but we'll use sync_all_sources
+from app.services.lead_sync_service import sync_all_sources
+import asyncio
+
+scheduler = BackgroundScheduler()
+
+def sync_housing_job():
+    """APScheduler wrapper for async sync function."""
+    asyncio.run(_run_housing_sync())
+
+# --- Sentry Setup ---
+if settings.SENTRY_DSN:
+    sentry_sdk.init(
+        dsn=settings.SENTRY_DSN,
+        environment=settings.ENV,
+        traces_sample_rate=1.0,
+        profiles_sample_rate=1.0,
+    )
+    logger.info("Sentry initialization complete")
+
+def sync_all_job():
+    """APScheduler wrapper for the unified sync function."""
+    asyncio.run(sync_all_sources())
+
+# --- Lifespan Manager ---
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    """Lifecycle manager for the app."""
+    logger.info("Starting background scheduler...")
+    # Run every 2 minutes (interval from settings)
+    scheduler.add_job(sync_all_job, "interval", seconds=settings.HOUSING_SYNC_INTERVAL_SECONDS, id="unified_sync_job")
+    # Run once immediately on startup
+    scheduler.add_job(sync_all_job, id="initial_sync_job")
+    
+    scheduler.start()
+    logger.info(f"APScheduler started: unified_sync_job scheduled every {settings.HOUSING_SYNC_INTERVAL_SECONDS}s")
+    yield
+    logger.info("Shutting down background scheduler...")
+    scheduler.shutdown()
+
+# --- FastAPI App ---
 app = FastAPI(
     title="Realty API",
     description="API for managing property listings and contacts",
     version="1.0.0",
+    lifespan=lifespan
 )
+
+# Initialize Prometheus metrics
+Instrumentator().instrument(app).expose(app)
 
 app.state.limiter = limiter
 app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 
+# --- Middleware ---
 # Configure CORS for frontend connection
 app.add_middleware(
     CORSMiddleware,
@@ -56,10 +102,10 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+# --- Database Initialization ---
 # Create Database Tables
-from app.configs.db_config import MySQLBase, mysql_engine
-
-from app.models import sync_metadata  # noqa: F401 — ensure table is registered
+from app.configs.db_config import MySQLBase, mysql_engine  # noqa: E402
+from app.models import sync_metadata, failed_job  # noqa: E402, F401
 
 MySQLBase.metadata.create_all(bind=mysql_engine)
 
@@ -72,66 +118,62 @@ async def global_exception_handler(request: Request, exc: Exception):
         status_code=500,
         content={
             "error": "internal_server_error",
-            "message": "An unexpected error occurred",
+            "message": str(exc),
         },
     )
 
 
-@app.get("/", tags=["Health"])
-async def root():
-    """Health check endpoint."""
-    return {"status": "healthy", "service": "Realty API"}
-
-
 @app.get("/health", tags=["Health"])
-async def health_check():
+async def health():
     """Detailed health check endpoint."""
-    return {"status": "healthy", "service": "Realty API", "version": "1.0.0"}
+    from app.configs.db_config import mysql_engine
+    try:
+        # Check DB
+        from sqlalchemy import text
+        with mysql_engine.connect() as conn:
+            conn.execute(text("SELECT 1"))
+        db_status = "connected"
+    except Exception:
+        db_status = "disconnected"
 
+    return {
+        "status": "healthy",
+        "service": "Realty API",
+        "version": "1.0.0",
+        "env": settings.ENV,
+        "database": db_status,
+        "scheduler": "running" if scheduler.running else "stopped"
+    }
 
+# --- Include Routers ---
 # Include routers
 app.include_router(realty_router, prefix="/api/v1")
 app.include_router(auth_router, prefix="/api/v1")
-from app.api.upload import router as upload_router
+from app.api.upload import router as upload_router  # noqa: E402
 
 app.include_router(upload_router, prefix="/api/v1")
-from app.api.payment import router as payment_router
+from app.api.payment import router as payment_router  # noqa: E402
 
 app.include_router(payment_router, prefix="/api/v1")
-from app.api.demo import router as demo_router
+from app.api.demo import router as demo_router  # noqa: E402
 
 app.include_router(demo_router, prefix="/api/v1")
-from app.api.retell import retell_router
+from app.api.retell import retell_router  # noqa: E402
 
 app.include_router(retell_router, prefix="/api/v1")
-from app.api.housing import housing_router
+from app.api.housing import housing_router  # noqa: E402
 app.include_router(housing_router, prefix="/api/v1")
 
 # Include webhooks at both /api/v1 and root for maximum reachability
-from app.api.webhooks import webhooks_router
+from app.api.webhooks import webhooks_router  # noqa: E402
 app.include_router(webhooks_router, prefix="/api/v1")
 app.include_router(webhooks_router)
 
 # Include Admin Dashboard routes
-from app.api.admin import admin_router
+from app.api.admin import admin_router  # noqa: E402
 app.include_router(admin_router, prefix="/api/v1")
-
-
-# ------------------------------------------------------------------ #
-#  Background cron: Housing.com lead auto-sync (every 2 min)
-# ------------------------------------------------------------------ #
-import asyncio
-
-from app.cron.fetch_housing_leads import housing_cron_loop
-
-
-@app.on_event("startup")
-async def start_housing_cron():
-    """Launch the Housing.com lead sync cron on app startup."""
-    asyncio.create_task(housing_cron_loop())
 
 
 if __name__ == "__main__":
     import uvicorn
-
-    uvicorn.run(app, host="0.0.0.0", port=8000)
+    uvicorn.run("app.main:app", host="0.0.0.0", port=8000, reload=True)

@@ -64,8 +64,8 @@ async def sync_housing_leads(
     if full_sync:
         start_date = "0"
     elif not start_date:
-        if meta and meta.last_lead_timestamp:
-            start_date = meta.last_lead_timestamp
+        if meta and meta.last_lead_timestamp is not None:
+            start_date = str(meta.last_lead_timestamp)
         else:
             start_date = str(now - 86400)  # 24 hours ago
 
@@ -117,7 +117,7 @@ def get_sync_status(
     return {
         "is_configured": housing_lead_service.is_configured,
         "last_lead_timestamp": meta.last_lead_timestamp if meta else None,
-        "last_sync_at": meta.last_sync_at.isoformat() if meta and meta.last_sync_at else None,
+        "last_sync_at": (meta.last_sync_at or datetime.now()).isoformat() if meta else None,
         "leads_fetched": meta.leads_fetched if meta else 0,
         "leads_imported": meta.leads_imported if meta else 0,
     }

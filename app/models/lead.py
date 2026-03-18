@@ -38,6 +38,15 @@ class Lead(MySQLBase):
         nullable=False,
         index=True,
     )
+    crm_status = Column(
+        String(20), default="pending", nullable=False, index=True
+    )  # pending, queued, success, failed
+    
+    # Marketing Analytics
+    campaign = Column(String(100), nullable=True)
+    ad_id = Column(String(100), nullable=True)
+    property_id = Column(String(100), nullable=True) # ID of specific property if lead is for one
+    
     zoho_lead_id = Column(String(100), nullable=True)
     zoho_synced = Column(Boolean, default=False)
     is_ai_called = Column(Boolean, default=False)
@@ -53,4 +62,5 @@ class Lead(MySQLBase):
         UniqueConstraint(
             "phone", "lead_date", "external_id", name="uq_lead_phone_date_ext"
         ),
+        UniqueConstraint("phone", "source", name="uq_lead_phone_source"),
     )

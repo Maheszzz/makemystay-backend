@@ -6,15 +6,20 @@ deduplicates them, and feeds new leads into the existing lead pipeline.
 API Spec: https://pahal.housing.com/api/v0/get-builder-leads (GET)
 """
 
+import asyncio
 import hashlib
 import hmac
-import os
 import time
 from datetime import datetime, timedelta
 from typing import Any, Dict, List, Optional, Tuple
 
 import httpx
+import pybreaker
+from aiolimiter import AsyncLimiter
 from loguru import logger
+from tenacity import retry, stop_after_attempt, wait_exponential, retry_if_exception_type
+
+from app.core.config import settings
 
 # ---------------------------------------------------------------------------
 #  Constants
@@ -22,7 +27,16 @@ from loguru import logger
 BUILDER_API_URL = "https://pahal.housing.com/api/v0/get-builder-leads"
 BROKER_API_URL = "https://pahal.housing.com/api/v0/get-broker-leads"
 DEFAULT_PER_PAGE = 1000
-REQUEST_TIMEOUT = 30  # seconds
+BOOTSTRAP_FETCH_DAYS = 2 # fetch last 2 days on first run
+REQUEST_TIMEOUT = 5.0  # seconds
+
+# --- Scale-Proof Controls ---
+# 5 concurrent requests max
+housing_semaphore = asyncio.Semaphore(5)
+# 10 requests per second max
+housing_limiter = AsyncLimiter(10, 1)
+# Circuit breaker: trips after 5 failures, resets after 60s
+housing_breaker = pybreaker.CircuitBreaker(fail_max=5, reset_timeout=60)
 
 
 # ---------------------------------------------------------------------------
@@ -55,9 +69,9 @@ class HousingLeadService:
     """Client for Housing.com's Pahal lead-fetching API."""
 
     def __init__(self):
-        self.api_key: str = os.getenv("HOUSING_API_KEY", "")
-        self.api_id: str = os.getenv("HOUSING_API_ID", "")
-        self.project_ids: str = os.getenv("HOUSING_PROJECT_IDS", "")
+        self.api_key: str = settings.HOUSING_API_KEY
+        self.api_id: str = settings.HOUSING_API_ID
+        self.project_ids: str = "" # Add this to settings later if needed
         self._last_sync_at: Optional[datetime] = None
         self._last_sync_count: int = 0
 
@@ -72,7 +86,7 @@ class HousingLeadService:
     @property
     def last_sync_info(self) -> Dict[str, Any]:
         return {
-            "last_sync_at": self._last_sync_at.isoformat() if self._last_sync_at else None,
+            "last_sync_at": (self._last_sync_at or datetime.now()).isoformat() if self._last_sync_at else None,
             "last_sync_count": self._last_sync_count,
             "is_configured": self.is_configured,
         }
@@ -87,20 +101,92 @@ class HousingLeadService:
         api_url: str = BUILDER_API_URL,
         per_page: int = DEFAULT_PER_PAGE,
     ) -> Tuple[List[Dict[str, Any]], Optional[str]]:
-        """Hit the Housing.com API and return (leads_list, error_message).
+        """Hit the Housing.com API and return (leads_list, error_message) with chunking.
 
-        Args:
-            start_date: Epoch timestamp string — start of date range.
-            end_date:   Epoch timestamp string — end of date range.
-            api_url:    Which endpoint to call (builder or broker).
-            per_page:   Max records per page (default 1000).
-
-        Returns:
-            Tuple of (list_of_lead_dicts, error_string_or_None).
+        Housing com API breaks if the diff between start_date and end_date > 48hrs. 
+        So we chunk by 48 hours.
         """
+        return await self._fetch_leads_with_retry(start_date, end_date, api_url, per_page)
+
+    @retry(
+        stop=stop_after_attempt(3),
+        wait=wait_exponential(multiplier=1, min=4, max=10),
+        retry=retry_if_exception_type((httpx.RequestError, httpx.TimeoutException)),
+        reraise=True
+    )
+    async def _fetch_leads_with_retry(
+        self,
+        start_date: str,
+        end_date: str,
+        api_url: str = BUILDER_API_URL,
+        per_page: int = DEFAULT_PER_PAGE,
+    ) -> Tuple[List[Dict[str, Any]], Optional[str]]:
+        """Internal method with retry logic."""
+        import time
+        from datetime import datetime, timedelta
+
         if not self.is_configured:
             return [], "Housing.com API is not configured (missing HOUSING_API_KEY or HOUSING_API_ID)"
 
+        all_leads = []
+
+        # Chunk logic
+        s_dt = datetime.fromtimestamp(int(start_date))
+        e_dt = datetime.fromtimestamp(int(end_date))
+
+        tasks = []
+        current_start = s_dt
+        while current_start < e_dt:
+            current_end = min(current_start + timedelta(hours=48), e_dt)
+            chunk_start_str = str(int(current_start.timestamp()))
+            chunk_end_str = str(int(current_end.timestamp()))
+            
+            tasks.append(self._safe_fetch_single_chunk(api_url, chunk_start_str, chunk_end_str, per_page))
+            current_start = current_end
+
+        responses = await asyncio.gather(*tasks, return_exceptions=True)
+        
+        for resp in responses:
+            if not isinstance(resp, tuple):
+                logger.error(f"Chunk request failed with non-tuple result: {resp}")
+                continue
+            
+            chunk_leads, error = resp
+            if error:
+                logger.error(f"Chunk request failed with error: {error}")
+                continue
+            
+            all_leads.extend(chunk_leads)
+
+        return all_leads, None
+
+    async def _safe_fetch_single_chunk(self, *args, **kwargs):
+        """Wrapper to apply concurrency and rate limiting."""
+        async with housing_semaphore:
+            async with housing_limiter:
+                return await self._fetch_single_chunk_protected(*args, **kwargs)
+
+    @housing_breaker
+    async def _fetch_single_chunk_protected(
+        self,
+        api_url: str,
+        start_date: str,
+        end_date: str,
+        per_page: int,
+    ) -> Tuple[List[Dict[str, Any]], Optional[str]]:
+        """Protected fetch call wrapped by circuit breaker."""
+        # This is the actual network call
+        return await self._fetch_single_chunk_raw(api_url, start_date, end_date, per_page)
+
+    async def _fetch_single_chunk_raw(
+        self,
+        api_url: str,
+        start_date: str,
+        end_date: str,
+        per_page: int,
+    ) -> Tuple[List[Dict[str, Any]], Optional[str]]:
+        """The actual raw network call to Housing.com."""
+        import time
         current_time = str(int(time.time()))
         hash_value = generate_hmac_hash(self.api_key, current_time)
 
@@ -112,45 +198,27 @@ class HousingLeadService:
             "id": self.api_id,
         }
 
-        # Optional project_ids filter
         if self.project_ids:
             params["project_ids"] = self.project_ids
 
         logger.info(
-            f"Housing.com API request: url={api_url}, "
-            f"start_date={start_date}, end_date={end_date}, "
-            f"current_time={current_time}"
+            f"Housing.com API chunk request: url={api_url}, "
+            f"start_date={start_date}, end_date={end_date}"
         )
 
         try:
             async with httpx.AsyncClient(timeout=REQUEST_TIMEOUT) as client:
                 response = await client.get(api_url, params=params)
-
-            logger.info(f"Housing.com API response: status={response.status_code}")
-
-            if response.status_code == 401:
-                return [], "Unauthorized — hash mismatch or request delayed >15 min"
-
-            if response.status_code == 422:
-                return [], f"Validation error — missing/invalid params: {response.text}"
-
-            if response.status_code != 200:
-                return [], f"Unexpected status {response.status_code}: {response.text}"
-
-            data = response.json()
-
-            # Success response is wrapped in "data" key
-            leads = data.get("data", [])
-            if not isinstance(leads, list):
-                leads = [leads] if leads else []
-
-            logger.info(f"Housing.com API returned {len(leads)} leads")
-            return leads, None
-
-        except httpx.TimeoutException:
-            return [], "Request timed out"
+                
+                if response.status_code == 200:
+                    data = response.json()
+                    leads = data.get("leads", [])
+                    return leads, None
+                else:
+                    logger.error(f"Housing.com API Error {response.status_code}: {response.text}")
+                    return [], f"API Error ({response.status_code})"
         except Exception as e:
-            logger.error(f"Housing.com API error: {e}")
+            logger.error(f"Housing.com API Exception: {e}")
             return [], str(e)
 
     # ------------------------------------------------------------------ #
@@ -258,8 +326,8 @@ class HousingLeadService:
         if error:
             return {"status": "error", "error": error, "fetched": 0, "imported": 0, "skipped": 0}
 
-        imported = 0
-        skipped = 0
+        imported: int = 0
+        skipped: int = 0
         errors: List[str] = []
 
         for raw_lead in leads_raw:
@@ -267,7 +335,7 @@ class HousingLeadService:
 
             phone = mapped.get("phone", "")
             if not phone or len(phone) < 10:
-                skipped += 1
+                skipped += 1  # type: ignore[operator]
                 logger.warning(f"Skipping Housing.com lead with invalid phone: {phone}")
                 continue
 
@@ -288,7 +356,7 @@ class HousingLeadService:
             
             existing = query.first()
             if existing:
-                skipped += 1
+                skipped += 1  # type: ignore[operator]
                 logger.debug(f"Dedup: Housing.com lead phone={phone} date={l_date} already exists (#{existing.id})")
                 continue
 
@@ -306,7 +374,7 @@ class HousingLeadService:
                     external_id=mapped.get("external_id"),
                 )
                 _process_lead_pipeline("housing", payload, background_tasks, db)
-                imported += 1
+                imported += 1  # type: ignore[operator]
             except Exception as e:
                 logger.error(f"Failed to process Housing.com lead (phone={phone}): {e}")
                 errors.append(f"phone={phone}: {str(e)}")

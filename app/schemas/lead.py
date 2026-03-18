@@ -35,6 +35,9 @@ class LeadCreate(BaseModel):
     property_type: Optional[str] = Field(None, max_length=100)
     lead_date: Optional[int] = None
     external_id: Optional[str] = None
+    campaign: Optional[str] = Field(None, max_length=100)
+    ad_id: Optional[str] = Field(None, max_length=100)
+    property_id: Optional[str] = Field(None, max_length=100)
 
 
 class LeadResponse(BaseModel):

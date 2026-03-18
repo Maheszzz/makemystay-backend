@@ -97,7 +97,7 @@ def get_properties(
     )
 
     if not include_deleted:
-        query = query.filter(Property.is_deleted == False)
+        query = query.filter(Property.is_deleted.is_(False))
 
     if property_type:
         query = query.filter(Property.property_type == property_type)
@@ -202,7 +202,7 @@ def get_property_suggestions(db: Session, q: str) -> List[str]:
             db.query(Property.property_name)
             .filter(
                 Property.property_name.ilike(search_filter),
-                Property.is_deleted == False,
+                Property.is_deleted.is_(False),
             )
             .distinct()
             .limit(5)
@@ -213,7 +213,7 @@ def get_property_suggestions(db: Session, q: str) -> List[str]:
         locations.extend(
             db.query(Property.location)
             .filter(
-                Property.location.ilike(search_filter), Property.is_deleted == False
+                Property.location.ilike(search_filter), Property.is_deleted.is_(False)
             )
             .distinct()
             .limit(5)
@@ -221,7 +221,7 @@ def get_property_suggestions(db: Session, q: str) -> List[str]:
         )
 
     # Extract strings and combine
-    suggestions = [n[0] for n in names] + [l[0] for l in locations]
+    suggestions = [n[0] for n in names] + [loc[0] for loc in locations]
 
     # Return unique sorted results
     return sorted(list(set(suggestions)))
@@ -238,7 +238,7 @@ def get_property_by_id(
     )
 
     if not include_deleted:
-        query = query.filter(Property.is_deleted == False)
+        query = query.filter(Property.is_deleted.is_(False))
 
     p = query.first()
 
@@ -264,7 +264,7 @@ def get_property_by_slug(
     )
 
     if not include_deleted:
-        query = query.filter(Property.is_deleted == False)
+        query = query.filter(Property.is_deleted.is_(False))
 
     p = query.first()
 

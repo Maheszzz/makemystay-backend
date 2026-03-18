@@ -21,11 +21,12 @@ from fastapi import (
 from loguru import logger
 from sqlalchemy.orm import Session
 
-from app.api.retell import trigger_outbound_call
 from app.configs.db_config import get_mysql_db
+from app.core.config import settings
 from app.repo import lead as lead_repo
 from app.schemas.lead import LeadCreate, LeadResponse, LeadStatus, LeadWebhookResponse
-from app.utils.zoho_crm_service import zoho_crm_service
+from app.utils.zoho_crm_service import _get_display_source
+from app.services.lead_processor import process_lead
 
 webhooks_router = APIRouter(tags=["Webhooks / Leads"])
 
@@ -56,124 +57,25 @@ def _verify_api_key(x_api_key: Optional[str], api_key: Optional[str]):
     if not key_to_check:
         raise HTTPException(status_code=401, detail="Missing API key")
 
-    expected_key = os.getenv("HOUSING_WEBHOOK_API_KEY", "")
+    expected_key = settings.HOUSING_WEBHOOK_API_KEY
     if not expected_key:
-        logger.error("HOUSING_WEBHOOK_API_KEY is not configured in environment.")
+        logger.error("HOUSING_WEBHOOK_API_KEY is not configured in settings.")
         raise HTTPException(status_code=500, detail="Webhook not configured")
     if key_to_check != expected_key:
         raise HTTPException(status_code=401, detail="Invalid API key")
 
 
 # ------------------------------------------------------------------ #
-#  Adapter: maps LeadCreate → attribute interface for ZohoCRMService
-# ------------------------------------------------------------------ #
-class _CRMLeadAdapter:
-    """Maps a LeadCreate payload to the attribute interface expected by ZohoCRMService."""
-
-    def __init__(self, payload: LeadCreate, source: str):
-        self.name_ = payload.name or "Lead"
-        self.name = self.name_
-        self.phone = payload.phone
-        self.email = payload.email or ""
-        self.company = "Individual"
-
-        # Combine contextual fields into 'message' for CRM description
-        parts = []
-        if payload.message:
-            parts.append(payload.message)
-        if payload.requirement:
-            parts.append(f"Requirement: {payload.requirement}")
-        if payload.project_name:
-            parts.append(f"Project: {payload.project_name}")
-        if payload.budget:
-            parts.append(f"Budget: {payload.budget}")
-        self.message = " | ".join(parts) if parts else ""
-
-        self.location = payload.location or payload.city or ""
-        self.property_type = payload.property_type or ""
-        self.units = ""
-        self.lead_source = _get_display_source(source)
-
-
-# ------------------------------------------------------------------ #
 #  Shared Lead Pipeline
 # ------------------------------------------------------------------ #
-def _process_lead_pipeline(
+async def _process_lead_pipeline(
     source: str,
     payload: LeadCreate,
-    background_tasks: BackgroundTasks,
     db: Session,
 ):
+    """Refactored to use centralized lead_processor."""
     source_normalized = source.lower().strip()
-    logger.info(f"Lead pipeline [{source_normalized}]: {payload.model_dump()}")
-
-    # --- 1. Combine message fields ---
-    combined_message = payload.message or ""
-    if payload.requirement:
-        combined_message += (
-            f" | Requirement: {payload.requirement}"
-            if combined_message
-            else payload.requirement
-        )
-
-    # --- 2. Store in MySQL ---
-    lead_data = {
-        "name": payload.name,
-        "phone": payload.phone,
-        "email": payload.email,
-        "source": source_normalized,
-        "city": payload.city,
-        "location": payload.location,
-        "project_name": payload.project_name,
-        "property_type": payload.property_type,
-        "budget": payload.budget,
-        "message": combined_message,
-        "status": "new",
-        "lead_date": payload.lead_date,
-        "external_id": payload.external_id,
-        "raw_payload": payload.model_dump(),
-    }
-
-    try:
-        db_lead = lead_repo.create_lead(db, lead_data)
-    except Exception as e:
-        logger.error(f"Failed to store lead: {e}")
-        raise HTTPException(status_code=500, detail="Failed to store lead")
-
-    # --- 3. Zoho CRM sync (background) ---
-    adapter = _CRMLeadAdapter(payload, source_normalized)
-    lead_id_ref = db_lead.id  # capture for closure
-
-    async def _sync_to_crm():
-        zoho_lead_id = await zoho_crm_service.create_or_update_lead(adapter)
-        if zoho_lead_id:
-            logger.info(f"Lead #{lead_id_ref} synced to Zoho CRM: {zoho_lead_id}")
-            # Update the DB record with Zoho ID
-            try:
-                from app.configs.db_config import MySQLSessionLocal
-
-                with MySQLSessionLocal() as session:
-                    lead_obj = lead_repo.get_lead_by_id(session, lead_id_ref)
-                    if lead_obj:
-                        lead_repo.update_lead(
-                            session, lead_obj, {
-                                "zoho_lead_id": zoho_lead_id,
-                                "zoho_synced": True
-                            }
-                        )
-            except Exception as e:
-                logger.error(
-                    f"Failed to update zoho_lead_id for Lead #{lead_id_ref}: {e}"
-                )
-        else:
-            logger.error(f"Failed to sync Lead #{lead_id_ref} to Zoho CRM")
-
-    background_tasks.add_task(_sync_to_crm)
-
-    # Note: AI calling logic (Maya) has been moved exclusively to the website contact form
-    # in app/api/realty.py as per user request.
-
-    return db_lead
+    return await process_lead(db, payload, source_normalized, raw_payload=payload.model_dump())
 
 
 # ================================================================== #
@@ -206,7 +108,10 @@ async def receive_lead(
     """
     _verify_api_key(x_api_key, api_key)
 
-    db_lead = _process_lead_pipeline(source, payload, background_tasks, db)
+    db_lead = await _process_lead_pipeline(source, payload, db)
+    if not db_lead:
+        # Fallback for duplicates if needed (process_lead returns None for dups)
+        return LeadWebhookResponse(status="skipped", message="Duplicate lead detected")
 
     return LeadWebhookResponse(
         status="ok",
@@ -321,7 +226,7 @@ async def receive_99acres_xml(
 
         # Catch specific failures and mark "N" in return XML only for error logic
         try:
-            _process_lead_pipeline("99acres", payload, background_tasks, db)
+            await _process_lead_pipeline("99acres", payload, db)
 
             resp_qry = ET.SubElement(resp_root, "QryResp")
             ET.SubElement(resp_qry, "QryId").text = qry_id

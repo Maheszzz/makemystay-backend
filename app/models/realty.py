@@ -11,7 +11,6 @@ from sqlalchemy import (
     Text,
     func,
 )
-from sqlalchemy.dialects.mysql import INTEGER
 from sqlalchemy.orm import relationship
 
 from app.configs.db_config import MySQLBase
@@ -109,7 +108,7 @@ class Review(MySQLBase):
 
     id = Column(Integer, primary_key=True, index=True, autoincrement=True)
     property_id = Column(
-        INTEGER(unsigned=True),
+        Integer,
         ForeignKey("properties.id", ondelete="CASCADE"),
         nullable=False,
     )

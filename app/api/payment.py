@@ -13,7 +13,8 @@ from loguru import logger
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
-from app.configs.db_config import get_db
+from app.configs.db_config import get_db, get_mysql_db
+from app.core.config import settings
 from app.models.payment import Payment
 from app.schemas.payment import (
     PaymentSchema,
@@ -24,8 +25,8 @@ from app.schemas.payment import (
 router = APIRouter()
 
 # Initialize Razorpay client
-RAZORPAY_KEY_ID = os.getenv("RAZORPAY_KEY_ID")
-RAZORPAY_KEY_SECRET = os.getenv("RAZORPAY_KEY_SECRET")
+RAZORPAY_KEY_ID = settings.RAZORPAY_KEY_ID
+RAZORPAY_KEY_SECRET = settings.RAZORPAY_KEY_SECRET
 
 client = razorpay.Client(auth=(RAZORPAY_KEY_ID, RAZORPAY_KEY_SECRET))
 
@@ -186,10 +187,10 @@ def create_receipt_pdf(payment: Payment):
     try:
         date_str = (
             payment.created_at.strftime("%d %b %Y")
-            if payment.created_at
+            if payment.created_at is not None
             else datetime.now().strftime("%d %b %Y")
         )
-    except:
+    except Exception:
         date_str = datetime.now().strftime("%d %b %Y")
 
     receipt_id = (

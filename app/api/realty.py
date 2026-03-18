@@ -3,6 +3,7 @@
 from typing import List, Optional
 
 from fastapi import APIRouter, BackgroundTasks, Depends, Query
+from loguru import logger
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
 
@@ -90,39 +91,19 @@ def create_contact(
     """
     try:
         new_contact = realty_repo.create_contact(db, contact.model_dump(by_alias=False))
-        # Schedule email notification in the background
-        background_tasks.add_task(email_service.send_contact_notification, contact)
-        # Sync with Zoho CRM
-        background_tasks.add_task(zoho_crm_service.create_or_update_lead, contact)
-
-        # Trigger outbound AI phone call in the background (only if not already called)
-        if not getattr(new_contact, "is_ai_called", False):
-            prompt_message = contact.message or ""
-            background_tasks.add_task(
-                trigger_outbound_call,
-                name=contact.name_,
-                phone=contact.phone,
-                location=contact.location or "",
-                property_type=contact.property_type or "",
-                message=prompt_message,
+        
+        # Offload all processing to RQ
+        from app.core.redis import lead_queue
+        if lead_queue:
+            from app.tasks.lead_tasks import process_contact_notifications_task
+            lead_queue.enqueue(
+                process_contact_notifications_task,
+                contact.model_dump(by_alias=False),
+                new_contact.id
             )
-            # Log the call in Zoho CRM Calls module
-            background_tasks.add_task(zoho_crm_service.log_call, contact)
-
-            # Update is_ai_called status in DB
-            async def _mark_contact_ai_called():
-                try:
-                    from app.configs.db_config import MySQLSessionLocal
-                    with MySQLSessionLocal() as session:
-                        contact_obj = realty_repo.get_contact_by_id(session, new_contact.id)
-                        if contact_obj:
-                            realty_repo.update_contact(
-                                session, contact_obj, {"is_ai_called": True}
-                            )
-                except Exception as e:
-                    logger.error(f"Failed to update is_ai_called for Contact #{new_contact.id}: {e}")
-
-            background_tasks.add_task(_mark_contact_ai_called)
+            logger.info(f"Contact #{new_contact.id} queued for background processing")
+        else:
+            logger.warning(f"Contact #{new_contact.id} background tasks skipped - Redis not available")
 
         return new_contact
     except SQLAlchemyError as e:

@@ -8,12 +8,12 @@ from app.models.realty import Property, Contact
 def get_dashboard_stats(db: Session):
     """Calculate aggregate metrics for the admin dashboard."""
     total_leads = db.query(func.count(Lead.id)).scalar() or 0
-    total_properties = db.query(func.count(Property.id)).filter(Property.is_deleted == False).scalar() or 0
+    total_properties = db.query(func.count(Property.id)).filter(Property.is_deleted.is_(False)).scalar() or 0
     total_contacts = db.query(func.count(Contact.id)).scalar() or 0
-    total_ai_calls = db.query(func.count(Lead.id)).filter(Lead.is_ai_called == True).scalar() or 0
+    total_ai_calls = db.query(func.count(Lead.id)).filter(Lead.is_ai_called.is_(True)).scalar() or 0
     active_listings = db.query(func.count(Property.id)).filter(
-        Property.is_available == True, 
-        Property.is_deleted == False
+        Property.is_available.is_(True),
+        Property.is_deleted.is_(False)
     ).scalar() or 0
 
     return {
@@ -33,7 +33,7 @@ def global_search(db: Session, query: str):
     search_term = f"%{query}%"
     
     properties = db.query(Property).filter(
-        Property.is_deleted == False,
+        Property.is_deleted.is_(False),
         or_(
             Property.property_name.ilike(search_term),
             Property.location.ilike(search_term)

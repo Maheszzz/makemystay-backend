@@ -1,0 +1,19 @@
+import os
+import redis
+from rq import Queue
+from app.core.config import settings
+
+# Initialize Redis connection
+# In a real environment, you'd get the REDIS_URL from settings
+try:
+    redis_conn = redis.from_url(os.getenv("REDIS_URL", "redis://localhost:6379/0"))
+    # Main lead processing queue
+    lead_queue = Queue("lead_sync", connection=redis_conn)
+    # Background worker/sync queue
+    sync_queue = Queue("worker_sync", connection=redis_conn)
+except Exception as e:
+    # Fallback to None if redis is not available (dev mode safety)
+    redis_conn = None
+    lead_queue = None
+    sync_queue = None
+    print(f"Warning: Redis not connected: {e}")

@@ -11,15 +11,15 @@ from sqlalchemy.orm import Session
 from app.configs.db_config import get_mysql_db
 from app.repo import user as user_repo
 
+from app.core.config import settings
+
 # Password hashing context
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 
 # JWT configuration
-SECRET_KEY = os.getenv("SECRET_KEY", "your-default-secret-key-for-development")
-ALGORITHM = os.getenv("ALGORITHM", "HS256")
-ACCESS_TOKEN_EXPIRE_MINUTES = int(
-    os.getenv("ACCESS_TOKEN_EXPIRE_MINUTES", "43200")
-)  # 30 days default
+SECRET_KEY = settings.SECRET_KEY
+ALGORITHM = settings.ALGORITHM
+ACCESS_TOKEN_EXPIRE_MINUTES = settings.ACCESS_TOKEN_EXPIRE_MINUTES
 
 
 def verify_password(plain_password: str, hashed_password: str) -> bool:
@@ -60,8 +60,8 @@ def get_current_user(
     )
     try:
         payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
-        email: str = payload.get("sub")
-        if email is None:
+        email: str = payload.get("sub", "")
+        if not email:
             raise credentials_exception
     except JWTError:
         raise credentials_exception

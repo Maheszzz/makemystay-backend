@@ -14,14 +14,17 @@ setup_logger()
 load_dotenv()
 
 
+from app.core.config import settings
+from app.core.logger import logger
+
 # MySQL Configuration for Realty Database
 # Build connection URL from individual environment variables
 
-DB_USER = os.getenv("DB_USER")
-DB_PASSWORD = os.getenv("DB_PASSWORD")
-DB_HOST = os.getenv("DB_HOST")
-DB_PORT = os.getenv("DB_PORT")
-DB_NAME = os.getenv("DB_NAME")
+DB_USER = settings.DB_USER
+DB_PASSWORD = settings.DB_PASSWORD
+DB_HOST = settings.DB_HOST
+DB_PORT = settings.DB_PORT
+DB_NAME = settings.DB_NAME
 
 # URL encode the password to handle special characters like @, #, etc.
 encoded_password = urllib.parse.quote_plus(DB_PASSWORD) if DB_PASSWORD else ""
@@ -31,7 +34,14 @@ MYSQL_DATABASE_URL = (
 )
 
 logger.info(f"Creating MySQL engine for {DB_HOST}:{DB_PORT}/{DB_NAME}")
-mysql_engine = create_engine(MYSQL_DATABASE_URL, echo=True, pool_pre_ping=True)
+mysql_engine = create_engine(
+    MYSQL_DATABASE_URL, 
+    echo=True, 
+    pool_pre_ping=True,
+    pool_size=10,
+    max_overflow=20,
+    pool_timeout=30
+)
 
 logger.info("Creating MySQL session local")
 MySQLSessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=mysql_engine)

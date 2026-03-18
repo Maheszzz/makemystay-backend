@@ -8,13 +8,15 @@ from loguru import logger
 from app.core import security
 from app.schemas.upload import UploadRequest, UploadResponse
 
+from app.core.config import settings
+
 router = APIRouter()
 
 # AWS Configuration
-AWS_ACCESS_KEY_ID = os.getenv("AWS_ACCESS_KEY_ID")
-AWS_SECRET_ACCESS_KEY = os.getenv("AWS_SECRET_ACCESS_KEY")
-AWS_REGION = os.getenv("AWS_REGION", "ap-south-1")
-BUCKET_NAME = os.getenv("S3_BUCKET_NAME")
+AWS_ACCESS_KEY_ID = settings.AWS_ACCESS_KEY_ID
+AWS_SECRET_ACCESS_KEY = settings.AWS_SECRET_ACCESS_KEY
+AWS_REGION = settings.AWS_REGION or "ap-south-1"
+BUCKET_NAME = settings.S3_BUCKET_NAME
 
 
 def get_s3_client():
@@ -67,7 +69,7 @@ def generate_upload_url(
         # Alternatively, for public assets, we just want the public URL base.
         # Since uploads are public, let's just construct the direct public URL
         # or use the CloudFront domain if available.
-        cloudfront_domain = os.getenv("CLOUDFRONT_DOMAIN")
+        cloudfront_domain = settings.CLOUDFRONT_DOMAIN
         if cloudfront_domain:
             domain = (
                 cloudfront_domain

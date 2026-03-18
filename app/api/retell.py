@@ -1,16 +1,16 @@
 """Retell AI API endpoints for creating web calls and outbound phone calls."""
 
-import os
-
 import httpx
 from fastapi import APIRouter, HTTPException, Request
 from loguru import logger
 
+from app.core.config import settings
+
 retell_router = APIRouter(tags=["Retell AI"])
 
-RETELL_API_KEY = os.getenv("RETELL_API_KEY", "")
-RETELL_AGENT_ID = os.getenv("RETELL_AGENT_ID", "")
-RETELL_FROM_NUMBER = os.getenv("RETELL_FROM_NUMBER", "")
+RETELL_API_KEY = settings.RETELL_API_KEY
+RETELL_AGENT_ID = settings.RETELL_AGENT_ID
+RETELL_FROM_NUMBER = settings.RETELL_FROM_NUMBER
 RETELL_API_BASE = "https://api.retellai.com"
 
 

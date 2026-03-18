@@ -1,62 +1,82 @@
-"""API endpoints for Administrative operations."""
-
-from typing import List
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
+from sqlalchemy import func
+from loguru import logger
+from typing import Dict, Any
 
 from app.configs.db_config import get_mysql_db
-from app.core import security
-from app.repo import admin as admin_repo
-from app.schemas.admin import DashboardStats, GlobalSearchResponse
-from app.schemas.lead import LeadResponse
+from app.models.lead import Lead
+from app.models.sync_metadata import SyncMetadata
+from app.core.redis import lead_queue
+from app.tasks.lead_tasks import sync_lead_to_zoho_task
 
-admin_router = APIRouter(tags=["Admin Dashboard"])
+admin_router = APIRouter(tags=["Admin / Operations"])
 
-@admin_router.get(
-    "/admin/dashboard/stats",
-    response_model=DashboardStats,
-    summary="Get high-level dashboard metrics",
-)
-def get_dashboard_stats(
-    db: Session = Depends(get_mysql_db),
-    current_admin=Depends(security.admin_required),
-):
-    """
-    Returns aggregated metrics for the dashboard:
-    - Total leads
-    - Total properties
-    - Total contacts
-    - AI calls triggered
-    - Active listings
-    """
-    return admin_repo.get_dashboard_stats(db)
+@admin_router.get("/admin/stats", summary="Get lead ingestion statistics")
+async def get_stats(db: Session = Depends(get_mysql_db)):
+    """Provides visibility into lead ingestion health and queue status."""
+    try:
+        # 1. Total leads today
+        today = func.date(Lead.created_at) == func.current_date()
+        total_today = db.query(Lead).filter(today).count()
+        
+        # 2. CRM status breakdown (today)
+        status_counts = db.query(
+            Lead.crm_status, func.count(Lead.id)
+        ).filter(today).group_by(Lead.crm_status).all()
+        
+        # 3. Last sync info
+        sync_meta = db.query(SyncMetadata).all()
+        sync_info = [
+            {
+                "source": s.source,
+                "last_sync": s.last_sync_at,
+                "status": s.status,
+                "leads_fetched": s.leads_fetched,
+                "last_error": s.last_error
+            } for s in sync_meta
+        ]
+        
+        # 4. Queue backlog
+        queue_size = len(lead_queue.job_ids) if lead_queue else 0
+        
+        return {
+            "today": {
+                "total": total_today,
+                "breakdown": dict(status_counts)
+            },
+            "sync_status": sync_info,
+            "queue_backlog": queue_size,
+        }
+    except Exception as e:
+        logger.error(f"Failed to fetch admin stats: {e}")
+        raise HTTPException(status_code=500, detail="Failed to fetch stats")
 
-@admin_router.get(
-    "/admin/leads/live",
-    response_model=List[LeadResponse],
-    summary="Get recent live leads",
-)
-def get_live_leads(
-    limit: int = Query(10, ge=1, le=50),
-    db: Session = Depends(get_mysql_db),
-    current_admin=Depends(security.admin_required),
-):
-    """
-    Returns the most recent leads for the live activity feed.
-    """
-    return admin_repo.get_live_leads(db, limit=limit)
-
-@admin_router.get(
-    "/admin/search",
-    response_model=GlobalSearchResponse,
-    summary="Global search for properties and leads",
-)
-def global_search(
-    q: str = Query(..., min_length=2, max_length=100),
-    db: Session = Depends(get_mysql_db),
-    current_admin=Depends(security.admin_required),
-):
-    """
-    Search across properties and leads.
-    """
-    return admin_repo.global_search(db, query=q)
+@admin_router.post("/admin/retry-failed", summary="Retry failed CRM syncs")
+async def retry_failed_syncs(db: Session = Depends(get_mysql_db)):
+    """Replays leads that failed to sync to CRM."""
+    if not lead_queue:
+        raise HTTPException(status_code=503, detail="Redis Queue not available")
+    
+    failed_leads = db.query(Lead).filter(Lead.crm_status == "failed").all()
+    
+    requeued_count = 0
+    for lead in failed_leads:
+        try:
+            lead_queue.enqueue(
+                sync_lead_to_zoho_task,
+                lead.id,
+                job_id=f"retry_sync_zoho_{lead.id}"
+            )
+            lead.crm_status = "queued"
+            requeued_count += 1
+        except Exception as e:
+            logger.error(f"Failed to requeue lead {lead.id}: {e}")
+            
+    db.commit()
+    
+    return {
+        "status": "ok",
+        "requeued": requeued_count,
+        "total_failed_remaining": db.query(Lead).filter(Lead.crm_status == "failed").count()
+    }

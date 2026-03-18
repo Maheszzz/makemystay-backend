@@ -8,6 +8,8 @@ from cryptography.hazmat.backends import default_backend
 from cryptography.hazmat.primitives import hashes, serialization
 from cryptography.hazmat.primitives.asymmetric import padding
 
+from app.core.config import settings
+
 # Global cache for performance
 _CACHED_PRIVATE_KEY = None
 _CACHED_S3_CLIENT = None
@@ -17,7 +19,7 @@ def rsa_signer(message):
     global _CACHED_PRIVATE_KEY
 
     if _CACHED_PRIVATE_KEY is None:
-        private_key_str = os.getenv("CLOUDFRONT_PRIVATE_KEY")
+        private_key_str = settings.CLOUDFRONT_PRIVATE_KEY
         if not private_key_str:
             return None
 
@@ -46,10 +48,10 @@ def get_cloudfront_signed_url(s3_key: str, expires_in_seconds: int = 3600) -> st
     if s3_key.startswith("http"):
         return s3_key
 
-    domain = os.getenv("CLOUDFRONT_DOMAIN")
-    key_pair_id = os.getenv("CLOUDFRONT_KEY_PAIR_ID")
-    bucket_name = os.getenv("S3_BUCKET_NAME")
-    aws_region = os.getenv("AWS_REGION", "ap-south-1")
+    domain = settings.CLOUDFRONT_DOMAIN
+    key_pair_id = settings.CLOUDFRONT_KEY_PAIR_ID
+    bucket_name = settings.S3_BUCKET_NAME
+    aws_region = settings.AWS_REGION or "ap-south-1"
 
     # 1. Try CloudFront
     if domain and key_pair_id:
@@ -76,8 +78,8 @@ def get_cloudfront_signed_url(s3_key: str, expires_in_seconds: int = 3600) -> st
         global _CACHED_S3_CLIENT
 
         # Check if we have credentials for presigned URL
-        aws_access_key = os.getenv("AWS_ACCESS_KEY_ID")
-        aws_secret_key = os.getenv("AWS_SECRET_ACCESS_KEY")
+        aws_access_key = settings.AWS_ACCESS_KEY_ID
+        aws_secret_key = settings.AWS_SECRET_ACCESS_KEY
 
         if aws_access_key and aws_secret_key:
             try:

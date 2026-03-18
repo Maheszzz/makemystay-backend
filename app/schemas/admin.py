@@ -1,6 +1,6 @@
 """Pydantic schemas for Administrative operations."""
 
-from typing import List, Optional
+from typing import List
 from pydantic import BaseModel
 from app.schemas.lead import LeadResponse
 from app.schemas.realty import PropertyResponse

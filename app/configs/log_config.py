@@ -1,9 +1,14 @@
-import os
-
 from loguru import logger
+from app.core.config import settings
 
-LOG_LEVEL = os.getenv("LOG_LEVEL", "INFO").upper()
-
+# Map environment strings to valid Loguru levels
+env_level = settings.ENV.upper()
+if env_level in ["LOCAL", "DEVELOPMENT", "DEV"]:
+    LOG_LEVEL = "DEBUG"
+elif env_level in ["PRODUCTION", "PROD"]:
+    LOG_LEVEL = "INFO"
+else:
+    LOG_LEVEL = "INFO"
 
 # Set up logging configuration
 def setup_logger():
