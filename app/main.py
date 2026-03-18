@@ -174,6 +174,11 @@ from app.api.housing import housing_router  # noqa: E402
 
 app.include_router(housing_router, prefix="/api/v1")
 
+# WhatsApp inbound webhook (Twilio)
+from app.api.whatsapp import whatsapp_router  # noqa: E402
+
+app.include_router(whatsapp_router, prefix="/api/v1")
+
 # Include webhooks at both /api/v1 and root for maximum reachability
 from app.api.webhooks import webhooks_router  # noqa: E402
 

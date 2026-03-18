@@ -5,10 +5,15 @@ from sqlalchemy import func
 from sqlalchemy.orm import Session
 
 from app.configs.db_config import get_mysql_db
+from app.core import security
 from app.core.redis import lead_queue
 from app.models.lead import Lead
 from app.models.sync_metadata import SyncMetadata
 from app.tasks.lead_tasks import sync_lead_to_zoho_task
+from app.schemas.whatsapp import WhatsAppBulkSendRequest, WhatsAppBulkSendResponse
+from app.core.config import settings
+from app.tasks.whatsapp_tasks import send_whatsapp_bulk_task
+import time
 
 admin_router = APIRouter(tags=["Admin / Operations"])
 
@@ -80,3 +85,49 @@ async def retry_failed_syncs(db: Session = Depends(get_mysql_db)):
         "requeued": requeued_count,
         "total_failed_remaining": db.query(Lead).filter(Lead.crm_status == "failed").count()
     }
+
+
+@admin_router.post(
+    "/admin/whatsapp/bulk",
+    summary="Send bulk WhatsApp template messages (queued)",
+    response_model=WhatsAppBulkSendResponse,
+)
+async def send_whatsapp_bulk(
+    req: WhatsAppBulkSendRequest,
+    db: Session = Depends(get_mysql_db),
+    _admin=Depends(security.admin_required),
+):
+    """
+    Queues a bulk WhatsApp template send via RQ.
+    Requires admin auth.
+    """
+    if req.dry_run:
+        return WhatsAppBulkSendResponse(
+            queued=False,
+            job_id=None,
+            total=len(req.leads),
+            dry_run=True,
+        )
+
+    if not lead_queue:
+        raise HTTPException(status_code=503, detail="Redis Queue not available")
+
+    content_sid = req.content_sid or settings.TWILIO_WHATSAPP_TEMPLATE_SID
+    if not content_sid:
+        raise HTTPException(status_code=400, detail="content_sid is required (or set TWILIO_WHATSAPP_TEMPLATE_SID)")
+
+    payload = [l.model_dump() for l in req.leads]
+    job = lead_queue.enqueue(
+        send_whatsapp_bulk_task,
+        leads=payload,
+        content_sid=content_sid,
+        per_message_delay_ms=req.per_message_delay_ms,
+        job_id=f"whatsapp_bulk_{int(time.time())}",
+    )
+
+    return WhatsAppBulkSendResponse(
+        queued=True,
+        job_id=job.id,
+        total=len(req.leads),
+        dry_run=False,
+    )

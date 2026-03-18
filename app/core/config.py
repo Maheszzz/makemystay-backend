@@ -54,6 +54,14 @@ class Settings(BaseSettings):
     RETELL_AGENT_ID: str = ""
     RETELL_FROM_NUMBER: str = ""
 
+    # Twilio WhatsApp
+    TWILIO_ACCOUNT_SID: str = ""
+    TWILIO_AUTH_TOKEN: str = ""
+    # e.g. "whatsapp:+919187201191"
+    TWILIO_WHATSAPP_FROM: str = ""
+    # Approved template SID (content SID), e.g. "HX..."
+    TWILIO_WHATSAPP_TEMPLATE_SID: str = ""
+
     # Webhook
     HOUSING_WEBHOOK_API_KEY: str = ""
     ENABLE_AI_CALLING_FOR_LEADS: bool = True
@@ -63,9 +71,14 @@ class Settings(BaseSettings):
     HOUSING_API_ID: str = ""
     HOUSING_SYNC_INTERVAL_SECONDS: int = 120
 
-    model_config = {
-        "env_file": (".env", f".env.{os.getenv('ENV', 'dev')}"),
-        "extra": "allow"
-    }
+    # Load env files in increasing priority (later files override earlier ones).
+    # This makes local development work out-of-the-box (e.g. DB on a different port)
+    # while still supporting environment-specific files when ENV is exported.
+    _env = os.getenv("ENV")
+    _env_files = [".env", ".env.local"]
+    if _env:
+        _env_files.extend([f".env.{_env}", f".env.{_env}.local"])
+
+    model_config = {"env_file": tuple(_env_files), "extra": "allow"}
 
 settings = Settings()
