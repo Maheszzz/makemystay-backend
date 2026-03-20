@@ -210,8 +210,10 @@ app.include_router(webhooks_router)
 
 # Include Admin Dashboard routes
 from app.api.admin import admin_router  # noqa: E402
+from app.api.websockets import ws_router  # noqa: E402
 
 app.include_router(admin_router, prefix="/api/v1")
+app.include_router(ws_router, prefix="/api/v1")
 app.include_router(agent_router, prefix="/api/v1")
 
 

@@ -6,10 +6,11 @@ import time
 from datetime import datetime
 from typing import Any, Dict, Optional
 
-from fastapi import APIRouter, Depends, Request
+from fastapi import APIRouter, Depends, Request, HTTPException, Header
 from fastapi.responses import PlainTextResponse
 from loguru import logger
 from sqlalchemy.orm import Session
+from twilio.request_validator import RequestValidator
 
 from app.configs.db_config import get_mysql_db
 from app.core.config import settings
@@ -378,7 +379,20 @@ def _send_text_checked(*, to: str, body: str) -> None:
             )
 
 
-@whatsapp_router.post("/whatsapp/inbound", include_in_schema=False)
+async def verify_twilio(request: Request, x_twilio_signature: str = Header(None)):
+    if not settings.TWILIO_AUTH_TOKEN:
+        return
+    validator = RequestValidator(settings.TWILIO_AUTH_TOKEN)
+    url = str(request.url)
+    if request.headers.get("x-forwarded-proto") == "https":
+        url = url.replace("http://", "https://")
+    form_data = await request.form()
+    post_vars = {k: str(v) for k, v in form_data.items()}
+    if not validator.validate(url, post_vars, x_twilio_signature or ""):
+        logger.warning(f"Invalid Twilio signature for URL: {url}")
+        raise HTTPException(status_code=403, detail="Invalid Twilio signature")
+
+@whatsapp_router.post("/whatsapp/inbound", include_in_schema=False, dependencies=[Depends(verify_twilio)])
 async def twilio_whatsapp_inbound(request: Request, db: Session = Depends(get_mysql_db)):
     """
     Twilio WhatsApp webhook.
@@ -548,7 +562,7 @@ async def twilio_whatsapp_inbound(request: Request, db: Session = Depends(get_my
     return PlainTextResponse("ok")
 
 
-@whatsapp_router.post("/whatsapp/status", include_in_schema=False)
+@whatsapp_router.post("/whatsapp/status", include_in_schema=False, dependencies=[Depends(verify_twilio)])
 async def twilio_whatsapp_status(request: Request, db: Session = Depends(get_mysql_db)):
     """
     Twilio Status Callback for WhatsApp messages.

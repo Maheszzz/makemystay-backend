@@ -5,6 +5,9 @@ from rq import Queue
 
 # Initialize Redis connection
 # In a real environment, you'd get the REDIS_URL from settings
+
+ADMIN_CHANNEL = "admin_events"
+
 try:
     redis_conn = redis.from_url(os.getenv("REDIS_URL", "redis://localhost:6379/0"))
     # Main lead processing queue

@@ -1,4 +1,4 @@
-name: Deploy Backend to EC2
+name: Deploy to Production
 
 on:
   push:
@@ -9,25 +9,11 @@ jobs:
   deploy:
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout Code
-        uses: actions/checkout@v3
-
-      - name: Setup SSH Key
-        run: |
-          mkdir -p ~/.ssh
-          echo "${{ secrets.EC2_KEY }}" > ~/.ssh/makemystay_key.pem
-          chmod 600 ~/.ssh/makemystay_key.pem
-          ssh-keyscan -H ${{ secrets.EC2_HOST }} >> ~/.ssh/known_hosts
-
-      - name: Run Zero-Downtime Deploy Script
-        env:
-          EC2_HOST: ${{ secrets.EC2_HOST }}
-          EC2_USER: ${{ secrets.EC2_USER }}
-        run: |
-          # Inject GitHub Actions secrets into the deploy script
-          sed -i 's|^PEM_KEY=.*|PEM_KEY="$HOME/.ssh/makemystay_key.pem"|' deploy.sh
-          sed -i 's|^EC2_HOST=.*|EC2_HOST="'"$EC2_HOST"'"|' deploy.sh
-          sed -i 's|^EC2_USER=.*|EC2_USER="'"$EC2_USER"'"|' deploy.sh
-          
-          # Execute the deploy script
-          bash deploy.sh
+      - name: Trigger Remote SSH Deploy
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.EC2_HOST }}
+          username: ubuntu
+          key: ${{ secrets.EC2_KEY }}
+          script: |
+            bash /home/ubuntu/deploy.sh
