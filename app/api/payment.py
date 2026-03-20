@@ -20,6 +20,7 @@ from app.configs.db_config import get_db
 from app.core.config import settings
 from app.models.payment import Payment
 from app.models.payment_webhook_event import PaymentWebhookEvent
+from app.services.payment_normalization import _map_status, normalize_transaction
 from app.schemas.payment import (
     PaymentSchema,
     PaymentTransactionSchema,
@@ -46,32 +47,6 @@ class CreateOrderRequest(BaseModel):
     payer_phone: Optional[str] = None
 
 
-def _extract_bank_rrn(payment_payload: Dict[str, Any]) -> Optional[str]:
-    acquirer_data = payment_payload.get("acquirer_data") or {}
-    keys = [
-        "rrn",
-        "upi_transaction_id",
-        "bank_transaction_id",
-        "bank_ref_num",
-        "reference16",
-        "arn",
-    ]
-    for key in keys:
-        value = acquirer_data.get(key)
-        if value:
-            return str(value)
-    return None
-
-
-def _map_status(status: Optional[str]) -> str:
-    normalized = str(status or "").strip().lower()
-    if normalized in {"captured", "paid", "success", "authorized"}:
-        return "success"
-    if normalized in {"failed", "failure"}:
-        return "failed"
-    return "pending"
-
-
 def _map_webhook_event_to_status(event_name: Optional[str]) -> Optional[str]:
     if not event_name:
         return None
@@ -94,91 +69,6 @@ def _extract_payment_entity_from_webhook_payload(payload: Any) -> Dict[str, Any]
         return {}
     entity = payment_obj.get("entity", {})
     return entity if isinstance(entity, dict) else {}
-
-
-def normalize_transaction(
-    *,
-    payment: Optional[Dict[str, Any]] = None,
-    webhook: Optional[PaymentWebhookEvent] = None,
-    db_row: Optional[Payment] = None,
-) -> Dict[str, Any]:
-    if db_row is None:
-        raise ValueError("db_row is required")
-
-    source = "db"
-    payment_data: Dict[str, Any] = {}
-    webhook_status_raw: Optional[str] = None
-
-    if webhook is not None:
-        source = "webhook"
-        payment_data = _extract_payment_entity_from_webhook_payload(webhook.payload)
-        webhook_status_raw = _map_webhook_event_to_status(webhook.event)
-    elif payment is not None:
-        source = "gateway"
-        payment_data = payment
-
-    payment_id = (
-        payment_data.get("id")
-        or (
-            str(webhook.payment_id)
-            if webhook is not None and webhook.payment_id is not None
-            else None
-        )
-        or (str(db_row.payment_id) if db_row.payment_id is not None else None)
-    )
-    order_id = payment_data.get("order_id") or (
-        str(db_row.order_id) if db_row.order_id is not None else ""
-    )
-
-    payment_amount = payment_data.get("amount")
-    if isinstance(payment_amount, (int, float)):
-        amount = float(payment_amount) / 100
-    else:
-        amount = float(db_row.amount) if db_row.amount is not None else 0.0
-
-    raw_status = payment_data.get("status") or webhook_status_raw or str(db_row.status)
-    status = _map_status(raw_status)
-    db_status = _map_status(str(db_row.status))
-
-    created_at_raw = payment_data.get("created_at")
-    if isinstance(created_at_raw, int):
-        created_at = datetime.fromtimestamp(created_at_raw, tz=timezone.utc)
-    else:
-        created_at = db_row.created_at
-
-    method = payment_data.get("method")
-    customer_email = payment_data.get("email") or db_row.payer_email
-    customer_phone = payment_data.get("contact") or db_row.payer_phone
-    customer_name = (
-        payment_data.get("name")
-        or payment_data.get("notes", {}).get("name")
-        or db_row.payer_name
-    )
-
-    bank_rrn = _extract_bank_rrn(payment_data)
-
-    return {
-        "id": db_row.id,
-        "payment_id": payment_id,
-        "order_id": order_id,
-        "amount": amount,
-        "currency": str(payment_data.get("currency") or db_row.currency or "INR"),
-        "status": status,
-        "db_status": db_status,
-        "method": method,
-        "customer_name": customer_name,
-        "customer_email": customer_email,
-        "customer_phone": customer_phone,
-        "bank_rrn": bank_rrn,
-        "created_at": created_at,
-        "payment_type": db_row.payment_type,
-        "detail_url": (
-            f"https://dashboard.razorpay.com/app/payments/{payment_id}"
-            if payment_id
-            else None
-        ),
-        "source": source,
-    }
 
 
 def _fetch_razorpay_payment(payment_id: str) -> Optional[Dict[str, Any]]:
@@ -488,12 +378,32 @@ async def razorpay_webhook(req: Request, db: Session = Depends(get_db)):
         return {"status": "ignored", "reason": "payment_not_found"}
 
     success_events = {"payment.captured", "order.paid", "payment_link.paid"}
-    failed_events = {"payment.failed", "payment_link.expired", "payment_link.cancelled"}
+    failed_events  = {"payment.failed", "payment_link.expired", "payment_link.cancelled"}
+    # authorized = money reserved but NOT yet captured; keep as pending so the
+    # admin dashboard doesn't wrongly show it as success.
+    pending_events = {"payment.authorized"}
 
     if event in success_events:
         payment.status = "success"
+
+        # -------------------------------------------------------------------
+        # BUSINESS LOGIC: PAYMENT -> BOOKING MAPPING (PG SYSTEM)
+        # When a payment is successfully captured via webhook, update booking.
+        #
+        # booking = db.query(Booking).filter(Booking.order_id == payment.order_id).first()
+        # if booking:
+        #     booking.payment_status = "PAID"
+        #     booking.user_id = payment.user_id
+        # -------------------------------------------------------------------
+
+    elif event in pending_events:
+        # Keep DB status as pending; just record the payment_id so the row
+        # can be linked once capture fires.
+        pass
+
     elif event in failed_events:
         payment.status = "failed"
+
     else:
         log_webhook_event(
             event=event,

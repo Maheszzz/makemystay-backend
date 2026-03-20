@@ -16,6 +16,7 @@ SQLAlchemy==2.0.46
 starlette==0.49.3
 typing_extensions==4.15.0
 uvicorn==0.39.0
+sentry-sdk
 razorpay
 qrcode[pil]
 jinja2
@@ -27,3 +28,10 @@ passlib==1.7.4
 python-jose[cryptography]==3.5.0
 python-multipart==0.0.20
 twilio
+prometheus-fastapi-instrumentator
+apscheduler
+pybreaker
+aiolimiter
+tenacity
+rq
+redis

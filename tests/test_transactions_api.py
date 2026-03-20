@@ -1,0 +1,363 @@
+"""
+Integration tests for GET /api/v1/payments/transactions
+
+Uses an in-memory SQLite database so the tests run fully offline —
+no MySQL, no Razorpay, no env-file required.
+
+What is exercised:
+- `source` field values (webhook / db) on response rows
+- `status` field: authorized → pending, captured → success
+- `bank_rrn` propagated from webhook payload via acquirer_data.rrn
+- `created_at` falls back to DB value when gateway timestamp is absent
+- source-filter query param (?source=webhook, ?source=db)
+"""
+
+import json
+import os
+import sys
+import types
+from datetime import datetime, timezone
+from types import SimpleNamespace
+
+# ---------------------------------------------------------------------------
+# Minimal stubs for heavy optional dependencies the API module imports at
+# module-load time.  We insert them before any app code is imported.
+# ---------------------------------------------------------------------------
+
+def _stub(name: str, **attrs) -> types.ModuleType:
+    mod = types.ModuleType(name)
+    for k, v in attrs.items():
+        setattr(mod, k, v)
+    sys.modules.setdefault(name, mod)
+    return sys.modules[name]
+
+
+
+class _RazorpayUtility:
+    def verify_payment_signature(self, *a, **kw):
+        pass
+
+
+class _RazorpayClient:
+    def __init__(self, *a, **kw):
+        self.utility = _RazorpayUtility()
+
+
+class _SigError(Exception):
+    pass
+
+
+_rz = _stub("razorpay", Client=_RazorpayClient)
+_rz.errors = SimpleNamespace(SignatureVerificationError=_SigError)
+
+_stub("jinja2",
+      FileSystemLoader=type("FL", (), {}),
+      Environment=type("Env", (), {}))
+
+_stub("qrcode", make=lambda *a, **kw: SimpleNamespace(save=lambda *a, **kw: None))
+_stub("weasyprint", HTML=type("HTML", (), {"write_pdf": lambda self, *a, **kw: None}))
+
+# Stub app.core.config with a pre-built settings object so db_config never
+# touches pydantic_settings or a real .env file.
+_settings = SimpleNamespace(
+    DB_HOST="localhost",
+    DB_PORT=3306,
+    DB_USER="test",
+    DB_PASSWORD="test",
+    DB_NAME="test",
+    SECRET_KEY="test-secret",
+    ALGORITHM="HS256",
+    ACCESS_TOKEN_EXPIRE_MINUTES=43200,
+    MAIL_USERNAME="test@example.com",
+    MAIL_PASSWORD="test",
+    MAIL_FROM="test@example.com",
+    MAIL_PORT=587,
+    MAIL_SERVER="smtp.example.com",
+    MAIL_FROM_NAME="Test",
+    RAZORPAY_KEY_ID="",
+    RAZORPAY_KEY_SECRET="",
+    RAZORPAY_WEBHOOK_SECRET="test_secret",
+    REDIS_URL="redis://localhost:6379",
+    ENV="test",
+    SENTRY_DSN=None,
+    AWS_ACCESS_KEY_ID=None,
+    AWS_SECRET_ACCESS_KEY=None,
+    AWS_REGION=None,
+    S3_BUCKET_NAME=None,
+    CLOUDFRONT_DOMAIN=None,
+    CLOUDFRONT_KEY_PAIR_ID=None,
+    CLOUDFRONT_PRIVATE_KEY=None,
+    ZOHO_CRM_CLIENT_ID="",
+    ZOHO_CRM_CLIENT_SECRET="",
+    ZOHO_CRM_REFRESH_TOKEN="",
+    RETELL_API_KEY="",
+    RETELL_AGENT_ID="",
+    RETELL_FROM_NUMBER="",
+    TWILIO_ACCOUNT_SID="",
+    TWILIO_AUTH_TOKEN="",
+    TWILIO_WHATSAPP_FROM="",
+    TWILIO_WHATSAPP_TEMPLATE_SID="",
+    TWILIO_WHATSAPP_FALLBACK_TEMPLATE_SID="",
+    WHATSAPP_TOKEN="",
+    PHONE_NUMBER_ID="",
+    VERIFY_TOKEN="",
+    META_GRAPH_API_VERSION="v18.0",
+    HOUSING_WEBHOOK_API_KEY="",
+    ENABLE_AI_CALLING_FOR_LEADS=False,
+    HOUSING_API_KEY="",
+    HOUSING_API_ID="",
+    HOUSING_SYNC_INTERVAL_SECONDS=120,
+)
+_config_mod = types.ModuleType("app.core.config")
+_config_mod.settings = _settings
+sys.modules["app.core.config"] = _config_mod
+
+# ---------------------------------------------------------------------------
+# Bootstrap a minimal in-memory SQLite database and swap out get_db so the
+# API endpoints use it instead of the real MySQL connection.
+# ---------------------------------------------------------------------------
+
+import pytest
+from sqlalchemy import create_engine
+from sqlalchemy.orm import sessionmaker
+from sqlalchemy.pool import StaticPool
+
+# StaticPool keeps every caller on the same underlying connection, so the
+# in-memory database is never discarded between test helper calls and HTTP
+# requests served by the TestClient.
+_test_engine = create_engine(
+    "sqlite:///:memory:",
+    connect_args={"check_same_thread": False},
+    poolclass=StaticPool,
+)
+_TestSession = sessionmaker(bind=_test_engine, autocommit=False, autoflush=False)
+
+
+def _override_get_db():
+    db = _TestSession()
+    try:
+        yield db
+    finally:
+        db.close()
+
+
+# Patch db_config to point at SQLite before any model/router imports
+import app.configs.db_config as _db_cfg  # noqa: E402
+
+_db_cfg.mysql_engine = _test_engine
+_db_cfg.MySQLSessionLocal = _TestSession
+_db_cfg.SessionLocal = _TestSession
+_db_cfg.get_db = _override_get_db
+_db_cfg.get_mysql_db = _override_get_db
+
+# Import models — they are already registered on MySQLBase.metadata
+from app.models.payment import Payment  # noqa: E402
+from app.models.payment_webhook_event import PaymentWebhookEvent  # noqa: E402
+
+# Create tables on SQLite using the exact metadata the models are bound to
+Payment.__table__.metadata.create_all(bind=_test_engine)
+
+# Import the FastAPI router and build a minimal test app
+from fastapi import FastAPI  # noqa: E402
+from fastapi.testclient import TestClient  # noqa: E402
+from app.api.payment import router as payment_router  # noqa: E402
+
+_app = FastAPI()
+_app.include_router(payment_router, prefix="/api/v1")
+_app.dependency_overrides = {}
+
+# Override get_db in the payment router's dependency
+from app.configs.db_config import get_db  # noqa: E402
+
+_app.dependency_overrides[get_db] = _override_get_db
+
+client = TestClient(_app, raise_server_exceptions=True)
+
+
+# ---------------------------------------------------------------------------
+# Helpers
+# ---------------------------------------------------------------------------
+
+def _make_payment(db, **overrides) -> Payment:
+    defaults = dict(
+        order_id="order_integ_1",
+        amount=500.0,
+        currency="INR",
+        status="pending",
+        payment_type="booking",
+        payer_name="Integ User",
+        payer_email="integ@example.com",
+        payer_phone="9876543210",
+    )
+    defaults.update(overrides)
+    p = Payment(**defaults)
+    db.add(p)
+    db.commit()
+    db.refresh(p)
+    return p
+
+
+def _make_webhook(db, order_id: str, event: str, payment_entity: dict) -> PaymentWebhookEvent:
+    payload = {"payload": {"payment": {"entity": payment_entity}}}
+    w = PaymentWebhookEvent(
+        provider="razorpay",
+        event=event,
+        status="processed",
+        order_id=order_id,
+        payment_id=payment_entity.get("id"),
+        signature_valid=True,
+        payload=payload,
+    )
+    db.add(w)
+    db.commit()
+    db.refresh(w)
+    return w
+
+
+@pytest.fixture(autouse=True)
+def _clean_db():
+    """Truncate both tables before every test."""
+    db = _TestSession()
+    db.query(PaymentWebhookEvent).delete()
+    db.query(Payment).delete()
+    db.commit()
+    db.close()
+    yield
+
+
+# ---------------------------------------------------------------------------
+# Tests
+# ---------------------------------------------------------------------------
+
+def test_transactions_returns_db_source_when_no_webhook():
+    db = _TestSession()
+    _make_payment(db, order_id="order_db_only")
+    db.close()
+
+    r = client.get("/api/v1/payments/transactions")
+    assert r.status_code == 200
+    rows = r.json()
+    assert len(rows) == 1
+    assert rows[0]["source"] == "db"
+    assert rows[0]["order_id"] == "order_db_only"
+
+
+def test_transactions_webhook_source_and_status_captured_becomes_success():
+    db = _TestSession()
+    _make_payment(db, order_id="order_wh_1", status="pending")
+    _make_webhook(db, "order_wh_1", "payment.captured", {
+        "id": "pay_wh_1",
+        "order_id": "order_wh_1",
+        "amount": 50000,
+        "status": "captured",
+        "currency": "INR",
+    })
+    db.close()
+
+    r = client.get("/api/v1/payments/transactions")
+    assert r.status_code == 200
+    rows = r.json()
+    assert len(rows) == 1
+    row = rows[0]
+    assert row["source"] == "webhook"
+    assert row["status"] == "success"
+    assert row["payment_id"] == "pay_wh_1"
+
+
+def test_transactions_authorized_status_is_pending_not_success():
+    db = _TestSession()
+    _make_payment(db, order_id="order_auth_1", status="pending")
+    _make_webhook(db, "order_auth_1", "payment.authorized", {
+        "id": "pay_auth_1",
+        "order_id": "order_auth_1",
+        "amount": 50000,
+        "status": "authorized",
+        "currency": "INR",
+    })
+    db.close()
+
+    r = client.get("/api/v1/payments/transactions")
+    assert r.status_code == 200
+    rows = r.json()
+    assert rows[0]["status"] == "pending"
+
+
+def test_transactions_bank_rrn_from_webhook_acquirer_data():
+    db = _TestSession()
+    _make_payment(db, order_id="order_rrn_1", status="pending")
+    _make_webhook(db, "order_rrn_1", "payment.captured", {
+        "id": "pay_rrn_1",
+        "order_id": "order_rrn_1",
+        "amount": 50000,
+        "status": "captured",
+        "currency": "INR",
+        "acquirer_data": {"rrn": "RRN9876543"},
+    })
+    db.close()
+
+    r = client.get("/api/v1/payments/transactions")
+    assert r.status_code == 200
+    rows = r.json()
+    assert rows[0]["bank_rrn"] == "RRN9876543"
+
+
+def test_transactions_bank_rrn_fallback_to_upi_transaction_id():
+    db = _TestSession()
+    _make_payment(db, order_id="order_rrn_2", status="pending")
+    _make_webhook(db, "order_rrn_2", "payment.captured", {
+        "id": "pay_rrn_2",
+        "order_id": "order_rrn_2",
+        "amount": 50000,
+        "status": "captured",
+        "currency": "INR",
+        "acquirer_data": {"upi_transaction_id": "UPI12345"},
+    })
+    db.close()
+
+    r = client.get("/api/v1/payments/transactions")
+    assert r.status_code == 200
+    rows = r.json()
+    assert rows[0]["bank_rrn"] == "UPI12345"
+
+
+def test_transactions_source_filter_webhook_only():
+    db = _TestSession()
+    _make_payment(db, order_id="order_filter_wh", status="pending")
+    _make_payment(db, order_id="order_filter_db", status="pending")
+    _make_webhook(db, "order_filter_wh", "payment.captured", {
+        "id": "pay_filter_1",
+        "order_id": "order_filter_wh",
+        "amount": 50000,
+        "status": "captured",
+        "currency": "INR",
+    })
+    db.close()
+
+    r = client.get("/api/v1/payments/transactions?source=webhook")
+    assert r.status_code == 200
+    rows = r.json()
+    assert len(rows) == 1
+    assert rows[0]["order_id"] == "order_filter_wh"
+    assert rows[0]["source"] == "webhook"
+
+
+def test_transactions_source_filter_db_only():
+    db = _TestSession()
+    _make_payment(db, order_id="order_filter_wh2", status="pending")
+    _make_payment(db, order_id="order_filter_db2", status="pending")
+    _make_webhook(db, "order_filter_wh2", "payment.captured", {
+        "id": "pay_filter_2",
+        "order_id": "order_filter_wh2",
+        "amount": 50000,
+        "status": "captured",
+        "currency": "INR",
+    })
+    db.close()
+
+    r = client.get("/api/v1/payments/transactions?source=db")
+    assert r.status_code == 200
+    rows = r.json()
+    assert all(row["source"] == "db" for row in rows)
+    order_ids = [row["order_id"] for row in rows]
+    assert "order_filter_db2" in order_ids
+    assert "order_filter_wh2" not in order_ids

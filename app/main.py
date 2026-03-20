@@ -167,6 +167,20 @@ app.include_router(upload_router, prefix="/api/v1")
 from app.api.payment import router as payment_router  # noqa: E402
 
 app.include_router(payment_router, prefix="/api/v1")
+
+# Mount the webhook endpoint at root level too so Razorpay can reach it at
+# /payments/webhook even if the dashboard URL is missing the /api/v1 prefix.
+from fastapi import APIRouter as _APIRouter  # noqa: E402
+from app.api.payment import razorpay_webhook  # noqa: E402
+
+_webhook_alias_router = _APIRouter()
+_webhook_alias_router.add_api_route(
+    "/payments/webhook",
+    razorpay_webhook,
+    methods=["POST"],
+    include_in_schema=False,  # keep OpenAPI docs tidy
+)
+app.include_router(_webhook_alias_router)
 from app.api.demo import router as demo_router  # noqa: E402
 
 app.include_router(demo_router, prefix="/api/v1")
