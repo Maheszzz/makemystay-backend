@@ -48,3 +48,22 @@ class PaymentSchema(BaseModel):
 
     class Config:
         from_attributes = True
+
+
+class PaymentTransactionSchema(BaseModel):
+    id: int
+    order_id: str
+    payment_id: Optional[str] = None
+    bank_rrn: Optional[str] = None
+    customer_name: Optional[str] = None
+    customer_email: Optional[str] = None
+    customer_phone: Optional[str] = None
+    created_at: datetime
+    amount: float
+    currency: str
+    status: str
+    db_status: str
+    method: Optional[str] = None
+    payment_type: Optional[str] = None
+    detail_url: Optional[str] = None
+    source: Optional[str] = None

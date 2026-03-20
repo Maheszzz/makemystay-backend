@@ -114,6 +114,7 @@ from app.models import (  # noqa: E402, F401
     lead,
     lead_event,
     payment,
+    payment_webhook_event,
     retell_call,
     sync_metadata,
 )

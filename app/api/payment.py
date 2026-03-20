@@ -1,8 +1,10 @@
 import base64
+import hashlib
+import hmac
 import os
-from datetime import datetime
+from datetime import datetime, timezone
 from io import BytesIO
-from typing import List, Optional
+from typing import Any, Dict, List, Optional
 
 import jinja2
 import qrcode
@@ -17,8 +19,10 @@ from sqlalchemy.orm import Session
 from app.configs.db_config import get_db
 from app.core.config import settings
 from app.models.payment import Payment
+from app.models.payment_webhook_event import PaymentWebhookEvent
 from app.schemas.payment import (
     PaymentSchema,
+    PaymentTransactionSchema,
     ServiceFeeValidationRequest,
     ValidationResponse,
 )
@@ -28,6 +32,7 @@ router = APIRouter()
 # Initialize Razorpay client
 RAZORPAY_KEY_ID = settings.RAZORPAY_KEY_ID
 RAZORPAY_KEY_SECRET = settings.RAZORPAY_KEY_SECRET
+RAZORPAY_WEBHOOK_SECRET = settings.RAZORPAY_WEBHOOK_SECRET
 
 client = razorpay.Client(auth=(RAZORPAY_KEY_ID, RAZORPAY_KEY_SECRET))
 
@@ -39,6 +44,181 @@ class CreateOrderRequest(BaseModel):
     payer_name: Optional[str] = None
     payer_email: Optional[str] = None
     payer_phone: Optional[str] = None
+
+
+def _extract_bank_rrn(payment_payload: Dict[str, Any]) -> Optional[str]:
+    acquirer_data = payment_payload.get("acquirer_data") or {}
+    keys = [
+        "rrn",
+        "upi_transaction_id",
+        "bank_transaction_id",
+        "bank_ref_num",
+        "reference16",
+        "arn",
+    ]
+    for key in keys:
+        value = acquirer_data.get(key)
+        if value:
+            return str(value)
+    return None
+
+
+def _map_status(status: Optional[str]) -> str:
+    normalized = str(status or "").strip().lower()
+    if normalized in {"captured", "paid", "success", "authorized"}:
+        return "success"
+    if normalized in {"failed", "failure"}:
+        return "failed"
+    return "pending"
+
+
+def _map_webhook_event_to_status(event_name: Optional[str]) -> Optional[str]:
+    if not event_name:
+        return None
+    event = str(event_name).strip().lower()
+    if event in {"payment.captured", "order.paid", "payment_link.paid"}:
+        return "captured"
+    if event in {"payment.failed", "payment_link.expired", "payment_link.cancelled"}:
+        return "failed"
+    return None
+
+
+def _extract_payment_entity_from_webhook_payload(payload: Any) -> Dict[str, Any]:
+    if not isinstance(payload, dict):
+        return {}
+    payload_root = payload.get("payload", {})
+    if not isinstance(payload_root, dict):
+        return {}
+    payment_obj = payload_root.get("payment", {})
+    if not isinstance(payment_obj, dict):
+        return {}
+    entity = payment_obj.get("entity", {})
+    return entity if isinstance(entity, dict) else {}
+
+
+def normalize_transaction(
+    *,
+    payment: Optional[Dict[str, Any]] = None,
+    webhook: Optional[PaymentWebhookEvent] = None,
+    db_row: Optional[Payment] = None,
+) -> Dict[str, Any]:
+    if db_row is None:
+        raise ValueError("db_row is required")
+
+    source = "db"
+    payment_data: Dict[str, Any] = {}
+    webhook_status_raw: Optional[str] = None
+
+    if webhook is not None:
+        source = "webhook"
+        payment_data = _extract_payment_entity_from_webhook_payload(webhook.payload)
+        webhook_status_raw = _map_webhook_event_to_status(webhook.event)
+    elif payment is not None:
+        source = "gateway"
+        payment_data = payment
+
+    payment_id = (
+        payment_data.get("id")
+        or (
+            str(webhook.payment_id)
+            if webhook is not None and webhook.payment_id is not None
+            else None
+        )
+        or (str(db_row.payment_id) if db_row.payment_id is not None else None)
+    )
+    order_id = payment_data.get("order_id") or (
+        str(db_row.order_id) if db_row.order_id is not None else ""
+    )
+
+    payment_amount = payment_data.get("amount")
+    if isinstance(payment_amount, (int, float)):
+        amount = float(payment_amount) / 100
+    else:
+        amount = float(db_row.amount) if db_row.amount is not None else 0.0
+
+    raw_status = payment_data.get("status") or webhook_status_raw or str(db_row.status)
+    status = _map_status(raw_status)
+    db_status = _map_status(str(db_row.status))
+
+    created_at_raw = payment_data.get("created_at")
+    if isinstance(created_at_raw, int):
+        created_at = datetime.fromtimestamp(created_at_raw, tz=timezone.utc)
+    else:
+        created_at = db_row.created_at
+
+    method = payment_data.get("method")
+    customer_email = payment_data.get("email") or db_row.payer_email
+    customer_phone = payment_data.get("contact") or db_row.payer_phone
+    customer_name = (
+        payment_data.get("name")
+        or payment_data.get("notes", {}).get("name")
+        or db_row.payer_name
+    )
+
+    bank_rrn = _extract_bank_rrn(payment_data)
+
+    return {
+        "id": db_row.id,
+        "payment_id": payment_id,
+        "order_id": order_id,
+        "amount": amount,
+        "currency": str(payment_data.get("currency") or db_row.currency or "INR"),
+        "status": status,
+        "db_status": db_status,
+        "method": method,
+        "customer_name": customer_name,
+        "customer_email": customer_email,
+        "customer_phone": customer_phone,
+        "bank_rrn": bank_rrn,
+        "created_at": created_at,
+        "payment_type": db_row.payment_type,
+        "detail_url": (
+            f"https://dashboard.razorpay.com/app/payments/{payment_id}"
+            if payment_id
+            else None
+        ),
+        "source": source,
+    }
+
+
+def _fetch_razorpay_payment(payment_id: str) -> Optional[Dict[str, Any]]:
+    if not (RAZORPAY_KEY_ID and RAZORPAY_KEY_SECRET):
+        return None
+
+    try:
+        with httpx.Client(timeout=8.0, auth=(RAZORPAY_KEY_ID, RAZORPAY_KEY_SECRET)) as http:
+            response = http.get(f"https://api.razorpay.com/v1/payments/{payment_id}")
+            response.raise_for_status()
+            return response.json()
+    except Exception as e:
+        logger.warning(f"Unable to fetch Razorpay payment {payment_id}: {e}")
+        return None
+
+
+def _fetch_order_payment(order_id: str) -> Optional[Dict[str, Any]]:
+    if not (RAZORPAY_KEY_ID and RAZORPAY_KEY_SECRET):
+        return None
+
+    try:
+        with httpx.Client(timeout=8.0, auth=(RAZORPAY_KEY_ID, RAZORPAY_KEY_SECRET)) as http:
+            response = http.get(f"https://api.razorpay.com/v1/orders/{order_id}/payments")
+            response.raise_for_status()
+            data = response.json()
+            items = data.get("items") or []
+            if not items:
+                return None
+
+            # Prefer the most meaningful transaction first.
+            priorities = {"captured": 3, "authorized": 2, "created": 1}
+            items_sorted = sorted(
+                items,
+                key=lambda p: priorities.get(str(p.get("status", "")).lower(), 0),
+                reverse=True,
+            )
+            return items_sorted[0]
+    except Exception as e:
+        logger.warning(f"Unable to fetch Razorpay order payments for {order_id}: {e}")
+        return None
 
 
 @router.post("/payments/validate-fee", response_model=ValidationResponse)
@@ -200,6 +380,148 @@ async def verify_payment(req: Request, db: Session = Depends(get_db)):
         raise HTTPException(status_code=500, detail="Internal server error")
 
 
+@router.post("/payments/webhook")
+async def razorpay_webhook(req: Request, db: Session = Depends(get_db)):
+    """Handle Razorpay server-to-server webhook events."""
+    raw_body = await req.body()
+    raw_body_text = raw_body.decode("utf-8", errors="replace")
+    received_signature = req.headers.get("X-Razorpay-Signature", "")
+
+    def log_webhook_event(
+        *,
+        event: str = "",
+        status: str,
+        reason: Optional[str] = None,
+        order_id: Optional[str] = None,
+        payment_id: Optional[str] = None,
+        signature_valid: bool = False,
+        payload: Optional[dict] = None,
+    ) -> None:
+        try:
+            db.add(
+                PaymentWebhookEvent(
+                    provider="razorpay",
+                    event=event or None,
+                    status=status,
+                    reason=reason,
+                    order_id=order_id,
+                    payment_id=payment_id,
+                    signature_valid=signature_valid,
+                    signature_header=received_signature or None,
+                    payload=payload,
+                    raw_body=raw_body_text[:10000],
+                )
+            )
+            db.commit()
+        except Exception as log_error:
+            db.rollback()
+            logger.error(f"Failed to persist webhook audit event: {log_error}")
+
+    if not RAZORPAY_WEBHOOK_SECRET:
+        logger.error("RAZORPAY_WEBHOOK_SECRET is not configured")
+        log_webhook_event(status="error", reason="webhook_secret_not_configured")
+        raise HTTPException(status_code=500, detail="Webhook secret not configured")
+
+    if not received_signature:
+        log_webhook_event(status="rejected", reason="missing_signature")
+        raise HTTPException(status_code=400, detail="Missing webhook signature")
+
+    expected_signature = hmac.new(
+        RAZORPAY_WEBHOOK_SECRET.encode("utf-8"),
+        raw_body,
+        hashlib.sha256,
+    ).hexdigest()
+
+    if not hmac.compare_digest(expected_signature, received_signature):
+        logger.warning("Invalid Razorpay webhook signature")
+        log_webhook_event(status="rejected", reason="invalid_signature")
+        raise HTTPException(status_code=400, detail="Invalid webhook signature")
+
+    try:
+        payload = await req.json()
+    except Exception:
+        log_webhook_event(
+            status="rejected", reason="invalid_json", signature_valid=True
+        )
+        raise HTTPException(status_code=400, detail="Invalid JSON payload")
+
+    event = payload.get("event", "")
+    payload_data = payload.get("payload", {})
+    payment_entity = payload_data.get("payment", {}).get("entity", {})
+    payment_link_entity = payload_data.get("payment_link", {}).get("entity", {})
+
+    order_id = payment_entity.get("order_id") or payment_link_entity.get("order_id")
+    payment_id = payment_entity.get("id") or payment_link_entity.get("payment_id")
+
+    payment = None
+    if order_id:
+        payment = db.query(Payment).filter(Payment.order_id == order_id).first()
+    elif payment_id:
+        payment = db.query(Payment).filter(Payment.payment_id == payment_id).first()
+    else:
+        # Acknowledge unknown payload formats to avoid repeated retries.
+        logger.warning(
+            f"Razorpay webhook missing identifiers for event={event}; payload keys={list(payload_data.keys())}"
+        )
+        log_webhook_event(
+            event=event,
+            status="ignored",
+            reason="identifiers_missing",
+            signature_valid=True,
+            payload=payload,
+        )
+        return {"status": "ignored", "reason": "identifiers_missing"}
+
+    if not payment:
+        logger.warning(
+            f"Payment not found for Razorpay webhook event={event}, order_id={order_id}, payment_id={payment_id}"
+        )
+        log_webhook_event(
+            event=event,
+            status="ignored",
+            reason="payment_not_found",
+            order_id=order_id,
+            payment_id=payment_id,
+            signature_valid=True,
+            payload=payload,
+        )
+        return {"status": "ignored", "reason": "payment_not_found"}
+
+    success_events = {"payment.captured", "order.paid", "payment_link.paid"}
+    failed_events = {"payment.failed", "payment_link.expired", "payment_link.cancelled"}
+
+    if event in success_events:
+        payment.status = "success"
+    elif event in failed_events:
+        payment.status = "failed"
+    else:
+        log_webhook_event(
+            event=event,
+            status="ignored",
+            reason="event_not_mapped",
+            order_id=order_id,
+            payment_id=payment_id,
+            signature_valid=True,
+            payload=payload,
+        )
+        return {"status": "ignored", "reason": "event_not_mapped", "event": event}
+
+    if payment_id:
+        payment.payment_id = payment_id
+
+    db.commit()
+    log_webhook_event(
+        event=event,
+        status="processed",
+        reason="payment_updated",
+        order_id=order_id,
+        payment_id=payment_id,
+        signature_valid=True,
+        payload=payload,
+    )
+    return {"status": "ok"}
+
+
 def create_receipt_pdf(payment: Payment):
     os.makedirs("receipts", exist_ok=True)
     file_path = f"receipts/{payment.payment_id}.pdf"
@@ -298,7 +620,7 @@ def download_receipt(payment_id: str, db: Session = Depends(get_db)):
     if not payment:
         raise HTTPException(status_code=404, detail="Payment not found")
 
-    if payment.status != "success":
+    if str(payment.status) != "success":
         raise HTTPException(status_code=400, detail="Payment is not successful")
 
     path = f"receipts/{payment_id}.pdf"
@@ -315,3 +637,146 @@ def get_payments(db: Session = Depends(get_db)):
     """List all payments."""
     payments = db.query(Payment).order_by(Payment.created_at.desc()).all()
     return payments
+
+
+@router.get("/payments/transactions", response_model=List[PaymentTransactionSchema])
+def get_payment_transactions(
+    skip: int = 0,
+    limit: int = 100,
+    status: Optional[str] = None,
+    source: Optional[str] = None,
+    db: Session = Depends(get_db),
+):
+    """
+    Return transaction rows shaped for Razorpay-like admin listing.
+    """
+    limit = max(1, min(limit, 200))
+    source_filter = (source or "all").strip().lower()
+    if source_filter not in {"all", "gateway", "webhook", "db"}:
+        raise HTTPException(status_code=400, detail="Invalid source filter")
+
+    query = db.query(Payment).order_by(Payment.created_at.desc())
+    if status:
+        query = query.filter(Payment.status == status)
+    webhook_order_ids_query = (
+        db.query(PaymentWebhookEvent.order_id)
+        .filter(PaymentWebhookEvent.order_id.isnot(None))
+        .distinct()
+    )
+    if source_filter == "webhook":
+        query = query.filter(Payment.order_id.in_(webhook_order_ids_query))
+    elif source_filter == "db":
+        query = query.filter(~Payment.order_id.in_(webhook_order_ids_query))
+
+    rows = query.offset(skip).limit(limit).all()
+    transactions: List[PaymentTransactionSchema] = []
+    has_db_updates = False
+    latest_webhook_by_order: Dict[str, PaymentWebhookEvent] = {}
+
+    order_ids = [str(r.order_id) for r in rows if r.order_id is not None]
+    if order_ids:
+        webhook_rows = (
+            db.query(PaymentWebhookEvent)
+            .filter(PaymentWebhookEvent.order_id.in_(order_ids))
+            .order_by(
+                PaymentWebhookEvent.created_at.desc(),
+                PaymentWebhookEvent.id.desc(),
+            )
+            .all()
+        )
+        for webhook_row in webhook_rows:
+            oid = (
+                str(webhook_row.order_id)
+                if webhook_row.order_id is not None
+                else ""
+            )
+            if oid and oid not in latest_webhook_by_order:
+                latest_webhook_by_order[oid] = webhook_row
+
+    for row in rows:
+        db_payment_id = str(row.payment_id) if row.payment_id is not None else None
+        db_order_id = str(row.order_id) if row.order_id is not None else ""
+
+        latest_webhook = latest_webhook_by_order.get(db_order_id)
+        selected_gateway_payment: Optional[Dict[str, Any]] = None
+        selected_webhook = latest_webhook
+
+        # Priority: webhook (truth) -> gateway (fallback) -> db.
+        if selected_webhook is None and source_filter in {"all", "gateway"}:
+            if db_payment_id is not None:
+                selected_gateway_payment = _fetch_razorpay_payment(db_payment_id)
+            elif db_order_id:
+                selected_gateway_payment = _fetch_order_payment(db_order_id)
+
+        normalized = normalize_transaction(
+            payment=selected_gateway_payment,
+            webhook=selected_webhook,
+            db_row=row,
+        )
+
+        if source_filter != "all" and normalized["source"] != source_filter:
+            continue
+
+        normalized_payment_id = normalized.get("payment_id")
+        if normalized_payment_id and db_payment_id is None:
+            row.payment_id = str(normalized_payment_id)
+            has_db_updates = True
+
+        normalized_status = normalized.get("status")
+        if normalized_status == "success" and str(row.status) != "success":
+            row.status = "success"
+            has_db_updates = True
+        elif normalized_status == "failed" and str(row.status) != "failed":
+            row.status = "failed"
+            has_db_updates = True
+
+        transactions.append(PaymentTransactionSchema(**normalized))
+
+    if has_db_updates:
+        db.commit()
+
+    return transactions
+
+
+@router.get("/payments/webhook-events")
+def get_webhook_events(
+    skip: int = 0,
+    limit: int = 50,
+    status: Optional[str] = None,
+    event: Optional[str] = None,
+    order_id: Optional[str] = None,
+    payment_id: Optional[str] = None,
+    db: Session = Depends(get_db),
+):
+    """
+    List Razorpay webhook audit events for debugging.
+    """
+    limit = max(1, min(limit, 200))
+
+    query = db.query(PaymentWebhookEvent).order_by(PaymentWebhookEvent.created_at.desc())
+
+    if status:
+        query = query.filter(PaymentWebhookEvent.status == status)
+    if event:
+        query = query.filter(PaymentWebhookEvent.event == event)
+    if order_id:
+        query = query.filter(PaymentWebhookEvent.order_id == order_id)
+    if payment_id:
+        query = query.filter(PaymentWebhookEvent.payment_id == payment_id)
+
+    rows = query.offset(skip).limit(limit).all()
+    return [
+        {
+            "id": row.id,
+            "provider": row.provider,
+            "event": row.event,
+            "status": row.status,
+            "reason": row.reason,
+            "order_id": row.order_id,
+            "payment_id": row.payment_id,
+            "signature_valid": row.signature_valid,
+            "created_at": row.created_at,
+            "payload": row.payload,
+        }
+        for row in rows
+    ]
