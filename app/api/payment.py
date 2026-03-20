@@ -19,6 +19,7 @@ from sqlalchemy.orm import Session
 
 from app.configs.db_config import get_db
 from app.core.config import settings
+from app.models.booking import Booking
 from app.models.payment import Payment
 from app.models.payment_webhook_event import PaymentWebhookEvent
 from app.services.payment_normalization import _map_status, normalize_transaction
@@ -418,23 +419,15 @@ def process_webhook_async(
 
         if event in success_events:
             payment.status = "success"
-
-            # -------------------------------------------------------------------
-            # BUSINESS LOGIC: PAYMENT -> BOOKING MAPPING (PG SYSTEM)
-            # When a payment is successfully captured via webhook, update booking.
-            #
-            # booking = db.query(Booking).filter(Booking.order_id == payment.order_id).first()
-            # if booking:
-            #     booking.payment_status = "PAID"
-            #     booking.user_id = payment.user_id
-            # -------------------------------------------------------------------
+            _confirm_booking(db, payment=payment, payment_id=payment_id)
 
         elif event in pending_events:
-            # Authorized but not captured
+            # authorized = reserved but not captured; keep as pending
             pass
 
         elif event in failed_events:
             payment.status = "failed"
+            _cancel_booking(db, payment=payment)
 
         else:
             async_log_webhook_event(status="ignored", reason="event_not_mapped")
@@ -451,6 +444,55 @@ def process_webhook_async(
         db.rollback()
     finally:
         db.close()
+
+
+def _confirm_booking(db: Session, *, payment: Payment, payment_id: Optional[str]) -> None:
+    """
+    When a payment is successfully captured, mark the linked Booking as
+    confirmed and update its payment fields.
+
+    If no Booking row exists yet (e.g. checkout didn't create one first) we
+    create a minimal record so the admin dashboard always has a booking entry.
+    """
+    try:
+        booking = db.query(Booking).filter(Booking.order_id == payment.order_id).first()
+
+        if booking is None:
+            booking = Booking(
+                order_id=str(payment.order_id),
+                customer_name=payment.payer_name,
+                customer_email=payment.payer_email,
+                customer_phone=payment.payer_phone,
+                amount=payment.amount,
+                currency=payment.currency or "INR",
+            )
+            db.add(booking)
+            logger.info(f"Created new Booking for order_id={payment.order_id}")
+
+        booking.payment_status = "paid"
+        booking.status = "confirmed"
+        if payment_id:
+            booking.payment_id = payment_id
+
+        logger.info(
+            f"Booking confirmed: order_id={payment.order_id} "
+            f"payment_id={payment_id} customer={booking.customer_name}"
+        )
+    except Exception as exc:
+        # Never let booking logic break the webhook 200 response.
+        logger.error(f"_confirm_booking error for order_id={payment.order_id}: {exc}")
+
+
+def _cancel_booking(db: Session, *, payment: Payment) -> None:
+    """Mark the linked Booking as cancelled when a payment fails."""
+    try:
+        booking = db.query(Booking).filter(Booking.order_id == payment.order_id).first()
+        if booking:
+            booking.payment_status = "failed"
+            booking.status = "cancelled"
+            logger.info(f"Booking cancelled: order_id={payment.order_id}")
+    except Exception as exc:
+        logger.error(f"_cancel_booking error for order_id={payment.order_id}: {exc}")
 
 
 @router.post("/payments/webhook")

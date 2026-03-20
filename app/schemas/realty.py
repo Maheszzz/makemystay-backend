@@ -72,12 +72,24 @@ class ContactUpdate(BaseModel):
     model_config = {"populate_by_name": True}
 
 
-class ContactResponse(ContactBase):
-    """Schema for contact response with ID and timestamps."""
+class ContactResponse(BaseModel):
+    """Schema for contact response with ID and timestamps.
+
+    Uses relaxed validation so DB rows with legacy / invalid email values
+    don't cause a 500.  Input schemas (ContactCreate / ContactUpdate) still
+    enforce EmailStr.
+    """
 
     id: int
-    created_at: datetime
-    updated_at: datetime
+    name: Optional[str] = Field(None, alias="name_")
+    phone: Optional[str] = None
+    email: Optional[str] = None
+    message: Optional[str] = None
+    location: Optional[str] = None
+    property_type: Optional[str] = None
+    status: Optional[ContactStatus] = None
+    created_at: Optional[datetime] = None
+    updated_at: Optional[datetime] = None
 
     model_config = {"from_attributes": True, "populate_by_name": True}
 

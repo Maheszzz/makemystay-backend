@@ -110,6 +110,7 @@ app.add_middleware(
 from app.configs.db_config import MySQLBase, mysql_engine  # noqa: E402
 from app.models import (  # noqa: E402, F401
     agent,
+    booking,
     failed_job,
     lead,
     lead_event,

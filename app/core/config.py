@@ -80,7 +80,7 @@ class Settings(BaseSettings):
     # Housing API
     HOUSING_API_KEY: str = ""
     HOUSING_API_ID: str = ""
-    HOUSING_SYNC_INTERVAL_SECONDS: int = 120
+    HOUSING_SYNC_INTERVAL_SECONDS: int = 30
 
     # Load env files in increasing priority (later files override earlier ones).
     # This makes local development work out-of-the-box (e.g. DB on a different port)

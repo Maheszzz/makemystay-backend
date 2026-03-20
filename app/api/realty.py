@@ -44,6 +44,7 @@ def list_contacts(
         None, description="Filter by contact status"
     ),
     db: Session = Depends(get_mysql_db),
+    current_user=Depends(security.get_current_user),
 ):
     """
     List all contacts with pagination and optional status filter.
@@ -59,7 +60,7 @@ def list_contacts(
 
 
 @realty_router.get("/realty/contacts/{contact_id}", response_model=ContactResponse)
-def get_contact(contact_id: int, db: Session = Depends(get_mysql_db)):
+def get_contact(contact_id: int, db: Session = Depends(get_mysql_db), current_user=Depends(security.get_current_user)):
     """
     Get a specific contact by ID.
 
@@ -109,7 +110,7 @@ def create_contact(
 
 @realty_router.put("/realty/contacts/{contact_id}", response_model=ContactResponse)
 def update_contact(
-    contact_id: int, contact: ContactUpdate, db: Session = Depends(get_mysql_db)
+    contact_id: int, contact: ContactUpdate, db: Session = Depends(get_mysql_db), current_user=Depends(security.get_current_user)
 ):
     """
     Update an existing contact.
@@ -130,7 +131,7 @@ def update_contact(
 
 
 @realty_router.delete("/realty/contacts/{contact_id}", status_code=204)
-def delete_contact(contact_id: int, db: Session = Depends(get_mysql_db)):
+def delete_contact(contact_id: int, db: Session = Depends(get_mysql_db), current_user=Depends(security.get_current_user)):
     """
     Delete a contact.
 

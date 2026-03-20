@@ -154,6 +154,11 @@ _db_cfg.get_mysql_db = _override_get_db
 from app.models.payment import Payment  # noqa: E402
 from app.models.payment_webhook_event import PaymentWebhookEvent  # noqa: E402
 
+# Booking model references "Property" via relationship; import realty models
+# first so SQLAlchemy mapper can resolve the name.
+import app.models.realty  # noqa: E402, F401
+from app.models.booking import Booking  # noqa: E402, F401
+
 # Create tables on SQLite using the exact metadata the models are bound to
 Payment.__table__.metadata.create_all(bind=_test_engine)
 

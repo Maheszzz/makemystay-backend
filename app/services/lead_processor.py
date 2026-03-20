@@ -9,6 +9,7 @@ import traceback
 from typing import Optional
 
 from loguru import logger
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.core.redis import lead_queue
@@ -43,14 +44,39 @@ async def process_lead(
         The created Lead object, or None if it was a duplicate.
     """
     try:
-        # ── 1. Deduplication (Phone + Source) ──────────────────────────
-        query = db.query(Lead).filter(
-            Lead.phone == lead_data.phone, Lead.source == source
-        )
-        if lead_data.external_id:
-            query = query.filter(Lead.external_id == lead_data.external_id)
+        # ── 1. Deduplication ────────────────────────────────────────────
+        # Priority:
+        #   a) external_id match (most precise — same inquiry ID from source)
+        #   b) phone + source + lead_date (same customer, same timestamp)
+        #   c) phone + source only (last-resort fallback when no date/id)
+        #
+        # We do NOT deduplicate on phone+source alone because a customer can
+        # legitimately inquire about multiple properties over time.
+        existing = None
 
-        existing = query.first()
+        if lead_data.external_id:
+            existing = (
+                db.query(Lead)
+                .filter(Lead.source == source, Lead.external_id == lead_data.external_id)
+                .first()
+            )
+        elif lead_data.lead_date:
+            existing = (
+                db.query(Lead)
+                .filter(
+                    Lead.phone == lead_data.phone,
+                    Lead.source == source,
+                    Lead.lead_date == lead_data.lead_date,
+                )
+                .first()
+            )
+        else:
+            existing = (
+                db.query(Lead)
+                .filter(Lead.phone == lead_data.phone, Lead.source == source)
+                .first()
+            )
+
         if existing:
             logger.info(f"Duplicate lead skipped: {lead_data.phone} from {source}")
             return None
@@ -132,6 +158,15 @@ async def process_lead(
         _enqueue_crm_sync(db, new_lead)
 
         return new_lead
+
+    except IntegrityError as ie:
+        db.rollback()
+        # A unique-constraint violation means the lead already exists — treat as dedup.
+        logger.info(
+            f"Duplicate lead (IntegrityError) from {source}, "
+            f"phone={lead_data.phone}: {ie.orig}"
+        )
+        return None
 
     except Exception as e:
         db.rollback()

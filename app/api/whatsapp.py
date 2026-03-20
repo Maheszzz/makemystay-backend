@@ -21,6 +21,35 @@ from app.repo import agent_repo
 from app.repo import lead as lead_repo
 from app.services.assignment_service import assign_lead
 from app.services.whatsapp_service import send_template_whatsapp, send_text_whatsapp
+from app.models.retell_call import RetellCall
+from app.api.retell import trigger_outbound_call
+import asyncio
+from app.configs.db_config import SessionLocal
+
+async def _trigger_and_save_call(phone: str, lead_id: int, message: str):
+    with SessionLocal() as db_bg:
+        rc = RetellCall(
+            lead_id=lead_id,
+            to_phone=phone,
+            status="queued"
+        )
+        db_bg.add(rc)
+        db_bg.commit()
+        db_bg.refresh(rc)
+        
+        data = await trigger_outbound_call(
+            name="Customer",
+            phone=phone,
+            message=message,
+            test_id=rc.id
+        )
+        
+        if data and data.get("call_id"):
+            rc.retell_call_id = data.get("call_id")
+            rc.status = "calling"
+        else:
+            rc.status = "failed"
+        db_bg.commit()
 
 
 whatsapp_router = APIRouter(tags=["WhatsApp"])
@@ -383,13 +412,19 @@ async def twilio_whatsapp_inbound(request: Request, db: Session = Depends(get_my
 
     # Always upsert a lead record early for tracking
     lead_id = _upsert_lead(db, phone, {"message": text})
+    
+    is_new_lead = False
     if not session:
         session = _default_session(lead_id)
+        is_new_lead = True
 
     # Refresh session TTL on every inbound message so outbound replies
     # stay within the WhatsApp customer-care window.
     session["last_inbound_at"] = int(time.time())
     _set_session(phone, session)
+    
+    if is_new_lead:
+        asyncio.create_task(_trigger_and_save_call(phone, lead_id, text or "Inbound WhatsApp lead"))
 
     # allow user to restart anytime
     if norm in {"hi", "hello", "start", "restart"}:

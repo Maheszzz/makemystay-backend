@@ -75,7 +75,10 @@ def normalize_transaction(
     method = payment_data.get("method")
     customer_email = payment_data.get("email") or (db_row.payer_email if db_row else None)
     customer_phone = payment_data.get("contact") or (db_row.payer_phone if db_row else None)
-    customer_name = payment_data.get("name") or payment_data.get("notes", {}).get("name") or (db_row.payer_name if db_row else None)
+    # Razorpay sends notes as [] (empty list) when there are no notes — guard against that.
+    _notes = payment_data.get("notes")
+    _notes_dict = _notes if isinstance(_notes, dict) else {}
+    customer_name = payment_data.get("name") or _notes_dict.get("name") or (db_row.payer_name if db_row else None)
     bank_rrn = (
         payment_data.get("acquirer_data", {}).get("rrn")
         or _extract_bank_rrn(payment_data)

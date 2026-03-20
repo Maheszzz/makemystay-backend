@@ -32,8 +32,8 @@ from app.core.config import settings
 BUILDER_API_URL = "https://pahal.housing.com/api/v0/get-builder-leads"
 BROKER_API_URL = "https://pahal.housing.com/api/v0/get-broker-leads"
 DEFAULT_PER_PAGE = 1000
-BOOTSTRAP_FETCH_DAYS = 2 # fetch last 2 days on first run
-REQUEST_TIMEOUT = 5.0  # seconds
+BOOTSTRAP_FETCH_DAYS = 2  # fetch last 2 days on first run
+REQUEST_TIMEOUT = 15.0    # seconds — Housing.com bulk endpoint can be slow
 
 # --- Scale-Proof Controls ---
 _limiters = {}
@@ -124,12 +124,6 @@ class HousingLeadService:
         """
         return await self._fetch_leads_with_retry(start_date, end_date, api_url, per_page)
 
-    @retry(
-        stop=stop_after_attempt(3),
-        wait=wait_exponential(multiplier=1, min=4, max=10),
-        retry=retry_if_exception_type((httpx.RequestError, httpx.TimeoutException)),
-        reraise=True
-    )
     async def _fetch_leads_with_retry(
         self,
         start_date: str,
@@ -137,15 +131,14 @@ class HousingLeadService:
         api_url: str = BUILDER_API_URL,
         per_page: int = DEFAULT_PER_PAGE,
     ) -> Tuple[List[Dict[str, Any]], Optional[str]]:
-        """Internal method with retry logic."""
-        from datetime import datetime
+        """Split the date window into ≤48 h chunks and fetch them concurrently.
 
+        Retry is applied at the *chunk* level (see _safe_fetch_single_chunk) so
+        one chunk failure retries only that chunk, not the entire batch.
+        """
         if not self.is_configured:
-            return [], "Housing.com API is not configured (missing HOUSING_API_KEY or HOUSING_API_ID)"
+            return [], "Housing.com API not configured (HOUSING_API_KEY / HOUSING_API_ID missing)"
 
-        all_leads = []
-
-        # Chunk logic
         s_dt = datetime.fromtimestamp(int(start_date))
         e_dt = datetime.fromtimestamp(int(end_date))
 
@@ -153,24 +146,30 @@ class HousingLeadService:
         current_start = s_dt
         while current_start < e_dt:
             current_end = min(current_start + timedelta(hours=48), e_dt)
-            chunk_start_str = str(int(current_start.timestamp()))
-            chunk_end_str = str(int(current_end.timestamp()))
-
-            tasks.append(self._safe_fetch_single_chunk(api_url, chunk_start_str, chunk_end_str, per_page))
+            tasks.append(
+                self._safe_fetch_single_chunk(
+                    api_url,
+                    str(int(current_start.timestamp())),
+                    str(int(current_end.timestamp())),
+                    per_page,
+                )
+            )
             current_start = current_end
 
         responses = await asyncio.gather(*tasks, return_exceptions=True)
 
+        all_leads: List[Dict[str, Any]] = []
         for resp in responses:
-            if not isinstance(resp, tuple):
-                logger.error(f"Chunk request failed with non-tuple result: {resp}")
+            if isinstance(resp, Exception):
+                logger.error(f"Housing chunk raised: {resp}")
                 continue
-
+            if not isinstance(resp, tuple):
+                logger.error(f"Housing chunk returned unexpected type: {resp!r}")
+                continue
             chunk_leads, error = resp
             if error:
-                logger.error(f"Chunk request failed with error: {error}")
+                logger.error(f"Housing chunk error: {error}")
                 continue
-
             all_leads.extend(chunk_leads)
 
         return all_leads, None
@@ -193,6 +192,12 @@ class HousingLeadService:
         # This is the actual network call
         return await self._fetch_single_chunk_raw(api_url, start_date, end_date, per_page)
 
+    @retry(
+        stop=stop_after_attempt(3),
+        wait=wait_exponential(multiplier=1, min=4, max=10),
+        retry=retry_if_exception_type((httpx.RequestError, httpx.TimeoutException)),
+        reraise=True,
+    )
     async def _fetch_single_chunk_raw(
         self,
         api_url: str,
@@ -303,17 +308,26 @@ class HousingLeadService:
         elif min_price:
             budget = f"₹{min_price}+"
 
+        # external_id: prefer flat_id (most specific), fall back to project_id
+        flat_id    = raw.get("flat_id")
+        project_id_val = raw.get("project_id")
+        external_id = (
+            str(flat_id) if flat_id
+            else str(project_id_val) if project_id_val
+            else None
+        )
+
         return {
-            "name": raw.get("lead_name"),
-            "phone": raw.get("lead_phone", ""),
-            "email": raw.get("lead_email"),
-            "project_name": raw.get("project_name"),
-            "location": location,
+            "name":          raw.get("lead_name"),
+            "phone":         raw.get("lead_phone", ""),
+            "email":         raw.get("lead_email"),
+            "project_name":  raw.get("project_name"),
+            "location":      location,
             "property_type": property_type,
-            "budget": budget,
-            "message": " | ".join(parts) if parts else None,
-            "lead_date": lead_date,
-            "external_id": str(raw.get("flat_id")) if raw.get("flat_id") else None,
+            "budget":        budget,
+            "message":       " | ".join(parts) if parts else None,
+            "lead_date":     lead_date,
+            "external_id":   external_id,
         }
 
     # ------------------------------------------------------------------ #

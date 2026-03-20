@@ -25,6 +25,7 @@ from app.core.config import settings
 from app.repo import lead as lead_repo
 from app.schemas.lead import LeadCreate, LeadResponse, LeadStatus, LeadWebhookResponse
 from app.services.lead_processor import process_lead
+from app.core import security
 
 webhooks_router = APIRouter(tags=["Webhooks / Leads"])
 
@@ -230,6 +231,7 @@ def list_leads(
         None, description="Filter by assigned agent ID"
     ),
     db: Session = Depends(get_mysql_db),
+    current_user=Depends(security.get_current_user),
 ):
     """List all leads with optional source/status/agent filters."""
     return lead_repo.get_leads(
@@ -250,7 +252,7 @@ def list_leads(
     response_model=LeadResponse,
     summary="Get lead by ID",
 )
-def get_lead(lead_id: int, db: Session = Depends(get_mysql_db)):
+def get_lead(lead_id: int, db: Session = Depends(get_mysql_db), current_user=Depends(security.get_current_user)):
     """Retrieve a single lead by its ID."""
     lead = lead_repo.get_lead_by_id(db, lead_id)
     if not lead:

@@ -25,7 +25,7 @@ class LeadCreate(BaseModel):
 
     name: Optional[str] = Field(None, max_length=200)
     email: Optional[str] = Field(None, max_length=200)
-    phone: str = Field(..., min_length=10, max_length=20)
+    phone: str = Field(..., min_length=7, max_length=20)
     project_name: Optional[str] = Field(None, max_length=300)
     city: Optional[str] = Field(None, max_length=100)
     location: Optional[str] = Field(None, max_length=200)
@@ -56,7 +56,7 @@ class LeadResponse(BaseModel):
     message: Optional[str] = None
     status: str
     assigned_to: Optional[int] = None
-    priority: int = 1
+    priority: Optional[int] = None
     zoho_lead_id: Optional[str] = None
     created_at: datetime
     updated_at: Optional[datetime] = None

@@ -70,9 +70,10 @@ class Lead(MySQLBase):
     retell_calls = relationship("RetellCall", back_populates="lead")
 
     __table_args__ = (
+        # Dedup: same inquiry = same phone + same lead timestamp + same external reference.
+        # Does NOT block a customer from inquiring about multiple properties over time.
         UniqueConstraint(
             "phone", "lead_date", "external_id", name="uq_lead_phone_date_ext"
         ),
-        UniqueConstraint("phone", "source", name="uq_lead_phone_source"),
         Index("ix_leads_status_created_at", "status", "created_at"),
     )

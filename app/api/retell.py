@@ -231,7 +231,13 @@ async def retell_webhook(request: Request, db: Session = Depends(get_mysql_db)):
         elif "failed" in ev or "error" in ev:
             test_row.status = "failed"
         else:
-            test_row.status = "completed"
+            test_row.status = "called"  # Updated according to spec
+
+        if test_row.lead_id:
+            from app.models.lead import Lead
+            lead = db.query(Lead).filter(Lead.id == test_row.lead_id).first()
+            if lead:
+                lead.is_ai_called = True
 
         # Parse SUMMARY line if present:
         # SUMMARY: interested=<true|false>, location=<...>, budget=<...>, move_in=<...>

@@ -1,7 +1,16 @@
 """Unified sync service for all lead sources.
 
-This module coordinates fetching leads from pull-based APIs (Housing.com, 99acres, etc.)
+Coordinates fetching leads from pull-based APIs (Housing.com, 99acres, etc.)
 and processing them through the centralized lead pipeline.
+
+Crash-proofing guarantees:
+- Each source gets its own isolated DB session so one failure can't corrupt another.
+- asyncio.gather uses return_exceptions=True so a single-source error never
+  silently cancels the others.
+- last_lead_timestamp is parsed safely even if stored as a float string.
+- Both Housing.com builder AND broker APIs are queried every cycle.
+- A 25-hour "safety window" always overlaps the last sync so leads missed
+  during short downtime are automatically recovered on the next run.
 """
 
 import asyncio
@@ -14,111 +23,200 @@ from sqlalchemy.orm import Session
 from app.configs.db_config import MySQLSessionLocal
 from app.models.sync_metadata import SyncMetadata
 from app.schemas.lead import LeadCreate
-from app.services.housing_lead_service import housing_lead_service
+from app.services.housing_lead_service import (
+    BROKER_API_URL,
+    BUILDER_API_URL,
+    housing_lead_service,
+)
 from app.services.lead_processor import process_lead
 
 
+# ---------------------------------------------------------------------------
+# Public entry point (called by APScheduler every N seconds)
+# ---------------------------------------------------------------------------
+
 async def sync_all_sources():
-    """Execute sync for all active lead sources."""
+    """Run all lead-source syncs; each in its own DB session and error bubble."""
+    results = await asyncio.gather(
+        _run_housing_sync(),
+        _run_99acres_sync(),
+        return_exceptions=True,          # never let one source cancel another
+    )
+    for r in results:
+        if isinstance(r, Exception):
+            logger.error(f"sync_all_sources: a source sync raised: {r}")
+
+
+# ---------------------------------------------------------------------------
+# Housing.com sync (builder + broker)
+# ---------------------------------------------------------------------------
+
+async def _run_housing_sync():
+    """Top-level wrapper: creates its own DB session, never leaks exceptions."""
     db = MySQLSessionLocal()
     try:
-        await asyncio.gather(
-            sync_housing_leads(db),
-            sync_99acres_leads(db)
-        )
+        await sync_housing_leads(db)
     except Exception as e:
-        logger.error(f"Unified sync failed: {e}")
+        logger.error(f"Housing sync wrapper caught unhandled error: {e}")
+        try:
+            db.rollback()
+        except Exception:
+            pass
     finally:
         db.close()
 
 
 async def sync_housing_leads(db: Session):
-    """Fetch and process leads from Housing.com."""
+    """Fetch and store leads from Housing.com (builder + broker endpoints)."""
     if not housing_lead_service.is_configured:
         logger.debug("Housing.com sync skipped — not configured")
         return
 
-    try:
-        # Get or create sync metadata
-        meta = db.query(SyncMetadata).filter(SyncMetadata.source == "housing").first()
-        if not meta:
-            meta = SyncMetadata(source="housing")
-            db.add(meta)
-            db.commit()
-            db.refresh(meta)
-
-        now = int(time.time())
-        # Default to 24 hours ago if no previous timestamp
-        start_int = int(str(meta.last_lead_timestamp)) if meta.last_lead_timestamp else (now - 86400)
-
-        # Release database connection early before making a long HTTP request
+    # ── 1. Load / create sync metadata ──────────────────────────────────────
+    meta = db.query(SyncMetadata).filter(SyncMetadata.source == "housing").first()
+    if not meta:
+        meta = SyncMetadata(source="housing")
+        db.add(meta)
         db.commit()
+        db.refresh(meta)
 
-        # Housing API strictly allows max 2 days difference.
-        # Cap at 47 hours to stay safe.
-        end_int = now
-        if end_int - start_int > 170000:
-            end_int = start_int + 170000
+    now = int(time.time())
 
-        start_date = str(start_int)
-        end_date = str(end_int)
+    # Safe float-string parsing: "1742400000.0" would crash int("1742400000.0")
+    if meta.last_lead_timestamp:
+        try:
+            start_int = int(float(str(meta.last_lead_timestamp)))
+        except (ValueError, TypeError):
+            logger.warning("Corrupt last_lead_timestamp — defaulting to 24h ago")
+            start_int = now - 86400
+    else:
+        start_int = now - 86400   # first run: look back 24 h
 
-        logger.info(f"Syncing Housing leads: {start_date} to {end_date}")
-        leads_raw, error = await housing_lead_service.fetch_leads(start_date, end_date)
+    # Always overlap the last 25 h so short-downtime gaps are self-healing.
+    # Example: server was down for 1 h → overlap re-fetches that window next cycle.
+    overlap_start = now - 90000  # 25 h ago
+    start_int = min(start_int, overlap_start)
 
-        # Re-fetch metadata back into the current active session
-        meta = db.query(SyncMetadata).filter(SyncMetadata.source == "housing").first()
-        if not meta:
-            logger.error("Housing sync metadata lost after fetching.")
-            return
+    # Housing API hard limit: ≤ 48 h per request (our service chunks automatically,
+    # but cap the total window at 47 h so one slow sync doesn't snowball).
+    end_int = now
+    if end_int - start_int > 170000:      # 170 000 s ≈ 47 h
+        end_int = start_int + 170000
 
+    start_date = str(start_int)
+    end_date   = str(end_int)
+
+    logger.info(
+        f"Housing sync window: {datetime.fromtimestamp(start_int).isoformat()} → "
+        f"{datetime.fromtimestamp(end_int).isoformat()}"
+    )
+
+    # ── 2. Fetch from both builder AND broker endpoints ──────────────────────
+    builder_leads, broker_leads = await asyncio.gather(
+        housing_lead_service.fetch_leads(start_date, end_date, api_url=BUILDER_API_URL),
+        housing_lead_service.fetch_leads(start_date, end_date, api_url=BROKER_API_URL),
+        return_exceptions=True,
+    )
+
+    all_raw: list = []
+
+    for label, result in [("builder", builder_leads), ("broker", broker_leads)]:
+        if isinstance(result, Exception):
+            logger.error(f"Housing {label} fetch raised: {result}")
+            continue
+        leads, error = result
         if error:
-            logger.error(f"Housing sync error: {error}")
-            meta.status = "error"
-            meta.last_error = error
-            db.commit()
-            return
+            logger.error(f"Housing {label} API error: {error}")
+            continue
+        logger.info(f"Housing {label}: {len(leads)} leads fetched")
+        all_raw.extend(leads)
 
-        imported = 0
-        for raw_lead in leads_raw:
-            mapped = housing_lead_service.map_lead(raw_lead)
+    if not all_raw:
+        logger.info("Housing sync: no leads returned from either endpoint")
+        _update_meta(db, meta, end_date, fetched=0, imported=0, skipped=0)
+        return
+
+    # ── 3. Process each lead through the pipeline ────────────────────────────
+    imported = 0
+    skipped  = 0
+
+    for raw_lead in all_raw:
+        mapped = housing_lead_service.map_lead(raw_lead)
+        phone  = (mapped.get("phone") or "").strip()
+
+        if len(phone) < 7:
+            logger.warning(f"Housing lead skipped — short phone: {phone!r}")
+            skipped += 1
+            continue
+
+        try:
             lead_data = LeadCreate(
-                name=mapped.get("name"),
-                phone=mapped.get("phone", ""),
-                email=mapped.get("email"),
-                project_name=mapped.get("project_name"),
-                location=mapped.get("location"),
-                property_type=mapped.get("property_type"),
-                message=mapped.get("message"),
-                lead_date=mapped.get("lead_date"),
-                external_id=mapped.get("external_id"),
+                name          = mapped.get("name"),
+                phone         = phone,
+                email         = mapped.get("email"),
+                project_name  = mapped.get("project_name"),
+                location      = mapped.get("location"),
+                property_type = mapped.get("property_type"),
+                budget        = mapped.get("budget"),
+                message       = mapped.get("message"),
+                lead_date     = mapped.get("lead_date"),
+                external_id   = mapped.get("external_id"),
             )
+        except Exception as val_err:
+            logger.warning(f"Housing lead validation error (phone={phone!r}): {val_err}")
+            skipped += 1
+            continue
 
-            result = await process_lead(db, lead_data, source="housing", raw_payload=raw_lead)
-            if result:
-                imported += 1
+        result = await process_lead(db, lead_data, source="housing", raw_payload=raw_lead)
+        if result:
+            imported += 1
+        else:
+            skipped += 1
 
-        # Update metadata — only moves forward if fetch_leads above succeeded
+    _update_meta(db, meta, end_date, fetched=len(all_raw), imported=imported, skipped=skipped)
+    logger.success(
+        f"Housing sync done: {len(all_raw)} fetched, {imported} imported, {skipped} skipped"
+    )
+
+
+def _update_meta(
+    db: Session,
+    meta: SyncMetadata,
+    end_date: str,
+    *,
+    fetched: int,
+    imported: int,
+    skipped: int,
+):
+    """Persist sync metadata; rolls back safely on failure."""
+    try:
         meta.last_lead_timestamp = end_date
-        meta.last_sync_at = datetime.now()
-        meta.leads_fetched = len(leads_raw)
-        meta.leads_imported = imported
-        meta.status = "active"
-        meta.last_error = None
+        meta.last_sync_at        = datetime.now()
+        meta.leads_fetched       = fetched
+        meta.leads_imported      = imported
+        meta.status              = "active"
+        meta.last_error          = None
         db.commit()
-
-        logger.success(f"Housing sync complete: {len(leads_raw)} fetched, {imported} imported")
-
     except Exception as e:
-        logger.error(f"Housing sync task failed: {e}")
+        logger.error(f"Failed to update sync metadata: {e}")
         db.rollback()
 
 
+# ---------------------------------------------------------------------------
+# 99acres sync (webhook-primary; pull stub for future use)
+# ---------------------------------------------------------------------------
+
+async def _run_99acres_sync():
+    db = MySQLSessionLocal()
+    try:
+        await sync_99acres_leads(db)
+    except Exception as e:
+        logger.error(f"99acres sync wrapper caught: {e}")
+    finally:
+        db.close()
+
+
 async def sync_99acres_leads(db: Session):
-    """
-    Fetch and process leads from 99acres.
-    Currently a stub as 99acres primarily uses webhooks.
-    """
-    # Logic for 99acres pull-based API will go here if/when available
+    """99acres primarily pushes leads via webhooks; pull API not yet active."""
     logger.debug("99acres pull-based sync skipped — no active pull API configured")
-    await asyncio.sleep(0.1)
+    await asyncio.sleep(0)

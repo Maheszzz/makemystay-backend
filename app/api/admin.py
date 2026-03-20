@@ -72,6 +72,25 @@ async def get_stats(db: Session = Depends(get_mysql_db)):
         logger.error(f"Failed to fetch admin stats: {e}")
         raise HTTPException(status_code=500, detail="Failed to fetch stats")
 
+@admin_router.get("/admin/analytics", summary="Get simple analytics metrics")
+async def analytics(db: Session = Depends(get_mysql_db)):
+    """Provides high-level metrics (Total Leads, Today Leads, Failed)."""
+    try:
+        total_leads = db.query(Lead).count()
+        today = func.date(Lead.created_at) == func.current_date()
+        today_leads = db.query(Lead).filter(today).count()
+        failed = db.query(Lead).filter(Lead.crm_status == "failed").count()
+
+        return {
+            "total_leads": total_leads,
+            "today_leads": today_leads,
+            "failed": failed
+        }
+    except Exception as e:
+        logger.error(f"Failed to fetch analytics: {e}")
+        raise HTTPException(status_code=500, detail="Failed to fetch analytics")
+
+
 @admin_router.post("/admin/retry-failed", summary="Retry failed CRM syncs")
 async def retry_failed_syncs(db: Session = Depends(get_mysql_db)):
     """Replays leads that failed to sync to CRM."""
