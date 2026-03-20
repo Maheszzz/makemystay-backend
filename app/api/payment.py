@@ -6,11 +6,12 @@ from datetime import datetime, timezone
 from io import BytesIO
 from typing import Any, Dict, List, Optional
 
+import time
 import jinja2
 import qrcode
 import razorpay
 import httpx
-from fastapi import APIRouter, Depends, HTTPException, Request
+from fastapi import APIRouter, Depends, HTTPException, Request, BackgroundTasks
 from fastapi.responses import FileResponse
 from loguru import logger
 from pydantic import BaseModel
@@ -27,6 +28,7 @@ from app.schemas.payment import (
     ServiceFeeValidationRequest,
     ValidationResponse,
 )
+from app.services.whatsapp_service import send_text_whatsapp
 
 router = APIRouter()
 
@@ -269,33 +271,206 @@ async def verify_payment(req: Request, db: Session = Depends(get_db)):
         logger.error(f"Error verifying payment: {e}")
         raise HTTPException(status_code=500, detail="Internal server error")
 
+def create_retry_link(payment: Payment) -> str:
+    link = client.payment_link.create({
+        "amount": int(payment.amount * 100),
+        "currency": "INR",
+        "description": f"Retry Payment for Order {payment.order_id}",
+        "customer": {
+            "name": payment.payer_name or "Customer",
+            "email": payment.payer_email or "",
+            "contact": payment.payer_phone or ""
+        },
+        "notify": {
+            "sms": False,
+            "email": False
+        },
+        "notes": {
+            "order_id": payment.order_id,
+            "retry": "true"
+        }
+    })
+    return link["short_url"]
+
+def send_whatsapp_retry(payment: Payment, link: str):
+    message = f"""
+Hi {payment.payer_name or 'there'} 👋
+
+Your payment didn’t go through, but your booking is still reserved for a short time ⏳
+
+Complete your payment here:
+{link}
+
+⚡ Hurry — availability is limited!
+
+– MakeMyStay
+"""
+    phone = payment.payer_phone
+    if phone:
+        send_text_whatsapp(to=phone, body=message)
+
+def handle_failed_payment_async(order_id: str, payment_id: str):
+    # Buffer delay: wait 60 seconds before sending recovery text
+    time.sleep(60)
+
+    from app.configs.db_config import SessionLocal
+    db = SessionLocal()
+    try:
+        # Re-fetch payment
+        payment = None
+        if order_id:
+            payment = db.query(Payment).filter(Payment.order_id == order_id).first()
+        elif payment_id:
+            payment = db.query(Payment).filter(Payment.payment_id == payment_id).first()
+        
+        if not payment:
+            return
+            
+        # Anti-spam and resolved guards
+        if payment.recovery_sent:
+            logger.info(f"Payment {payment.id} recovery already sent. Skipping.")
+            return
+        if str(payment.status).lower() == "success":
+            logger.info(f"Payment {payment.id} was already recovered manually. Skipping.")
+            return
+
+        # Generate Link and Send SMS
+        retry_link = create_retry_link(payment)
+        send_whatsapp_retry(payment, retry_link)
+
+        # Mark as sent
+        payment.recovery_sent = True
+        db.commit()
+    except Exception as e:
+        logger.error(f"Error handling failed payment recovery: {e}")
+        db.rollback()
+    finally:
+        db.close()
+
+
+def process_webhook_async(
+    event: str,
+    payload: dict,
+    received_signature: str,
+    raw_body_text: str,
+):
+    from app.configs.db_config import SessionLocal
+    db = SessionLocal()
+    try:
+        payload_data = payload.get("payload", {})
+        payment_entity = payload_data.get("payment", {}).get("entity", {})
+        payment_link_entity = payload_data.get("payment_link", {}).get("entity", {})
+
+        order_id = payment_entity.get("order_id") or payment_link_entity.get("order_id")
+        payment_id = payment_entity.get("id") or payment_link_entity.get("payment_id")
+
+        def async_log_webhook_event(status: str, reason: str):
+            try:
+                db.add(
+                    PaymentWebhookEvent(
+                        provider="razorpay",
+                        event=event or None,
+                        status=status,
+                        reason=reason,
+                        order_id=order_id,
+                        payment_id=payment_id,
+                        signature_valid=True,
+                        signature_header=received_signature or None,
+                        payload=payload,
+                        raw_body=raw_body_text[:10000],
+                    )
+                )
+                db.commit()
+            except Exception as log_error:
+                db.rollback()
+                logger.error(f"Failed to persist async webhook audit: {log_error}")
+
+        payment = None
+        if order_id:
+            payment = db.query(Payment).filter(Payment.order_id == order_id).first()
+        elif payment_id:
+            payment = db.query(Payment).filter(Payment.payment_id == payment_id).first()
+        else:
+            logger.warning(f"Razorpay webhook missing identifiers for event={event}")
+            async_log_webhook_event(status="ignored", reason="identifiers_missing")
+            return
+
+        if not payment:
+            logger.warning(f"Payment not found for Razorpay webhook event={event}")
+            async_log_webhook_event(status="ignored", reason="payment_not_found")
+            return
+
+        success_events = {"payment.captured", "order.paid", "payment_link.paid"}
+        failed_events  = {"payment.failed", "payment_link.expired", "payment_link.cancelled"}
+        pending_events = {"payment.authorized"}
+
+        # IDEMPOTENCY CHECKS
+        cur_status = str(payment.status).lower() if payment.status else ""
+        if event in success_events and cur_status == "success":
+            logger.info(f"Idempotency Guard: Payment {payment_id} already marked success. Ignoring {event}.")
+            async_log_webhook_event(status="ignored", reason="already_processed_success")
+            return
+
+        if event in failed_events and cur_status == "failed":
+            logger.info(f"Idempotency Guard: Payment {payment_id} already marked failed. Ignoring {event}.")
+            async_log_webhook_event(status="ignored", reason="already_processed_failed")
+            return
+
+        if event in success_events:
+            payment.status = "success"
+
+            # -------------------------------------------------------------------
+            # BUSINESS LOGIC: PAYMENT -> BOOKING MAPPING (PG SYSTEM)
+            # When a payment is successfully captured via webhook, update booking.
+            #
+            # booking = db.query(Booking).filter(Booking.order_id == payment.order_id).first()
+            # if booking:
+            #     booking.payment_status = "PAID"
+            #     booking.user_id = payment.user_id
+            # -------------------------------------------------------------------
+
+        elif event in pending_events:
+            # Authorized but not captured
+            pass
+
+        elif event in failed_events:
+            payment.status = "failed"
+
+        else:
+            async_log_webhook_event(status="ignored", reason="event_not_mapped")
+            return
+
+        if payment_id:
+            payment.payment_id = payment_id
+
+        db.commit()
+        async_log_webhook_event(status="processed", reason="payment_updated")
+        
+    except Exception as e:
+        logger.error(f"Error processing webhook async: {e}")
+        db.rollback()
+    finally:
+        db.close()
+
 
 @router.post("/payments/webhook")
-async def razorpay_webhook(req: Request, db: Session = Depends(get_db)):
-    """Handle Razorpay server-to-server webhook events."""
+async def razorpay_webhook(
+    req: Request, 
+    background_tasks: BackgroundTasks,
+    db: Session = Depends(get_db)
+):
+    """Handle Razorpay server-to-server webhook events asynchronously."""
     raw_body = await req.body()
     raw_body_text = raw_body.decode("utf-8", errors="replace")
     received_signature = req.headers.get("X-Razorpay-Signature", "")
 
-    def log_webhook_event(
-        *,
-        event: str = "",
-        status: str,
-        reason: Optional[str] = None,
-        order_id: Optional[str] = None,
-        payment_id: Optional[str] = None,
-        signature_valid: bool = False,
-        payload: Optional[dict] = None,
-    ) -> None:
+    def sync_log_webhook_event(status: str, reason: str, signature_valid: bool = False, payload: Optional[dict] = None):
         try:
             db.add(
                 PaymentWebhookEvent(
                     provider="razorpay",
-                    event=event or None,
                     status=status,
                     reason=reason,
-                    order_id=order_id,
-                    payment_id=payment_id,
                     signature_valid=signature_valid,
                     signature_header=received_signature or None,
                     payload=payload,
@@ -305,15 +480,15 @@ async def razorpay_webhook(req: Request, db: Session = Depends(get_db)):
             db.commit()
         except Exception as log_error:
             db.rollback()
-            logger.error(f"Failed to persist webhook audit event: {log_error}")
+            logger.error(f"Failed to persist sync webhook audit event: {log_error}")
 
     if not RAZORPAY_WEBHOOK_SECRET:
         logger.error("RAZORPAY_WEBHOOK_SECRET is not configured")
-        log_webhook_event(status="error", reason="webhook_secret_not_configured")
+        sync_log_webhook_event(status="error", reason="webhook_secret_not_configured")
         raise HTTPException(status_code=500, detail="Webhook secret not configured")
 
     if not received_signature:
-        log_webhook_event(status="rejected", reason="missing_signature")
+        sync_log_webhook_event(status="rejected", reason="missing_signature")
         raise HTTPException(status_code=400, detail="Missing webhook signature")
 
     expected_signature = hmac.new(
@@ -324,111 +499,41 @@ async def razorpay_webhook(req: Request, db: Session = Depends(get_db)):
 
     if not hmac.compare_digest(expected_signature, received_signature):
         logger.warning("Invalid Razorpay webhook signature")
-        log_webhook_event(status="rejected", reason="invalid_signature")
+        sync_log_webhook_event(status="rejected", reason="invalid_signature")
         raise HTTPException(status_code=400, detail="Invalid webhook signature")
 
     try:
         payload = await req.json()
     except Exception:
-        log_webhook_event(
-            status="rejected", reason="invalid_json", signature_valid=True
-        )
+        sync_log_webhook_event(status="rejected", reason="invalid_json", signature_valid=True)
         raise HTTPException(status_code=400, detail="Invalid JSON payload")
 
     event = payload.get("event", "")
     payload_data = payload.get("payload", {})
     payment_entity = payload_data.get("payment", {}).get("entity", {})
     payment_link_entity = payload_data.get("payment_link", {}).get("entity", {})
-
     order_id = payment_entity.get("order_id") or payment_link_entity.get("order_id")
     payment_id = payment_entity.get("id") or payment_link_entity.get("payment_id")
 
-    payment = None
-    if order_id:
-        payment = db.query(Payment).filter(Payment.order_id == order_id).first()
-    elif payment_id:
-        payment = db.query(Payment).filter(Payment.payment_id == payment_id).first()
-    else:
-        # Acknowledge unknown payload formats to avoid repeated retries.
-        logger.warning(
-            f"Razorpay webhook missing identifiers for event={event}; payload keys={list(payload_data.keys())}"
-        )
-        log_webhook_event(
-            event=event,
-            status="ignored",
-            reason="identifiers_missing",
-            signature_valid=True,
-            payload=payload,
-        )
-        return {"status": "ignored", "reason": "identifiers_missing"}
-
-    if not payment:
-        logger.warning(
-            f"Payment not found for Razorpay webhook event={event}, order_id={order_id}, payment_id={payment_id}"
-        )
-        log_webhook_event(
-            event=event,
-            status="ignored",
-            reason="payment_not_found",
-            order_id=order_id,
-            payment_id=payment_id,
-            signature_valid=True,
-            payload=payload,
-        )
-        return {"status": "ignored", "reason": "payment_not_found"}
-
-    success_events = {"payment.captured", "order.paid", "payment_link.paid"}
-    failed_events  = {"payment.failed", "payment_link.expired", "payment_link.cancelled"}
-    # authorized = money reserved but NOT yet captured; keep as pending so the
-    # admin dashboard doesn't wrongly show it as success.
-    pending_events = {"payment.authorized"}
-
-    if event in success_events:
-        payment.status = "success"
-
-        # -------------------------------------------------------------------
-        # BUSINESS LOGIC: PAYMENT -> BOOKING MAPPING (PG SYSTEM)
-        # When a payment is successfully captured via webhook, update booking.
-        #
-        # booking = db.query(Booking).filter(Booking.order_id == payment.order_id).first()
-        # if booking:
-        #     booking.payment_status = "PAID"
-        #     booking.user_id = payment.user_id
-        # -------------------------------------------------------------------
-
-    elif event in pending_events:
-        # Keep DB status as pending; just record the payment_id so the row
-        # can be linked once capture fires.
-        pass
-
-    elif event in failed_events:
-        payment.status = "failed"
-
-    else:
-        log_webhook_event(
-            event=event,
-            status="ignored",
-            reason="event_not_mapped",
-            order_id=order_id,
-            payment_id=payment_id,
-            signature_valid=True,
-            payload=payload,
-        )
-        return {"status": "ignored", "reason": "event_not_mapped", "event": event}
-
-    if payment_id:
-        payment.payment_id = payment_id
-
-    db.commit()
-    log_webhook_event(
+    # Queue the heavy DB processing to the background
+    background_tasks.add_task(
+        process_webhook_async,
         event=event,
-        status="processed",
-        reason="payment_updated",
-        order_id=order_id,
-        payment_id=payment_id,
-        signature_valid=True,
         payload=payload,
+        received_signature=received_signature,
+        raw_body_text=raw_body_text,
     )
+    
+    # Instantiate the Recovery Worker for failed events
+    failed_events  = {"payment.failed", "payment_link.expired", "payment_link.cancelled"}
+    if event in failed_events:
+        background_tasks.add_task(
+            handle_failed_payment_async,
+            order_id=order_id,
+            payment_id=payment_id
+        )
+
+    # Return 200 OK immediately to prevent Razorpay timeouts and retries
     return {"status": "ok"}
 
 

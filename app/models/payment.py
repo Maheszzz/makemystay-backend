@@ -1,4 +1,4 @@
-from sqlalchemy import DECIMAL, Column, DateTime, Enum, Integer, String, func
+from sqlalchemy import DECIMAL, Boolean, Column, DateTime, Enum, Integer, String, func
 
 from app.configs.db_config import MySQLBase
 
@@ -20,6 +20,8 @@ class Payment(MySQLBase):
     order_id = Column(String(100), unique=True, nullable=False, index=True)
     payment_id = Column(String(100), nullable=True)
     signature = Column(String(255), nullable=True)
+
+    recovery_sent = Column(Boolean, default=False, nullable=False)
 
     # Payer details
     payer_name = Column(
