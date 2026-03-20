@@ -21,6 +21,7 @@ from app.core.config import settings
 
 # --- Settings & Logging ---
 load_dotenv()
+# Reload marker (forces dev server reload when env changes) v2
 logging.basicConfig(level=logging.INFO)
 logger.info(f"ENV={settings.ENV}")
 
@@ -29,19 +30,13 @@ limiter = Limiter(key_func=get_remote_address)
 
 # --- Background Scheduler ---
 import asyncio
+from datetime import datetime
 
 from apscheduler.schedulers.background import BackgroundScheduler
 
-from app.cron.fetch_housing_leads import (
-    _run_housing_sync,  # Keep for transition if needed, but we'll use sync_all_sources
-)
 from app.services.lead_sync_service import sync_all_sources
 
 scheduler = BackgroundScheduler()
-
-def sync_housing_job():
-    """APScheduler wrapper for async sync function."""
-    asyncio.run(_run_housing_sync())
 
 # --- Sentry Setup ---
 if settings.SENTRY_DSN:
@@ -62,13 +57,17 @@ def sync_all_job():
 async def lifespan(app: FastAPI):
     """Lifecycle manager for the app."""
     logger.info("Starting background scheduler...")
-    # Run every 2 minutes (interval from settings)
-    scheduler.add_job(sync_all_job, "interval", seconds=settings.HOUSING_SYNC_INTERVAL_SECONDS, id="unified_sync_job")
-    # Run once immediately on startup
-    scheduler.add_job(sync_all_job, id="initial_sync_job")
+    # Single registration: fires immediately on startup AND repeats on interval
+    scheduler.add_job(
+        sync_all_job,
+        "interval",
+        seconds=settings.HOUSING_SYNC_INTERVAL_SECONDS,
+        id="sync_all_job",
+        next_run_time=datetime.now(),
+    )
 
     scheduler.start()
-    logger.info(f"APScheduler started: unified_sync_job scheduled every {settings.HOUSING_SYNC_INTERVAL_SECONDS}s")
+    logger.info(f"APScheduler started: sync_all_job scheduled every {settings.HOUSING_SYNC_INTERVAL_SECONDS}s")
     yield
     logger.info("Shutting down background scheduler...")
     scheduler.shutdown()
@@ -89,6 +88,7 @@ app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 
 # --- Middleware ---
 # Configure CORS for frontend connection
+# (no-op) This comment exists to trigger uvicorn reload in local development.
 app.add_middleware(
     CORSMiddleware,
     allow_origins=[
@@ -113,6 +113,8 @@ from app.models import (  # noqa: E402, F401
     failed_job,
     lead,
     lead_event,
+    payment,
+    retell_call,
     sync_metadata,
 )
 
@@ -178,6 +180,11 @@ app.include_router(housing_router, prefix="/api/v1")
 from app.api.whatsapp import whatsapp_router  # noqa: E402
 
 app.include_router(whatsapp_router, prefix="/api/v1")
+
+# Meta WhatsApp interactive webhook
+from app.api.meta_whatsapp import meta_whatsapp_router  # noqa: E402
+
+app.include_router(meta_whatsapp_router, prefix="/api/v1")
 
 # Include webhooks at both /api/v1 and root for maximum reachability
 from app.api.webhooks import webhooks_router  # noqa: E402

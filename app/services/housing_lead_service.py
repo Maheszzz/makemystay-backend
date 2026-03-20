@@ -36,10 +36,21 @@ BOOTSTRAP_FETCH_DAYS = 2 # fetch last 2 days on first run
 REQUEST_TIMEOUT = 5.0  # seconds
 
 # --- Scale-Proof Controls ---
-# 5 concurrent requests max
-housing_semaphore = asyncio.Semaphore(5)
-# 10 requests per second max
-housing_limiter = AsyncLimiter(10, 1)
+_limiters = {}
+_semaphores = {}
+
+def get_housing_limiter() -> AsyncLimiter:
+    loop = asyncio.get_running_loop()
+    if loop not in _limiters:
+        _limiters[loop] = AsyncLimiter(10, 1)
+    return _limiters[loop]
+
+def get_housing_semaphore() -> asyncio.Semaphore:
+    loop = asyncio.get_running_loop()
+    if loop not in _semaphores:
+        _semaphores[loop] = asyncio.Semaphore(5)
+    return _semaphores[loop]
+
 # Circuit breaker: trips after 5 failures, resets after 60s
 housing_breaker = pybreaker.CircuitBreaker(fail_max=5, reset_timeout=60)
 
@@ -166,8 +177,8 @@ class HousingLeadService:
 
     async def _safe_fetch_single_chunk(self, *args, **kwargs):
         """Wrapper to apply concurrency and rate limiting."""
-        async with housing_semaphore:
-            async with housing_limiter:
+        async with get_housing_semaphore():
+            async with get_housing_limiter():
                 return await self._fetch_single_chunk_protected(*args, **kwargs)
 
     @housing_breaker

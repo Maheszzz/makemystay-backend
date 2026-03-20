@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import re
+import time
 from datetime import datetime
 from typing import Any, Dict, Optional
 
@@ -11,6 +12,7 @@ from loguru import logger
 from sqlalchemy.orm import Session
 
 from app.configs.db_config import get_mysql_db
+from app.core.config import settings
 from app.core.redis import redis_conn
 from app.events.event_service import publish_event
 from app.models.agent import Agent
@@ -18,13 +20,14 @@ from app.models.lead import Lead
 from app.repo import agent_repo
 from app.repo import lead as lead_repo
 from app.services.assignment_service import assign_lead
-from app.services.whatsapp_service import send_text_whatsapp
+from app.services.whatsapp_service import send_template_whatsapp, send_text_whatsapp
 
 
 whatsapp_router = APIRouter(tags=["WhatsApp"])
 
 
-SESSION_TTL_SECONDS = 60 * 60 * 48  # 48 hours
+# WhatsApp customer-care window is 24 hours since the user's last inbound message.
+SESSION_TTL_SECONDS = 60 * 60 * 24  # 24 hours
 SOURCE = "whatsapp"
 
 
@@ -73,14 +76,6 @@ def _normalize_msg(msg: str) -> str:
     """
     b = _clean_text(msg).lower()
     b = b.replace("one bhk", "1bhk").replace("two bhk", "2bhk").replace("three bhk", "3bhk")
-    if "1bhk" in b or "1 bhk" in b:
-        return "2"
-    if "2bhk" in b or "2 bhk" in b:
-        return "3"
-    if "3bhk" in b or "3 bhk" in b:
-        return "4"
-    if "pg" in b:
-        return "1"
     if "not interested" in b:
         return "2"
     if b in {"yes", "y", "interested", "ok"}:
@@ -264,6 +259,9 @@ def _default_session(lead_id: int) -> Dict[str, Any]:
     return {
         "step": "interest",
         "lead_id": lead_id,
+        # Timestamp (unix seconds) of the most recent inbound message.
+        # Used to stay aligned with WhatsApp customer-care (24h) rules.
+        "last_inbound_at": 0,
         "data": {
             "interest": "",
             "property_type": "",
@@ -272,6 +270,83 @@ def _default_session(lead_id: int) -> Dict[str, Any]:
             "move_in_date": "",
         },
     }
+
+
+def _send_text_checked(*, to: str, body: str) -> None:
+    """
+    Send a free-form WhatsApp message and log Twilio failure details.
+    Helps when you locally "replay" webhook payloads and nothing arrives.
+    """
+    def _is_transient(err: str | None) -> bool:
+        e = (err or "").lower()
+        return any(
+            key in e
+            for key in [
+                "timeout",
+                "max retries exceeded",
+                "connection",
+                "failed to establish a new connection",
+                "temporarily unavailable",
+            ]
+        )
+
+    def _is_outside_customer_care(err: str | None) -> bool:
+        e = (err or "").lower()
+        return any(
+            key in e
+            for key in [
+                "24 hour",
+                "24-hour",
+                "customer care",
+                "care window",
+                "outside",
+            ]
+        )
+
+    last_err: str | None = None
+    for attempt in range(3):
+        res = send_text_whatsapp(to=to, body=body)
+        if getattr(res, "ok", False):
+            return
+
+        last_err = getattr(res, "error", None)
+        logger.error(
+            "Twilio text send failed",
+            to=to,
+            body=body,
+            attempt=attempt + 1,
+            error=last_err,
+        )
+
+        if attempt < 2 and _is_transient(last_err):
+            time.sleep(1 * (attempt + 1))
+
+    # Free-form can be blocked outside WhatsApp customer-care window.
+    fallback_sid = settings.TWILIO_WHATSAPP_FALLBACK_TEMPLATE_SID or settings.TWILIO_WHATSAPP_TEMPLATE_SID
+    # If free-form fails for any reason (including outside 24h customer-care),
+    # try the approved template as a fallback so the user still gets a response.
+    if fallback_sid:
+        fallback_res = send_template_whatsapp(
+            to=to,
+            content_sid=fallback_sid,
+            # Keep Content API variable structure stable even if we don't have
+            # all values at this moment.
+            content_variables={"1": "", "2": "", "3": ""},
+        )
+        if not getattr(fallback_res, "ok", False):
+            logger.error(
+                "Twilio fallback template send failed",
+                to=to,
+                content_sid=fallback_sid,
+                error=getattr(fallback_res, "error", None),
+            )
+        if not getattr(fallback_res, "ok", False):
+            logger.error(
+                "Twilio fallback template send failed",
+                to=to,
+                body=body,
+                error=getattr(fallback_res, "error", None),
+            )
 
 
 @whatsapp_router.post("/whatsapp/inbound", include_in_schema=False)
@@ -284,6 +359,7 @@ async def twilio_whatsapp_inbound(request: Request, db: Session = Depends(get_my
     form = await request.form()
     from_raw = str(form.get("From", ""))
     body = str(form.get("Body", ""))
+    message_sid = str(form.get("MessageSid", "") or "")
 
     phone = _normalize_from_twilio(from_raw)
     text = _clean_text(body)
@@ -291,6 +367,14 @@ async def twilio_whatsapp_inbound(request: Request, db: Session = Depends(get_my
 
     if not phone:
         return PlainTextResponse("ok")
+
+    # Idempotency: Twilio may retry the same inbound webhook.
+    if message_sid and redis_conn:
+        dedup_key = f"wa:inbound:{message_sid}"
+        inserted = redis_conn.set(dedup_key, "1", ex=SESSION_TTL_SECONDS, nx=True)
+        if inserted is None:
+            logger.info(f"Skipping duplicate inbound message sid={message_sid}")
+            return PlainTextResponse("ok")
 
     session = _get_session(phone)
     step = session.get("step") or "interest"
@@ -301,20 +385,24 @@ async def twilio_whatsapp_inbound(request: Request, db: Session = Depends(get_my
     lead_id = _upsert_lead(db, phone, {"message": text})
     if not session:
         session = _default_session(lead_id)
-        _set_session(phone, session)
+
+    # Refresh session TTL on every inbound message so outbound replies
+    # stay within the WhatsApp customer-care window.
+    session["last_inbound_at"] = int(time.time())
+    _set_session(phone, session)
 
     # allow user to restart anytime
     if norm in {"hi", "hello", "start", "restart"}:
         session = _default_session(lead_id)
         _set_session(phone, session)
-        send_text_whatsapp(to=phone, body=_ask_interest())
+        _send_text_checked(to=phone, body=_ask_interest())
         return PlainTextResponse("ok")
 
     # STEP: interest
     if step == "interest":
         yn = _parse_yes_no(norm)
         if yn is None:
-            send_text_whatsapp(to=phone, body=_ask_interest())
+            _send_text_checked(to=phone, body=_ask_interest())
             session["step"] = "interest"
             _set_session(phone, session)
             return PlainTextResponse("ok")
@@ -322,7 +410,10 @@ async def twilio_whatsapp_inbound(request: Request, db: Session = Depends(get_my
         if yn is False:
             _update_lead_by_id(db, lead_id, {"status": "lost"})
             publish_event(lead_id, "WA_NOT_INTERESTED", "User not interested")
-            send_text_whatsapp(to=phone, body="No worries — thanks! If you need options later, just reply HI.")
+            _send_text_checked(
+                to=phone,
+                body="No worries — thanks! If you need options later, just reply HI.",
+            )
             _clear_session(phone)
             return PlainTextResponse("ok")
 
@@ -330,7 +421,7 @@ async def twilio_whatsapp_inbound(request: Request, db: Session = Depends(get_my
         publish_event(lead_id, "WA_INTERESTED", "User interested")
         session["data"]["interest"] = "yes"
         session["step"] = "property_type"
-        send_text_whatsapp(to=phone, body=_ask_property_type())
+        _send_text_checked(to=phone, body=_ask_property_type())
         _set_session(phone, session)
         return PlainTextResponse("ok")
 
@@ -338,7 +429,7 @@ async def twilio_whatsapp_inbound(request: Request, db: Session = Depends(get_my
     if step == "property_type":
         ptype = _parse_property_type(norm)
         if not ptype:
-            send_text_whatsapp(to=phone, body=_ask_property_type())
+            _send_text_checked(to=phone, body=_ask_property_type())
             return PlainTextResponse("ok")
 
         session["data"]["property_type"] = ptype
@@ -346,13 +437,13 @@ async def twilio_whatsapp_inbound(request: Request, db: Session = Depends(get_my
         publish_event(lead_id, "WA_PROPERTY_TYPE", f"Property type: {ptype}")
         session["step"] = "location"
         _set_session(phone, session)
-        send_text_whatsapp(to=phone, body=_ask_location())
+        _send_text_checked(to=phone, body=_ask_location())
         return PlainTextResponse("ok")
 
     # STEP: location
     if step == "location":
         if len(text) < 2:
-            send_text_whatsapp(to=phone, body=_ask_location())
+            _send_text_checked(to=phone, body=_ask_location())
             return PlainTextResponse("ok")
 
         session["data"]["location"] = text
@@ -360,14 +451,14 @@ async def twilio_whatsapp_inbound(request: Request, db: Session = Depends(get_my
         publish_event(lead_id, "WA_LOCATION", f"Location: {text}")
         session["step"] = "move_in"
         _set_session(phone, session)
-        send_text_whatsapp(to=phone, body=_ask_move_in())
+        _send_text_checked(to=phone, body=_ask_move_in())
         return PlainTextResponse("ok")
 
     # STEP: move_in
     if step == "move_in":
         mv = _parse_move_in(norm)
         if not mv:
-            send_text_whatsapp(to=phone, body=_ask_move_in())
+            _send_text_checked(to=phone, body=_ask_move_in())
             return PlainTextResponse("ok")
 
         if mv == "immediate":
@@ -382,7 +473,7 @@ async def twilio_whatsapp_inbound(request: Request, db: Session = Depends(get_my
             _update_lead_by_id(db, lead_id, {"raw_payload": merged})
             publish_event(lead_id, "WA_MOVE_IN", "Immediate")
             rm = _assign_rm(db, lead_id)
-            send_text_whatsapp(to=phone, body=_final_message_with_rm(rm))
+            _send_text_checked(to=phone, body=_final_message_with_rm(rm))
             publish_event(lead_id, "WA_FLOW_COMPLETE", "Details collected; RM follow-up")
             _clear_session(phone)
             return PlainTextResponse("ok")
@@ -391,14 +482,14 @@ async def twilio_whatsapp_inbound(request: Request, db: Session = Depends(get_my
         session["data"]["move_in"] = "Custom"
         session["step"] = "date"
         _set_session(phone, session)
-        send_text_whatsapp(to=phone, body=_ask_date())
+        _send_text_checked(to=phone, body=_ask_date())
         return PlainTextResponse("ok")
 
     # STEP: date
     if step == "date":
         d = _parse_date(text)
         if not d:
-            send_text_whatsapp(to=phone, body=_ask_date())
+            _send_text_checked(to=phone, body=_ask_date())
             return PlainTextResponse("ok")
 
         session["data"]["move_in_date"] = d
@@ -410,14 +501,78 @@ async def twilio_whatsapp_inbound(request: Request, db: Session = Depends(get_my
         _update_lead_by_id(db, lead_id, {"raw_payload": merged})
         publish_event(lead_id, "WA_MOVE_IN_DATE", d)
         rm = _assign_rm(db, lead_id)
-        send_text_whatsapp(to=phone, body=_final_message_with_rm(rm))
+        _send_text_checked(to=phone, body=_final_message_with_rm(rm))
         publish_event(lead_id, "WA_FLOW_COMPLETE", "Details collected; RM follow-up")
         _clear_session(phone)
         return PlainTextResponse("ok")
 
     # Unknown state: reset
     _clear_session(phone)
-    send_text_whatsapp(to=phone, body=_ask_interest())
+    _send_text_checked(to=phone, body=_ask_interest())
     _set_session(phone, _default_session(lead_id))
+    return PlainTextResponse("ok")
+
+
+@whatsapp_router.post("/whatsapp/status", include_in_schema=False)
+async def twilio_whatsapp_status(request: Request, db: Session = Depends(get_mysql_db)):
+    """
+    Twilio Status Callback for WhatsApp messages.
+    Configure in Twilio console to POST message delivery updates here.
+    """
+    form = await request.form()
+
+    message_sid = str(form.get("MessageSid", "") or "")
+    message_status = str(form.get("MessageStatus", "") or "")
+
+    # Twilio sends:
+    # - To: whatsapp:+<E164>
+    # - From: whatsapp:+<E164>
+    to_raw = str(form.get("To", "") or "")
+    from_raw = str(form.get("From", "") or "")
+
+    error_code = form.get("ErrorCode")
+    error_message = form.get("ErrorMessage")
+
+    if not message_sid or not message_status:
+        return PlainTextResponse("ok")
+
+    # For outbound messages we care about the recipient (To).
+    phone = _normalize_from_twilio(to_raw) or _normalize_from_twilio(from_raw)
+    if not phone:
+        return PlainTextResponse("ok")
+
+    lead_obj = lead_repo.get_lead_by_phone_source(db, phone=phone, source=SOURCE)
+    if not lead_obj:
+        logger.info(
+            "Twilio status for unknown lead",
+            to=phone,
+            message_sid=message_sid,
+            status=message_status,
+        )
+        return PlainTextResponse("ok")
+
+    status_upper = message_status.upper()
+    # Twilio status values: sent, delivered, read, failed (case-insensitive)
+    if status_upper in {"SENT", "DELIVERED", "READ"}:
+        event_type = f"WA_{status_upper}"
+    elif status_upper == "FAILED":
+        event_type = "WA_FAILED"
+    else:
+        event_type = f"WA_STATUS_{status_upper}"
+
+    payload = {
+        "message_sid": message_sid,
+        "status": message_status,
+        "to": to_raw,
+        "from": from_raw,
+        "error_code": error_code,
+        "error_message": error_message,
+    }
+    publish_event(
+        lead_obj.id,
+        event_type,
+        message=f"Twilio message status: {message_status}",
+        payload=payload,
+    )
     return PlainTextResponse("ok")
 

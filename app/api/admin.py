@@ -1,12 +1,13 @@
 
 from fastapi import APIRouter, Depends, HTTPException
+from pydantic import BaseModel, Field
 from loguru import logger
 from sqlalchemy import func
 from sqlalchemy.orm import Session
 
 from app.configs.db_config import get_mysql_db
 from app.core import security
-from app.core.redis import lead_queue
+from app.core.redis import lead_queue, redis_conn
 from app.models.lead import Lead
 from app.models.sync_metadata import SyncMetadata
 from app.tasks.lead_tasks import sync_lead_to_zoho_task
@@ -16,6 +17,20 @@ from app.tasks.whatsapp_tasks import send_whatsapp_bulk_task
 import time
 
 admin_router = APIRouter(tags=["Admin / Operations"])
+
+class ClearWhatsAppFlowSessionRequest(BaseModel):
+    phone: str = Field(..., description="Phone number in E.164, e.g. +91XXXXXXXXXX")
+    clear_meta_session: bool = Field(
+        False,
+        description="Also clear Meta flow session key (wa:meta:flow:{phone})",
+    )
+
+
+def _normalize_phone(phone: str) -> str:
+    raw = (phone or "").strip()
+    if raw.startswith("whatsapp:"):
+        raw = raw.replace("whatsapp:", "", 1)
+    return raw
 
 @admin_router.get("/admin/stats", summary="Get lead ingestion statistics")
 async def get_stats(db: Session = Depends(get_mysql_db)):
@@ -131,3 +146,39 @@ async def send_whatsapp_bulk(
         total=len(req.leads),
         dry_run=False,
     )
+
+
+@admin_router.post(
+    "/admin/whatsapp/clear-flow-session",
+    summary="Clear WhatsApp flow session in Redis (for replay/testing)",
+)
+async def clear_whatsapp_flow_session(
+    req: ClearWhatsAppFlowSessionRequest,
+    _admin=Depends(security.admin_required),
+):
+    """
+    Clears Redis conversation state for WhatsApp flow so you can replay from step=interest.
+    """
+    if not redis_conn:
+        raise HTTPException(status_code=503, detail="Redis not available")
+
+    phone = _normalize_phone(req.phone)
+    twilio_key = f"wa:flow:{phone}"
+    keys_to_clear = [twilio_key]
+    if req.clear_meta_session:
+        keys_to_clear.append(f"wa:meta:flow:{phone}")
+
+    deleted = {}
+    for key in keys_to_clear:
+        try:
+            # redis `DEL` returns number of keys removed (0 if key doesn't exist)
+            deleted[key] = int(redis_conn.delete(key))
+        except Exception as e:
+            logger.error(f"Failed to delete redis key={key}: {e}")
+            deleted[key] = -1
+
+    return {
+        "cleared": deleted,
+        "phone": phone,
+        "status": "ok",
+    }

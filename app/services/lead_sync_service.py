@@ -51,6 +51,9 @@ async def sync_housing_leads(db: Session):
         # Default to 24 hours ago if no previous timestamp
         start_int = int(str(meta.last_lead_timestamp)) if meta.last_lead_timestamp else (now - 86400)
 
+        # Release database connection early before making a long HTTP request
+        db.commit()
+
         # Housing API strictly allows max 2 days difference.
         # Cap at 47 hours to stay safe.
         end_int = now
@@ -62,6 +65,12 @@ async def sync_housing_leads(db: Session):
 
         logger.info(f"Syncing Housing leads: {start_date} to {end_date}")
         leads_raw, error = await housing_lead_service.fetch_leads(start_date, end_date)
+
+        # Re-fetch metadata back into the current active session
+        meta = db.query(SyncMetadata).filter(SyncMetadata.source == "housing").first()
+        if not meta:
+            logger.error("Housing sync metadata lost after fetching.")
+            return
 
         if error:
             logger.error(f"Housing sync error: {error}")

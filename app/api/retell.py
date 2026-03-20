@@ -1,10 +1,19 @@
 """Retell AI API endpoints for creating web calls and outbound phone calls."""
 
+import json
+import re
+from typing import Any, Dict, Optional
+
 import httpx
-from fastapi import APIRouter, HTTPException, Request
+from fastapi import APIRouter, Depends, HTTPException, Request
 from loguru import logger
+from pydantic import BaseModel, Field
 
 from app.core.config import settings
+from app.configs.db_config import get_mysql_db
+from app.core import security
+from app.models.retell_call import RetellCall
+from sqlalchemy.orm import Session
 
 retell_router = APIRouter(tags=["Retell AI"])
 
@@ -92,6 +101,7 @@ async def trigger_outbound_call(
     location: str = "",
     property_type: str = "",
     message: str = "",
+    test_id: Optional[int] = None,
 ):
     """
     Trigger outbound AI call using Retell.
@@ -112,11 +122,15 @@ async def trigger_outbound_call(
         "from_number": RETELL_FROM_NUMBER,
         "to_number": formatted_phone,
         "agent_id": RETELL_AGENT_ID,
+        "metadata": {
+            "test_id": test_id,
+        },
         "retell_llm_dynamic_variables": {
             "name": name,
             "location": location,
             "property_type": property_type,
             "requirement": message or "interested in property options",
+            "test_id": str(test_id) if test_id is not None else "",
         },
     }
 
@@ -142,18 +156,20 @@ async def trigger_outbound_call(
             data = response.json()
 
             logger.success(f"Outbound call started: {data.get('call_id')}")
+            return data
 
     except httpx.RequestError as e:
         logger.error(f"Network error triggering call: {str(e)}")
 
     except Exception as e:
         logger.error(f"Unexpected error triggering call: {str(e)}")
+    return None
 
 # -----------------------------------------
 # Retell Webhook (Status / Call Events)
 # -----------------------------------------
 @retell_router.post("/retell/webhook")
-async def retell_webhook(request: Request):
+async def retell_webhook(request: Request, db: Session = Depends(get_mysql_db)):
     """
     Receives call status updates and events from Retell AI.
     Configure this URL in the Retell Dashboard as the 'Webhook URL'.
@@ -166,12 +182,154 @@ async def retell_webhook(request: Request):
         logger.info(f"Retell Webhook: event={event}, call_id={call_id}")
         logger.debug(f"Retell Webhook Payload: {payload}")
 
-        # You can add logic here to update lead status or log call details
-        # based on 'call_ended', 'call_started', etc.
+        if not call_id:
+            return {"status": "ok"}
 
-        return {"status": "ok"}
+        # Only update test rows when the webhook matches a known call_id.
+        test_row = (
+            db.query(RetellCall).filter(RetellCall.retell_call_id == call_id).first()
+        )
+        if not test_row:
+            return {"status": "ok", "reason": "no_matching_test_row"}
+
+        # Best-effort transcript extraction
+        def _find_transcript(obj: Any) -> Optional[Any]:
+            if isinstance(obj, dict):
+                for k, v in obj.items():
+                    lk = str(k).lower()
+                    if "transcript" in lk or "transcription" in lk:
+                        if isinstance(v, (str, dict, list)):
+                            return v
+                    found = _find_transcript(v)
+                    if found is not None:
+                        return found
+            elif isinstance(obj, list):
+                for item in obj:
+                    found = _find_transcript(item)
+                    if found is not None:
+                        return found
+            return None
+
+        transcript = (
+            payload.get("transcript")
+            or payload.get("transcription")
+            or payload.get("call_transcript")
+            or payload.get("callTranscript")
+            or _find_transcript(payload)
+            or ""
+        )
+        if isinstance(transcript, (dict, list)):
+            transcript = json.dumps(transcript)
+        transcript_str = str(transcript)
+
+        # Update raw payload + status
+        # `raw_webhook_payload` is a JSON column; store the parsed payload object.
+        test_row.raw_webhook_payload = payload
+        ev = (event or "").lower()
+        if "no_answer" in ev:
+            test_row.status = "no_answer"
+        elif "failed" in ev or "error" in ev:
+            test_row.status = "failed"
+        else:
+            test_row.status = "completed"
+
+        # Parse SUMMARY line if present:
+        # SUMMARY: interested=<true|false>, location=<...>, budget=<...>, move_in=<...>
+        interested: Optional[bool] = None
+        location: Optional[str] = None
+        budget: Optional[str] = None
+        move_in: Optional[str] = None
+
+        summary_match = re.search(
+            r"SUMMARY:\s*interested\s*=\s*(true|false)\s*,\s*location\s*=\s*(.*?)\s*,\s*budget\s*=\s*(.*?)\s*,\s*move_in\s*=\s*(.*)$",
+            transcript_str,
+            flags=re.IGNORECASE | re.DOTALL,
+        )
+        if summary_match:
+            interested = summary_match.group(1).lower() == "true"
+            location = summary_match.group(2).strip()
+            budget = summary_match.group(3).strip()
+            move_in = summary_match.group(4).strip()
+        else:
+            # Fallback to simpler extraction
+            it = re.search(r"interested\s*=\s*(true|false)", transcript_str, flags=re.I)
+            if it:
+                interested = it.group(1).lower() == "true"
+            loc = re.search(r"location\s*=\s*([^,]+)", transcript_str, flags=re.I)
+            bd = re.search(r"budget\s*=\s*([^,]+)", transcript_str, flags=re.I)
+            mv = re.search(r"move_in\s*=\s*(.+)$", transcript_str, flags=re.I | re.DOTALL)
+            if loc:
+                location = loc.group(1).strip()
+            if bd:
+                budget = bd.group(1).strip()
+            if mv:
+                move_in = mv.group(1).strip()
+
+        if transcript_str:
+            test_row.transcript = transcript_str
+        test_row.summary_interested = interested
+        test_row.summary_location = location
+        test_row.summary_budget = budget
+        test_row.summary_move_in = move_in
+
+        db.commit()
+        return {"status": "updated"}
 
     except Exception as e:
         logger.error(f"Error processing Retell webhook: {str(e)}")
         # Return 200 anyway to avoid Retell retries if the error is on our side or payload format
         return {"status": "error", "message": str(e)}
+
+
+class TriggerRetellTestCallsRequest(BaseModel):
+    limit: int = 5
+
+@retell_router.post(
+    "/retell/test-calls/trigger",
+    summary="Trigger queued Retell test calls from retell_call_tests",
+)
+async def trigger_retell_test_calls(
+    req: TriggerRetellTestCallsRequest,
+    db: Session = Depends(get_mysql_db),
+    _admin=Depends(security.admin_required),
+):
+    tests = (
+        db.query(RetellCall)
+        .filter(RetellCall.status == "queued", RetellCall.retell_call_id.is_(None))
+        .limit(req.limit)
+        .all()
+    )
+
+    if not tests:
+        return {"status": "ok", "triggered": 0, "reason": "no_queued_tests"}
+
+    triggered = 0
+    for row in tests:
+        try:
+            row.status = "calling"
+            db.commit()
+
+            data = await trigger_outbound_call(
+                name="Test",
+                phone=row.to_phone,
+                location="",
+                property_type="",
+                message="interested in property options",
+                test_id=row.id,
+            )
+            if not data:
+                row.status = "failed"
+                db.commit()
+                continue
+
+            call_id = data.get("call_id") or data.get("id")
+            row.retell_call_id = call_id
+            row.status = "calling"
+            db.commit()
+            triggered += 1
+        except Exception as e:
+            logger.error(f"Failed to trigger test call row_id={row.id}: {e}")
+            row.status = "failed"
+            db.commit()
+
+    return {"status": "ok", "triggered": triggered, "total_found": len(tests)}

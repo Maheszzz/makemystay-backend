@@ -14,6 +14,7 @@ sys.path.insert(0, os.path.realpath(os.path.join(os.path.dirname(__file__), ".."
 from app.configs.db_config import MYSQL_DATABASE_URL, Base
 
 from app.models.lead import Lead
+from app.models.retell_call import RetellCall
 from app.models.realty import Contact, Property, PropertyImage, Review
 from app.models.sync_metadata import SyncMetadata
 from app.models.user import User

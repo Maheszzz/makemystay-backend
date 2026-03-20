@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+import json
 from typing import Any, Dict, Optional
 
 from loguru import logger
@@ -51,14 +52,32 @@ def send_template_whatsapp(
         return WhatsAppSendResult(ok=False, error="content_sid is required")
 
     try:
+        from twilio.http.http_client import TwilioHttpClient  # type: ignore[import-not-found]
         from twilio.rest import Client  # type: ignore[import-not-found]  # imported lazily
 
-        client = Client(settings.TWILIO_ACCOUNT_SID, settings.TWILIO_AUTH_TOKEN)
+        # Twilio uses `requests` under the hood; in some environments `HTTP(S)_PROXY`
+        # can be set and block outbound calls. Disable env proxy usage explicitly.
+        http_client = TwilioHttpClient()
+        http_client.session.trust_env = False
+
+        client = Client(
+            settings.TWILIO_ACCOUNT_SID,
+            settings.TWILIO_AUTH_TOKEN,
+            http_client=http_client,
+        )
+
+        # Twilio Content API expects `content_variables` as a JSON STRING.
+        # We build: {"1": name, "2": city, "3": budget} and then json.dumps it.
+        if isinstance(content_variables, dict):
+            content_variables_payload = json.dumps(content_variables)
+        else:
+            content_variables_payload = str(content_variables or "{}")
+
         msg = client.messages.create(
             from_=from_value,
             to=_normalize_to_whatsapp(to),
             content_sid=content_sid,
-            content_variables=content_variables,
+            content_variables=content_variables_payload,
         )
         return WhatsAppSendResult(ok=True, sid=msg.sid)
     except Exception as e:
@@ -79,9 +98,17 @@ def send_text_whatsapp(*, to: str, body: str, from_: Optional[str] = None) -> Wh
         return WhatsAppSendResult(ok=False, error="body is required")
 
     try:
+        from twilio.http.http_client import TwilioHttpClient  # type: ignore[import-not-found]
         from twilio.rest import Client  # type: ignore[import-not-found]
 
-        client = Client(settings.TWILIO_ACCOUNT_SID, settings.TWILIO_AUTH_TOKEN)
+        http_client = TwilioHttpClient()
+        http_client.session.trust_env = False
+
+        client = Client(
+            settings.TWILIO_ACCOUNT_SID,
+            settings.TWILIO_AUTH_TOKEN,
+            http_client=http_client,
+        )
         msg = client.messages.create(
             from_=from_value,
             to=_normalize_to_whatsapp(to),

@@ -7,6 +7,7 @@ from typing import List, Optional
 import jinja2
 import qrcode
 import razorpay
+import httpx
 from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import FileResponse
 from loguru import logger
@@ -91,13 +92,21 @@ def validate_service_fee(data: ServiceFeeValidationRequest):
 
 @router.post("/payments/create-order")
 def create_order(data: CreateOrderRequest, db: Session = Depends(get_db)):
+    data_dict = {
+        "amount": data.amount,
+        "currency": data.currency,
+        "payment_capture": 1,
+    }
+
     try:
-        data_dict = {
-            "amount": data.amount,
-            "currency": data.currency,
-            "payment_capture": 1,
-        }
-        order = client.order.create(data_dict)
+        # Use explicit timeouts so the API never leaves the frontend waiting forever.
+        with httpx.Client(timeout=10.0, auth=(RAZORPAY_KEY_ID, RAZORPAY_KEY_SECRET)) as http:
+            resp = http.post(
+                "https://api.razorpay.com/v1/orders",
+                json=data_dict,
+            )
+            resp.raise_for_status()
+            order = resp.json()
 
         # Save to DB
         db_payment = Payment(
@@ -115,6 +124,28 @@ def create_order(data: CreateOrderRequest, db: Session = Depends(get_db)):
         db.refresh(db_payment)
 
         return order
+    except httpx.TimeoutException:
+        logger.error("Razorpay order create timed out")
+        raise HTTPException(status_code=503, detail="Razorpay request timed out")
+    except httpx.ProxyError as e:
+        # Common when server is behind a restrictive corporate proxy / no outbound internet.
+        logger.error(f"Razorpay order create proxy error: {e!r}")
+        raise HTTPException(
+            status_code=503,
+            detail="Razorpay is unreachable from the server (proxy/internet blocked).",
+        )
+    except httpx.RequestError as e:
+        # Any other network-level issues (DNS, connection resets, etc.)
+        logger.error(f"Razorpay order create request error: {e!r}")
+        raise HTTPException(
+            status_code=503,
+            detail="Razorpay request failed due to network connectivity from the server.",
+        )
+    except httpx.HTTPStatusError as e:
+        # Razorpay usually returns JSON with error details.
+        text = getattr(e.response, "text", "") or str(e)
+        logger.error(f"Razorpay order create failed: {text}")
+        raise HTTPException(status_code=503, detail="Razorpay order create failed")
     except Exception as e:
         logger.error(f"Error creating Razorpay order: {e}")
         raise HTTPException(status_code=500, detail=str(e))

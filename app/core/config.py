@@ -62,6 +62,16 @@ class Settings(BaseSettings):
     # Approved template SID (content SID), e.g. "HX..."
     TWILIO_WHATSAPP_TEMPLATE_SID: str = ""
 
+    # Optional fallback template for when free-form WhatsApp replies fail
+    # (for example, outside the 24h customer-care window).
+    TWILIO_WHATSAPP_FALLBACK_TEMPLATE_SID: str = ""
+
+    # Meta WhatsApp Cloud (interactive messages + list/buttons)
+    WHATSAPP_TOKEN: str = ""
+    PHONE_NUMBER_ID: str = ""
+    VERIFY_TOKEN: str = ""
+    META_GRAPH_API_VERSION: str = "v18.0"
+
     # Webhook
     HOUSING_WEBHOOK_API_KEY: str = ""
     ENABLE_AI_CALLING_FOR_LEADS: bool = True

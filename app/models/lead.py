@@ -9,6 +9,7 @@ from sqlalchemy import (
     String,
     Text,
     UniqueConstraint,
+    Index,
 )
 from sqlalchemy.orm import relationship
 from sqlalchemy.sql import func
@@ -35,7 +36,7 @@ class Lead(MySQLBase):
     budget = Column(String(100), nullable=True)
     message = Column(Text, nullable=True)
     status = Column(
-        Enum("new", "contacted", "converted", "lost", name="lead_status_enum"),
+        Enum("new", "contacted", "qualified", "followup", "converted", "lost", name="lead_status_enum"),
         default="new",
         nullable=False,
         index=True,
@@ -66,10 +67,12 @@ class Lead(MySQLBase):
 
     # Relationships
     agent = relationship("Agent", back_populates="leads")
+    retell_calls = relationship("RetellCall", back_populates="lead")
 
     __table_args__ = (
         UniqueConstraint(
             "phone", "lead_date", "external_id", name="uq_lead_phone_date_ext"
         ),
         UniqueConstraint("phone", "source", name="uq_lead_phone_source"),
+        Index("ix_leads_status_created_at", "status", "created_at"),
     )

@@ -6,6 +6,7 @@ from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
 
 from app.models.lead import Lead
+from app.models.agent import Agent
 
 
 def create_lead(db: Session, lead_data: dict) -> Lead:
