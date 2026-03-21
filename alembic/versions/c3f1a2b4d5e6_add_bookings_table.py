@@ -9,6 +9,7 @@ from typing import Sequence, Union
 
 import sqlalchemy as sa
 from alembic import op
+from sqlalchemy.engine.reflection import Inspector
 
 revision: str = "c3f1a2b4d5e6"
 down_revision: Union[str, None] = "e10be14f9da7"
@@ -17,6 +18,11 @@ depends_on: Union[str, Sequence[str], None] = None
 
 
 def upgrade() -> None:
+    conn = op.get_bind()
+    inspector = Inspector.from_engine(conn)
+    if "bookings" in inspector.get_table_names():
+        return
+        
     op.create_table(
         "bookings",
         sa.Column("id", sa.Integer(), primary_key=True, autoincrement=True),
@@ -51,6 +57,11 @@ def upgrade() -> None:
 
 
 def downgrade() -> None:
+    conn = op.get_bind()
+    inspector = Inspector.from_engine(conn)
+    if "bookings" not in inspector.get_table_names():
+        return
+
     op.drop_index("ix_bookings_status",         table_name="bookings")
     op.drop_index("ix_bookings_payment_status", table_name="bookings")
     op.drop_index("ix_bookings_property_id",    table_name="bookings")
