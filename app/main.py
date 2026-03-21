@@ -174,32 +174,37 @@ app.add_middleware(
 @app.middleware("http")
 async def csrf_protect(request: Request, call_next):
     if request.method in ["POST", "PUT", "DELETE", "PATCH"]:
-        exempt_paths = [
-            "/api/v1/auth/login",
-            "/api/v1/auth/refresh",
-            "/api/v1/payment/webhook",
-            "/payments/webhook",
+        # Bearer-token auth is not vulnerable to CSRF — browsers never attach
+        # Authorization headers automatically, so skip the check entirely.
+        auth_header = request.headers.get("authorization", "")
+        if auth_header.lower().startswith("bearer "):
+            return await call_next(request)
+
+        exempt_prefixes = [
+            "/api/v1/auth/",
+            "/api/v1/payments/",
+            "/api/v1/payment/",
+            "/payments/",
+            "/api/v1/realty/contacts",
+            "/api/v1/housing/",
+            "/api/v1/webhooks/",
+            "/api/v1/whatsapp/",
+            "/api/v1/meta-whatsapp/",
+            "/api/v1/demo/",
         ]
         path = request.url.path
-        is_payments_api = path.startswith("/api/v1/payments/")
-        is_exempt = path in exempt_paths
-        if not is_payments_api and not is_exempt:
-            cookie_csrf = request.cookies.get("csrf_token")
-            header_csrf = request.headers.get(
-                "x-csrf-token", request.headers.get("X-CSRF-Token")
+        if any(path.startswith(p) for p in exempt_prefixes):
+            return await call_next(request)
+
+        cookie_csrf = request.cookies.get("csrf_token")
+        header_csrf = request.headers.get(
+            "x-csrf-token", request.headers.get("X-CSRF-Token")
+        )
+        if not cookie_csrf or not header_csrf or cookie_csrf != header_csrf:
+            return JSONResponse(
+                status_code=403, content={"detail": "CSRF verification failed"}
             )
-            if not cookie_csrf or not header_csrf or cookie_csrf != header_csrf:
-                return JSONResponse(
-                    status_code=403, content={"detail": "CSRF verification failed"}
-                )
     return await call_next(request)
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=allowed_origins,
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
 
 # --- Database Initialization ---
 # Create Database Tables

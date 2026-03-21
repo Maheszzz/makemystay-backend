@@ -4,7 +4,7 @@ from datetime import datetime
 from enum import Enum
 from typing import List, Optional
 
-from pydantic import BaseModel, EmailStr, Field, field_validator
+from pydantic import BaseModel, EmailStr, Field, field_validator, model_validator
 
 # ==================== ENUMS ====================
 
@@ -272,14 +272,27 @@ class PropertyResponse(BaseModel):
     reviews: List[ReviewResponse] = []
     average_rating: Optional[float] = 0.0
     review_count: Optional[int] = 0
+    category: Optional[str] = None
 
     model_config = {"from_attributes": True}
+
+    @model_validator(mode="after")
+    def derive_category(self):
+        """Compute the 4-tab category (pg/rent/buy/plot) from property_type + listing_type."""
+        if self.category is None:
+            pt = (self.property_type or "").lower()
+            if pt == "pg":
+                self.category = "pg"
+            elif pt == "plot":
+                self.category = "plot"
+            else:
+                lt = (self.listing_type or "").lower()
+                self.category = "buy" if lt in ("buy", "sale") else "rent"
+        return self
 
     @field_validator("average_rating", mode="before")
     @classmethod
     def calculate_average_rating(cls, v, info):
-        # This is a bit tricky with from_attributes=True
-        # We might handle this in the repo or keep it simple
         return v or 0.0
 
     @field_validator("review_count", mode="before")
