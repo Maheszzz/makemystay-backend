@@ -17,6 +17,7 @@ from app.api.agent_routes import router as agent_router
 from app.api.auth import router as auth_router
 from app.api.realty import realty_router
 from app.core.config import settings
+from app.core.log_dedupe import should_log_once
 
 # --- Settings & Logging ---
 load_dotenv()
@@ -36,6 +37,7 @@ from apscheduler.schedulers.background import BackgroundScheduler
 from app.services.lead_sync_service import sync_all_sources
 
 scheduler = BackgroundScheduler()
+THROTTLED_ERROR_ENDPOINTS = {"/api/v1/admin/analytics", "/api/v1/realty/properties"}
 
 # --- Sentry Setup ---
 if settings.SENTRY_DSN:
@@ -125,7 +127,12 @@ MySQLBase.metadata.create_all(bind=mysql_engine)
 @app.exception_handler(Exception)
 async def global_exception_handler(request: Request, exc: Exception):
     """Global exception handler for unhandled errors."""
-    logger.error(f"Unhandled exception: {exc}")
+    path = request.url.path
+    if path in THROTTLED_ERROR_ENDPOINTS:
+        if should_log_once(f"error:{path}", window_seconds=60):
+            logger.error(f"Unhandled exception at {path}: {exc}")
+    else:
+        logger.error(f"Unhandled exception at {path}: {exc}")
     return JSONResponse(
         status_code=500,
         content={

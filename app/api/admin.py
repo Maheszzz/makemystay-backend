@@ -1,5 +1,5 @@
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel, Field
 from loguru import logger
 from sqlalchemy import func
@@ -8,6 +8,8 @@ from sqlalchemy.orm import Session
 from app.configs.db_config import get_mysql_db
 from app.core import security
 from app.core.redis import lead_queue, redis_conn
+from app.core.rate_limit import limiter
+from app.core.log_dedupe import should_log_once
 from app.models.lead import Lead
 from app.models.sync_metadata import SyncMetadata
 from app.tasks.lead_tasks import sync_lead_to_zoho_task
@@ -73,7 +75,8 @@ async def get_stats(db: Session = Depends(get_mysql_db)):
         raise HTTPException(status_code=500, detail="Failed to fetch stats")
 
 @admin_router.get("/admin/analytics", summary="Get simple analytics metrics")
-async def analytics(db: Session = Depends(get_mysql_db)):
+@limiter.limit("10/minute")
+async def analytics(request: Request, db: Session = Depends(get_mysql_db)):
     """Provides high-level metrics (Total Leads, Today Leads, Failed)."""
     try:
         total_leads = db.query(Lead).count()
@@ -87,7 +90,8 @@ async def analytics(db: Session = Depends(get_mysql_db)):
             "failed": failed
         }
     except Exception as e:
-        logger.error(f"Failed to fetch analytics: {e}")
+        if should_log_once("error:/admin/analytics", window_seconds=60):
+            logger.error(f"Failed to fetch analytics: {e}")
         raise HTTPException(status_code=500, detail="Failed to fetch analytics")
 
 
