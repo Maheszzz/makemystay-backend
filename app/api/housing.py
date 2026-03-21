@@ -8,7 +8,7 @@ import time
 from datetime import datetime
 from typing import Optional
 
-from fastapi import APIRouter, BackgroundTasks, Depends, Query
+from fastapi import APIRouter, Depends, Query
 from loguru import logger
 from sqlalchemy.orm import Session
 
@@ -29,7 +29,6 @@ housing_router = APIRouter(tags=["Housing.com Integration"])
     summary="Sync leads from Housing.com",
 )
 async def sync_housing_leads(
-    background_tasks: BackgroundTasks,
     start_date: Optional[str] = Query(
         None,
         description="Start date as epoch string. Defaults to last_lead_timestamp or 24h ago.",
@@ -83,7 +82,6 @@ async def sync_housing_leads(
         start_date=start_date,
         end_date=end_date,
         db=db,
-        background_tasks=background_tasks,
         api_url=api_url,
     )
 

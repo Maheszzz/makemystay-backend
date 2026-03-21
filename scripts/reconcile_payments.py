@@ -2,24 +2,19 @@
 """
 Nightly payment reconciliation job.
 
-Runs every night via cron. For every payment that is NOT already in a
-terminal state (success / failed / expired) it calls the Razorpay API,
-compares what Razorpay says with what the DB says, and auto-fixes any
-mismatch.
+Runs every night via cron. For every payment that was created in Razorpay
+in the last 24 hours, it checks our local database to ensure it exists and
+the statuses match accurately.
 
-Usage:
-    python scripts/reconcile_payments.py [--dry-run] [--hours 24] [--limit 500]
-
-Cron (2 AM daily, server time):
-    0 2 * * * cd /home/ubuntu/app && source venv/bin/activate &&
-        source .env.production && python scripts/reconcile_payments.py >> logs/reconcile.log 2>&1
+If a payment is entirely missing (webhooks failed silently), it is auto-recovered,
+a ReconciliationIssue alert is surfaced to the Admin UI, and a LedgerEntry is fired.
 """
 
 import argparse
 import os
 import sys
+import time
 from datetime import datetime, timedelta, timezone
-from typing import Dict, List, Optional, Tuple
 
 # Allow running from repo root without installing the package.
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
@@ -29,14 +24,14 @@ from dotenv import load_dotenv
 load_dotenv(".env.production")
 load_dotenv(".env")
 
-import httpx
 from loguru import logger
+import razorpay
 from sqlalchemy.orm import Session
 
 from app.configs.db_config import SessionLocal
 from app.models.payment import Payment
-from app.services.payment_normalization import _map_status
-
+from app.models.ledger import LedgerEntry
+from app.models.reconciliation import ReconciliationIssue
 
 # ---------------------------------------------------------------------------
 # Config
@@ -54,188 +49,169 @@ def _get_razorpay_creds() -> tuple:
             pass
     return key_id, key_secret
 
-
 RAZORPAY_KEY_ID, RAZORPAY_KEY_SECRET = _get_razorpay_creds()
-RZ_AUTH             = (RAZORPAY_KEY_ID, RAZORPAY_KEY_SECRET)
-RZ_BASE             = "https://api.razorpay.com/v1"
+if not (RAZORPAY_KEY_ID and RAZORPAY_KEY_SECRET):
+    logger.error("RAZORPAY_KEY_ID / RAZORPAY_KEY_SECRET not set — aborting.")
+    sys.exit(1)
 
-TERMINAL_STATUSES = {"success", "failed", "expired"}
+client = razorpay.Client(auth=(RAZORPAY_KEY_ID, RAZORPAY_KEY_SECRET))
 
-
-# ---------------------------------------------------------------------------
-# Razorpay helpers
-# ---------------------------------------------------------------------------
-
-def _fetch_payment(payment_id: str) -> Optional[Dict]:
-    """Fetch a single payment entity from Razorpay."""
-    try:
-        with httpx.Client(timeout=10.0, auth=RZ_AUTH) as http:
-            r = http.get(f"{RZ_BASE}/payments/{payment_id}")
-            r.raise_for_status()
-            return r.json()
-    except Exception as exc:
-        logger.warning(f"  Razorpay fetch failed for payment_id={payment_id}: {exc}")
-        return None
-
-
-def _fetch_order_payments(order_id: str) -> List[Dict]:
-    """Return all payment attempts for a Razorpay order, sorted best-first."""
-    try:
-        with httpx.Client(timeout=10.0, auth=RZ_AUTH) as http:
-            r = http.get(f"{RZ_BASE}/orders/{order_id}/payments")
-            r.raise_for_status()
-            items = r.json().get("items") or []
-            # Prefer captured > authorized > created
-            priority = {"captured": 3, "authorized": 2, "created": 1}
-            return sorted(
-                items,
-                key=lambda p: priority.get(str(p.get("status", "")).lower(), 0),
-                reverse=True,
-            )
-    except Exception as exc:
-        logger.warning(f"  Razorpay order fetch failed for order_id={order_id}: {exc}")
-        return []
-
-
-# ---------------------------------------------------------------------------
-# Reconciliation logic
-# ---------------------------------------------------------------------------
-
-def _resolve_gateway_status(row: Payment) -> Tuple[Optional[str], Optional[str]]:
-    """
-    Returns (gateway_status_string, gateway_payment_id) for the given payment row.
-    Returns (None, None) if Razorpay is unreachable or the payment doesn't exist there yet.
-    """
-    if row.payment_id:
-        data = _fetch_payment(str(row.payment_id))
-        if data:
-            return str(data.get("status", "")), str(row.payment_id)
-
-    if row.order_id:
-        attempts = _fetch_order_payments(str(row.order_id))
-        if attempts:
-            best = attempts[0]
-            return str(best.get("status", "")), str(best.get("id", "")) or None
-
-    return None, None
-
-
-def reconcile(db: Session, *, hours: int, dry_run: bool, limit: int) -> dict:
-    cutoff = datetime.now(tz=timezone.utc) - timedelta(hours=hours)
-
-    rows = (
-        db.query(Payment)
-        .filter(
-            Payment.status.notin_(list(TERMINAL_STATUSES)),
-            Payment.created_at >= cutoff,
-        )
-        .order_by(Payment.created_at.desc())
-        .limit(limit)
-        .all()
-    )
-
-    stats = {
-        "total_checked": len(rows),
-        "fixed_to_success": 0,
-        "fixed_to_failed": 0,
-        "fixed_payment_id": 0,
-        "no_gateway_data": 0,
-        "already_correct": 0,
-        "errors": 0,
-    }
-
-    logger.info(f"Reconciling {len(rows)} non-terminal payments (last {hours}h)…")
-
-    for row in rows:
+def _safe_fetch_all_payments_since(since_timestamp: int):
+    results = []
+    skip = 0
+    count = 100
+    while True:
         try:
-            gw_raw, gw_payment_id = _resolve_gateway_status(row)
+            resp = client.payment.all({
+                'from': since_timestamp,
+                'count': count,
+                'skip': skip
+            })
+            items = resp.get('items', [])
+            if not items:
+                break
+            results.extend(items)
+            
+            if len(items) < count:
+                break
+                
+            skip += count
+            
+            # Rate limiting protection
+            time.sleep(0.5)
+            
+        except Exception as e:
+            logger.error(f"Failed to fetch Razorpay paginated: {e}")
+            break
+            
+    return results
 
-            if gw_raw is None:
-                logger.debug(f"  [{row.order_id}] No gateway data — skipping.")
-                stats["no_gateway_data"] += 1
-                continue
-
-            gw_status = _map_status(gw_raw)
-            db_status = str(row.status)
-            changed = False
-
-            if gw_status in TERMINAL_STATUSES and gw_status != db_status:
-                logger.info(
-                    f"  [{row.order_id}] MISMATCH: DB={db_status} → Gateway={gw_status} (raw={gw_raw})"
-                )
+def run_reconciliation(hours: int, dry_run: bool):
+    db: Session = SessionLocal()
+    try:
+        now = datetime.now(timezone.utc)
+        start_time = now - timedelta(hours=hours)
+        since_ts = int(start_time.timestamp())
+        
+        logger.info(f"Starting reconciliation job for payments since {start_time.isoformat()}")
+        
+        # 1. Fetch from Razorpay
+        rzp_payments = _safe_fetch_all_payments_since(since_ts)
+        logger.info(f"Fetched {len(rzp_payments)} payments from Razorpay API.")
+        
+        missing_count = 0
+        mismatch_count = 0
+        already_correct = 0
+        
+        # 2. Iterate and check our database constraints
+        for p in rzp_payments:
+            p_id = p.get('id')
+            p_status = p.get('status')
+            p_amount = p.get('amount', 0)
+            
+            existing = db.query(Payment).filter(Payment.payment_id == p_id).first()
+            
+            if not existing:
+                missing_count += 1
+                logger.warning(f"Reconciliation ALERT: Missing Payment {p_id} ({p_status})")
+                
                 if not dry_run:
-                    row.status = gw_status   # type: ignore[assignment]
-                changed = True
-                if gw_status == "success":
-                    stats["fixed_to_success"] += 1
+                    try:
+                        safe_amount = int(p_amount) / 100
+                        safe_order_id = p.get('order_id') or f"reconciled_{p_id}"
+                        
+                        new_payment = Payment(
+                            order_id=safe_order_id,
+                            payment_id=p_id,
+                            amount=safe_amount,
+                            currency=p.get('currency', 'INR'),
+                            status=p_status if p_status in ['success', 'captured', 'failed'] else 'pending',
+                            payment_type=p.get('method', 'unknown'),
+                            payer_email=p.get('email', ''),
+                            payer_phone=p.get('contact', ''),
+                            payer_name=None
+                        )
+                        
+                        if p_status in ['captured', 'success']:
+                            new_payment.status = "success"
+                            
+                        db.add(new_payment)
+                        
+                        # Apply to Ledger if successfully captured
+                        if new_payment.status == "success":
+                            ledger_entry = LedgerEntry(
+                                payment_id=p_id,
+                                entry_type="credit",
+                                amount=int(p_amount)
+                            )
+                            db.add(ledger_entry)
+                        
+                        # Issue Alert
+                        issue = ReconciliationIssue(
+                            payment_id=p_id,
+                            issue_type="missing_payment",
+                            resolved=False
+                        )
+                        db.add(issue)
+                        db.commit()
+                        logger.info(f"Auto-recovered missing Payment {p_id} & generated Alert.")
+                        
+                    except Exception as e:
+                        db.rollback()
+                        logger.error(f"Failed to auto-recover {p_id}: {e}")
+            else:
+                db_status = existing.status or ""
+                # Mismatch logic
+                is_rzp_success = p_status in ['captured', 'success']
+                is_db_success = db_status in ['success']
+                
+                if is_rzp_success and not is_db_success:
+                    mismatch_count += 1
+                    logger.warning(f"Reconciliation STATUS MISMATCH: {p_id} RZP={p_status} vs DB={db_status}")
+                    
+                    if not dry_run:
+                        existing.status = "success"
+                        
+                        # Register the newly verified funds into the Ledger
+                        ledger_entry = LedgerEntry(
+                            payment_id=p_id,
+                            entry_type="credit",
+                            amount=int(p_amount)
+                        )
+                        db.add(ledger_entry)
+                        
+                        issue = ReconciliationIssue(
+                            payment_id=p_id,
+                            issue_type="status_mismatch",
+                            resolved=False
+                        )
+                        db.add(existing)
+                        db.add(issue)
+                        db.commit()
                 else:
-                    stats["fixed_to_failed"] += 1
+                    already_correct += 1
 
-            if gw_payment_id and not row.payment_id:
-                logger.info(
-                    f"  [{row.order_id}] Backfilling payment_id: {gw_payment_id}"
-                )
-                if not dry_run:
-                    row.payment_id = gw_payment_id   # type: ignore[assignment]
-                changed = True
-                stats["fixed_payment_id"] += 1
+        logger.info("=== Reconciliation complete ===")
+        logger.info(f"  Total checked    : {len(rzp_payments)}")
+        logger.info(f"  Missing & Fixed  : {missing_count}")
+        logger.info(f"  Mismatched Status: {mismatch_count}")
+        logger.info(f"  Already correct  : {already_correct}")
 
-            if not changed:
-                logger.debug(f"  [{row.order_id}] OK (DB={db_status}, GW={gw_raw})")
-                stats["already_correct"] += 1
+    except Exception as e:
+        logger.error(f"Fatal error in reconciliation script: {e}")
+    finally:
+        db.close()
 
-        except Exception as exc:
-            logger.error(f"  [{row.order_id}] Unexpected error: {exc}")
-            stats["errors"] += 1
-
-    if not dry_run and db.dirty:
-        db.commit()
-        logger.info("Changes committed to DB.")
-    elif dry_run:
-        logger.info("Dry-run — no changes written.")
-
-    return stats
-
-
-# ---------------------------------------------------------------------------
-# Entry point
-# ---------------------------------------------------------------------------
-
-def main() -> None:
+if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Reconcile payments vs Razorpay API")
     parser.add_argument("--dry-run", action="store_true", help="Report without writing")
     parser.add_argument("--hours",   type=int, default=24,  help="Look-back window (default 24)")
-    parser.add_argument("--limit",   type=int, default=500, help="Max rows to check (default 500)")
     args = parser.parse_args()
-
-    if not (RAZORPAY_KEY_ID and RAZORPAY_KEY_SECRET):
-        logger.error("RAZORPAY_KEY_ID / RAZORPAY_KEY_SECRET not set — aborting.")
-        sys.exit(1)
 
     started_at = datetime.now(tz=timezone.utc)
     logger.info(
         f"=== Reconciliation started at {started_at.isoformat()} "
-        f"(dry_run={args.dry_run}, hours={args.hours}, limit={args.limit}) ==="
+        f"(dry_run={args.dry_run}, hours={args.hours}) ==="
     )
-
-    db: Session = SessionLocal()
-    try:
-        stats = reconcile(db, hours=args.hours, dry_run=args.dry_run, limit=args.limit)
-    finally:
-        db.close()
-
-    elapsed = (datetime.now(tz=timezone.utc) - started_at).total_seconds()
-
-    logger.info("=== Reconciliation complete ===")
-    logger.info(f"  Elapsed          : {elapsed:.1f}s")
-    logger.info(f"  Total checked    : {stats['total_checked']}")
-    logger.info(f"  Fixed → success  : {stats['fixed_to_success']}")
-    logger.info(f"  Fixed → failed   : {stats['fixed_to_failed']}")
-    logger.info(f"  Backfilled IDs   : {stats['fixed_payment_id']}")
-    logger.info(f"  No gateway data  : {stats['no_gateway_data']}")
-    logger.info(f"  Already correct  : {stats['already_correct']}")
-    logger.info(f"  Errors           : {stats['errors']}")
-
-
-if __name__ == "__main__":
-    main()
+    
+    run_reconciliation(hours=args.hours, dry_run=args.dry_run)

@@ -1,5 +1,4 @@
-
-from fastapi import APIRouter, Depends, HTTPException, Request
+from fastapi import APIRouter, Depends, HTTPException, Request, BackgroundTasks
 from pydantic import BaseModel, Field
 from loguru import logger
 from sqlalchemy import func
@@ -16,6 +15,7 @@ from app.tasks.lead_tasks import sync_lead_to_zoho_task
 from app.schemas.whatsapp import WhatsAppBulkSendRequest, WhatsAppBulkSendResponse
 from app.core.config import settings
 from app.tasks.whatsapp_tasks import send_whatsapp_bulk_task
+from app.services.email_service import sync_emails_job
 import time
 
 admin_router = APIRouter(tags=["Admin / Operations"])
@@ -126,6 +126,110 @@ async def retry_failed_syncs(db: Session = Depends(get_mysql_db)):
 
 
 @admin_router.post(
+    "/admin/sync/email-leads",
+    summary="Trigger IMAP email lead sync now",
+)
+async def trigger_email_lead_sync(
+    _admin=Depends(security.admin_required),
+):
+    """Manually run one email-ingestion cycle for Housing/99acres fallback."""
+    summary = await sync_emails_job()
+    return {"message": "Email lead sync cycle completed", **summary}
+
+
+@admin_router.post(
+    "/admin/sync/historical-housing",
+    summary="Trigger historical Housing.com lead recovery (last 5 days)",
+)
+@limiter.limit("2/minute")
+async def trigger_historical_housing_sync(
+    request: Request,
+    _admin=Depends(security.admin_required),
+):
+    """Manually enqueue an RQ job to fetch the last 5 days of missing leads."""
+    if not lead_queue or not redis_conn:
+        raise HTTPException(status_code=503, detail="Redis queue not available")
+
+    # Lock to prevent concurrent 5-day fetches
+    lock_key = "lock:historical_sync_housing"
+    if redis_conn.get(lock_key):
+        raise HTTPException(status_code=409, detail="A historical sync is already running.")
+    redis_conn.set(lock_key, "1", ex=600, nx=True)
+
+    from app.tasks.lead_tasks import sync_historical_housing_task
+    import time
+
+    job = lead_queue.enqueue(
+        sync_historical_housing_task,
+        kwargs={"days": 5},
+        job_timeout=600,
+        result_ttl=86400,
+        job_id=f"historic_sync_{int(time.time())}"
+    )
+
+    return {"message": "Historical recovery queued successfully.", "job_id": job.id}
+
+@admin_router.get(
+    "/admin/job/{job_id}",
+    summary="Get status of a background RQ or Celery job",
+)
+async def get_job_status(job_id: str, db: Session = Depends(get_mysql_db), _admin=Depends(security.admin_required)):
+    """Fetch realtime progress and result of a background job."""
+    # 1. Check DB tracking for Celery Tasks
+    from app.models.sync_job import SyncJob
+    celery_job = db.query(SyncJob).filter(SyncJob.task_id == job_id).first()
+    if celery_job:
+        status_map = {
+            "pending": "queued",
+            "running": "started", 
+            "success": "finished",
+            "failed": "failed"
+        }
+        return {
+            "id": celery_job.task_id,
+            "status": status_map.get(celery_job.status, celery_job.status),
+            "result": celery_job.result,
+            "error": celery_job.error,
+            "created_at": celery_job.created_at.isoformat() if celery_job.created_at else None,
+            "ended_at": celery_job.completed_at.isoformat() if celery_job.completed_at else None
+        }
+
+    # 2. Fallback to Legacy RQ checking
+    if not redis_conn:
+        raise HTTPException(status_code=503, detail="Redis unavailable")
+    from rq.job import Job
+    from rq.exceptions import NoSuchJobError
+    try:
+        job = Job.fetch(job_id, connection=redis_conn)
+        status = job.get_status()
+        return {
+            "id": job.id,
+            "status": status,
+            "result": job.result,
+            "error": "Failed" if job.exc_info else None,
+            "created_at": job.created_at.isoformat() if job.created_at else None,
+            "ended_at": job.ended_at.isoformat() if job.ended_at else None
+        }
+    except NoSuchJobError:
+        raise HTTPException(status_code=404, detail="Job not found")
+
+@admin_router.get(
+    "/admin/jobs",
+    summary="Get history of all Celery Sync Jobs",
+)
+async def get_all_jobs(db: Session = Depends(get_mysql_db), _admin=Depends(security.admin_required)):
+    from app.models.sync_job import SyncJob
+    jobs = db.query(SyncJob).order_by(SyncJob.created_at.desc()).limit(50).all()
+    return [{
+        "id": j.task_id,
+        "task_name": j.task_name,
+        "status": j.status,
+        "result": j.result,
+        "error": j.error,
+        "created_at": j.created_at.isoformat() if j.created_at else None
+    } for j in jobs]
+
+@admin_router.post(
     "/admin/whatsapp/bulk",
     summary="Send bulk WhatsApp template messages (queued)",
     response_model=WhatsAppBulkSendResponse,
@@ -204,4 +308,56 @@ async def clear_whatsapp_flow_session(
         "cleared": deleted,
         "phone": phone,
         "status": "ok",
+    }
+
+@admin_router.get(
+    "/admin/payments/analytics",
+    summary="Get global payment analytics",
+)
+async def get_payment_analytics(
+    db: Session = Depends(get_mysql_db),
+    _admin=Depends(security.admin_required),
+):
+    from sqlalchemy import func
+    from datetime import datetime, timezone, timedelta
+    from app.models.payment import Payment
+    from app.models.payment_webhook_event import PaymentWebhookEvent
+    from app.models.reconciliation import ReconciliationIssue
+
+    now = datetime.now(timezone.utc)
+    today_start = now.replace(hour=0, minute=0, second=0, microsecond=0)
+    month_start = now.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+
+    # Revenue Metrics
+    success_all = db.query(func.sum(Payment.amount)).filter(Payment.status == "success").scalar() or 0
+    success_today = db.query(func.sum(Payment.amount)).filter(Payment.status == "success", Payment.created_at >= today_start).scalar() or 0
+    success_month = db.query(func.sum(Payment.amount)).filter(Payment.status == "success", Payment.created_at >= month_start).scalar() or 0
+
+    counts = db.query(Payment.status, func.count(Payment.id)).group_by(Payment.status).all()
+    count_dict = {str(status).lower(): count for status, count in counts}
+
+    # Refunds 
+    refunded_count = count_dict.get("refunded", 0)
+
+    # Alerts
+    ignored_webhooks = db.query(func.count(PaymentWebhookEvent.id)).filter(PaymentWebhookEvent.status == "ignored").scalar() or 0
+    failed_webhooks = db.query(func.count(PaymentWebhookEvent.id)).filter(PaymentWebhookEvent.status == "error").scalar() or 0
+    reconciliation_mismatches = db.query(func.count(ReconciliationIssue.id)).filter(ReconciliationIssue.resolved == False).scalar() or 0
+
+    return {
+        "revenue_total_all_time": float(success_all),
+        "revenue_today": float(success_today),
+        "revenue_this_month": float(success_month),
+        "payments_breakdown": {
+            "success": count_dict.get("success", 0),
+            "pending": count_dict.get("pending", 0),
+            "failed": count_dict.get("failed", 0),
+            "refunded": refunded_count,
+            "expired": count_dict.get("expired", 0),
+        },
+        "alerts": {
+            "ignored_webhooks": ignored_webhooks,
+            "failed_webhooks": failed_webhooks,
+            "reconciliation_mismatches": reconciliation_mismatches
+        }
     }

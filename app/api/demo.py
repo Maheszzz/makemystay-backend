@@ -1,8 +1,9 @@
 import uuid
 
-from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 
+from app.core.celery_app import celery_app
 from app.configs.db_config import get_db
 from app.models.demo import DemoBooking
 from app.schemas.demo import (
@@ -16,10 +17,30 @@ from app.utils.zoho_crm_service import zoho_crm_service
 router = APIRouter(tags=["Demo"])
 
 
+@celery_app.task(name="send_demo_email_task")
+def send_demo_email_task(booking_data: dict, meet_link: str):
+    from app.utils.email_utils import email_service
+    from app.schemas.demo import DemoBookingCreate
+    email_service.send_booking_confirmation(DemoBookingCreate(**booking_data), meet_link)
+
+@celery_app.task(name="create_zoho_demo_event_task")
+def create_zoho_demo_event_task(db_booking_id: int):
+    from app.configs.db_config import SessionLocal
+    from app.models.demo import DemoBooking
+    from app.utils.zoho_crm_service import zoho_crm_service
+    
+    db = SessionLocal()
+    try:
+        db_booking = db.query(DemoBooking).filter(DemoBooking.id == db_booking_id).first()
+        if db_booking:
+            zoho_crm_service.create_demo_event(db_booking)
+    finally:
+        db.close()
+
+
 @router.post("/schedule-demo", response_model=ScheduleDemoResponse)
 async def schedule_demo(
     booking: DemoBookingCreate,
-    background_tasks: BackgroundTasks,
     db: Session = Depends(get_db),
 ):
 
@@ -61,12 +82,9 @@ async def schedule_demo(
         db.commit()
         db.refresh(db_booking)
 
-        # Add email sending to background tasks
-        background_tasks.add_task(
-            email_service.send_booking_confirmation, booking, meet_link
-        )
-        # Sync with Zoho CRM (Create lead / Update lead and create event)
-        background_tasks.add_task(zoho_crm_service.create_demo_event, db_booking)
+        # Abstracted off FastAPI Thread loop to Celery Worker
+        send_demo_email_task.delay(booking.model_dump(), meet_link)
+        create_zoho_demo_event_task.delay(db_booking.id)
 
     except Exception as e:
         db.rollback()

@@ -39,6 +39,31 @@ REQUEST_TIMEOUT = 15.0    # seconds — Housing.com bulk endpoint can be slow
 _limiters = {}
 _semaphores = {}
 
+
+def extract_housing_leads(payload: Dict[str, Any]) -> List[Dict[str, Any]]:
+    """Normalize Housing API responses across schema variants.
+
+    Housing has returned leads as `leads` historically and `data` in newer
+    responses. We accept both to avoid silent lead drops.
+    """
+    if not isinstance(payload, dict):
+        return []
+
+    for key in ("leads", "data"):
+        value = payload.get(key)
+        if isinstance(value, list):
+            return value
+
+    # Defensive fallback for nested wrappers.
+    nested = payload.get("result")
+    if isinstance(nested, dict):
+        for key in ("leads", "data"):
+            value = nested.get(key)
+            if isinstance(value, list):
+                return value
+
+    return []
+
 def get_housing_limiter() -> AsyncLimiter:
     loop = asyncio.get_running_loop()
     if loop not in _limiters:
@@ -231,7 +256,12 @@ class HousingLeadService:
 
                 if response.status_code == 200:
                     data = response.json()
-                    leads = data.get("leads", [])
+                    leads = extract_housing_leads(data)
+                    if "leads" not in data and "data" in data:
+                        logger.warning(
+                            "Housing API response used 'data' key instead of 'leads'; "
+                            f"parsed {len(leads)} records"
+                        )
                     return leads, None
                 else:
                     logger.error(f"Housing.com API Error {response.status_code}: {response.text}")

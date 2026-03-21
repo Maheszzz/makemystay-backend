@@ -12,6 +12,18 @@ module.exports = {
       autorestart: true,
       max_restarts: 5,
       watch: false
+    },
+    {
+      name: "makemystay-celery",
+      script: "venv/bin/celery",
+      args: "-A app.core.celery_app worker --loglevel=info --concurrency=4",
+      instances: 1,
+      exec_mode: "fork",
+      cwd: "/home/ubuntu/app",
+      env_file: ".env.production",
+      autorestart: true,
+      max_restarts: 5,
+      watch: false
     }
   ]
 };

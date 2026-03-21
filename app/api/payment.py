@@ -11,13 +11,14 @@ import jinja2
 import qrcode
 import razorpay
 import httpx
-from fastapi import APIRouter, Depends, HTTPException, Request, BackgroundTasks
+from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import FileResponse
 from loguru import logger
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
 from app.configs.db_config import get_db
+from app.core.celery_app import celery_app
 from app.core.config import settings
 from app.models.booking import Booking
 from app.models.payment import Payment
@@ -349,13 +350,16 @@ def handle_failed_payment_async(order_id: str, payment_id: str):
         db.close()
 
 
+@celery_app.task(name="process_payment_webhook", bind=True, max_retries=3)
 def process_webhook_async(
+    self,
     event: str,
     payload: dict,
     received_signature: str,
     raw_body_text: str,
 ):
     from app.configs.db_config import SessionLocal
+    from app.models.ledger import LedgerEntry
     db = SessionLocal()
     try:
         payload_data = payload.get("payload", {})
@@ -397,9 +401,34 @@ def process_webhook_async(
             return
 
         if not payment:
-            logger.warning(f"Payment not found for Razorpay webhook event={event}")
-            async_log_webhook_event(status="ignored", reason="payment_not_found")
-            return
+            # Auto-create the payment for Razorpay Payment Links / Subscriptions generated externally!
+            logger.info(f"Payment {payment_id} not found in DB. Auto-creating from external webhook.")
+            try:
+                amount_int = int(payment_entity.get("amount", 0))
+                # Fallback order_id because MakeMyStay schema requires one
+                safe_order_id = order_id if order_id else f"ext_{payment_id}"
+                payment = Payment(
+                    status="pending",
+                    order_id=safe_order_id,
+                    payment_id=payment_id,
+                    amount=amount_int / 100,
+                    currency=payment_entity.get("currency", "INR"),
+                    payment_type="external_link",
+                    payer_email=payment_entity.get("email") or payment_link_entity.get("customer", {}).get("email"),
+                    payer_phone=payment_entity.get("contact") or payment_link_entity.get("customer", {}).get("contact"),
+                )
+                
+                notes = payment_entity.get("notes")
+                if isinstance(notes, dict):
+                    payment.payer_name = notes.get("name")
+                    
+                db.add(payment)
+                db.commit()
+                db.refresh(payment)
+            except Exception as e:
+                logger.error(f"Failed to auto-create payment record for missing webhook: {e}")
+                async_log_webhook_event(status="ignored", reason="payment_creation_failed")
+                return
 
         success_events = {"payment.captured", "order.paid", "payment_link.paid"}
         failed_events  = {"payment.failed", "payment_link.expired", "payment_link.cancelled"}
@@ -419,6 +448,15 @@ def process_webhook_async(
 
         if event in success_events:
             payment.status = "success"
+            
+            # Create Ledger Entry to mathematically log the credit
+            ledger_entry = LedgerEntry(
+                payment_id=payment_id,
+                entry_type="credit",
+                amount=int(payment.amount * 100) if payment.amount else 0
+            )
+            db.add(ledger_entry)
+            
             _confirm_booking(db, payment=payment, payment_id=payment_id)
 
         elif event in pending_events:
@@ -498,7 +536,6 @@ def _cancel_booking(db: Session, *, payment: Payment) -> None:
 @router.post("/payments/webhook")
 async def razorpay_webhook(
     req: Request, 
-    background_tasks: BackgroundTasks,
     db: Session = Depends(get_db)
 ):
     """Handle Razorpay server-to-server webhook events asynchronously."""
@@ -557,9 +594,8 @@ async def razorpay_webhook(
     order_id = payment_entity.get("order_id") or payment_link_entity.get("order_id")
     payment_id = payment_entity.get("id") or payment_link_entity.get("payment_id")
 
-    # Queue the heavy DB processing to the background
-    background_tasks.add_task(
-        process_webhook_async,
+    # Queue the heavy DB processing to the Celery background worker
+    process_webhook_async.delay(
         event=event,
         payload=payload,
         received_signature=received_signature,

@@ -2,7 +2,7 @@
 
 from typing import List, Optional
 
-from fastapi import APIRouter, BackgroundTasks, Depends, Query
+from fastapi import APIRouter, Depends, Query
 from loguru import logger
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
@@ -75,7 +75,6 @@ def get_contact(contact_id: int, db: Session = Depends(get_mysql_db), current_us
 @realty_router.post("/realty/contacts", response_model=ContactResponse, status_code=201)
 def create_contact(
     contact: ContactCreate,
-    background_tasks: BackgroundTasks,
     db: Session = Depends(get_mysql_db),
 ):
     """

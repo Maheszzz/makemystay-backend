@@ -4,7 +4,8 @@ import email
 import imaplib
 import re
 from email.header import decode_header
-from typing import Optional
+from email.utils import parsedate_to_datetime
+from typing import Any, Dict, Optional
 
 from loguru import logger
 
@@ -57,6 +58,47 @@ def _get_text_from_email(msg) -> str:
     return text
 
 
+def _decode_mime_header(value: str) -> str:
+    """Decode MIME-encoded email headers safely."""
+    if not value:
+        return ""
+    decoded_parts = decode_header(value)
+    chunks = []
+    for raw, charset in decoded_parts:
+        try:
+            if isinstance(raw, bytes):
+                chunks.append(raw.decode(charset or "utf-8", errors="replace"))
+            else:
+                chunks.append(str(raw))
+        except Exception:
+            chunks.append(str(raw))
+    return "".join(chunks)
+
+
+def _detect_lead_source(from_header: str, subject: str, text: str) -> Optional[str]:
+    """Infer lead source from sender, subject and body text."""
+    haystack = f"{from_header}\n{subject}\n{text[:2000]}".lower()
+    if "housing.com" in haystack or "pahal.housing.com" in haystack:
+        return "housing"
+    if "99acres" in haystack or "99acres.com" in haystack:
+        return "99acres"
+    return None
+
+
+def _extract_lead_epoch(msg) -> Optional[int]:
+    """Parse email Date header to epoch seconds (UTC)."""
+    raw_date = msg.get("Date", "")
+    if not raw_date:
+        return None
+    try:
+        dt = parsedate_to_datetime(raw_date)
+        if dt is None:
+            return None
+        return int(dt.timestamp())
+    except Exception:
+        return None
+
+
 def parse_housing_email(text: str) -> Optional[LeadCreate]:
     """Parse Housing.com lead email."""
     # Matches labels followed by colon and some spacing
@@ -97,11 +139,21 @@ def parse_99acres_email(text: str) -> Optional[LeadCreate]:
     )
 
 
-async def sync_emails_job():
-    """Connects to IMAP, fetches unseen emails, parses and ingests them."""
+async def sync_emails_job() -> Dict[str, Any]:
+    """Connect to IMAP, parse unseen lead emails and return a sync summary."""
+    summary: Dict[str, Any] = {
+        "status": "ok",
+        "fetched": 0,
+        "processed": 0,
+        "imported": 0,
+        "skipped": 0,
+        "errors": 0,
+    }
     if not settings.IMAP_SERVER or not settings.IMAP_USERNAME:
         logger.debug("IMAP config missing. Skipping email ingestion.")
-        return
+        summary["status"] = "skipped"
+        summary["message"] = "IMAP config missing"
+        return summary
 
     logger.info("Connecting to IMAP server for email ingestion...")
     mail = None
@@ -110,16 +162,20 @@ async def sync_emails_job():
         mail.login(settings.IMAP_USERNAME, settings.IMAP_PASSWORD)
         mail.select("inbox")
 
-        # Search for unseen emails from housing or 99acres
-        status, response = mail.search(None, '(UNSEEN OR FROM "housing.com" FROM "99acres.com")')
+        # IMAP search syntax is limited; query unseen first, then filter in-app.
+        status, response = mail.search(None, "UNSEEN")
         if status != "OK":
             logger.error(f"Failed to search emails: {response}")
-            return
+            summary["status"] = "error"
+            summary["errors"] += 1
+            summary["message"] = "Failed to search inbox"
+            return summary
 
         email_ids = response[0].split()
+        summary["fetched"] = len(email_ids)
         if not email_ids:
             logger.debug("No new lead emails found.")
-            return
+            return summary
 
         logger.info(f"Found {len(email_ids)} unseen lead emails.")
 
@@ -128,41 +184,60 @@ async def sync_emails_job():
             for e_id in email_ids:
                 res, msg_data = mail.fetch(e_id, "(RFC822)")
                 if res != "OK":
+                    summary["errors"] += 1
                     continue
 
                 for response_part in msg_data:
                     if isinstance(response_part, tuple):
+                        summary["processed"] += 1
                         msg = email.message_from_bytes(response_part[1])
 
-                        from_header_raw = msg.get("From", "")
-                        from_header_decoded = decode_header(from_header_raw)[0]
-                        from_header = str(
-                            from_header_decoded[0].decode(from_header_decoded[1] or "utf-8")
-                            if isinstance(from_header_decoded[0], bytes)
-                            else from_header_decoded[0]
-                        )
+                        from_header = _decode_mime_header(msg.get("From", ""))
+                        subject = _decode_mime_header(msg.get("Subject", ""))
 
                         text = _get_text_from_email(msg)
-                        source = None
-                        lead_data = None
+                        source = _detect_lead_source(from_header, subject, text)
+                        if source is None:
+                            logger.debug(
+                                "Skipping unseen email (not housing/99acres): "
+                                f"from={from_header!r}, subject={subject!r}"
+                            )
+                            summary["skipped"] += 1
+                            continue
 
-                        if "housing.com" in from_header.lower():
-                            source = "housing"
-                            lead_data = parse_housing_email(text)
-                        elif "99acres" in from_header.lower() or "99acres.com" in from_header.lower():
-                            source = "99acres"
-                            lead_data = parse_99acres_email(text)
+                        lead_data = (
+                            parse_housing_email(text) if source == "housing" else parse_99acres_email(text)
+                        )
+                        lead_epoch = _extract_lead_epoch(msg)
+                        message_id = (msg.get("Message-ID") or "").strip("<> ")
+                        if lead_data and lead_epoch:
+                            lead_data.lead_date = lead_epoch
+                        if lead_data and message_id:
+                            lead_data.external_id = f"email:{message_id}"
 
                         if lead_data:
                             logger.info(f"Successfully parsed email lead from {source}: {lead_data.phone}")
-                            await process_lead(
+                            created = await process_lead(
                                 db,
                                 lead_data,
                                 source=source,
-                                raw_payload={"email_body": text[:2000], "subject": msg.get("Subject", "")},
+                                raw_payload={
+                                    "email_body": text[:2000],
+                                    "subject": subject,
+                                    "from": from_header,
+                                    "message_id": message_id or None,
+                                },
                             )
+                            if created:
+                                summary["imported"] += 1
+                            else:
+                                summary["skipped"] += 1
                         else:
-                            logger.warning(f"Could not parse lead data from email sent by: {from_header}")
+                            logger.warning(
+                                f"Could not parse lead data from {source} email: "
+                                f"from={from_header!r}, subject={subject!r}"
+                            )
+                            summary["skipped"] += 1
 
             # Note: The emails are implicitly marked as \Seen when fetched unless (BODY.PEEK) is used.
             db.commit()
@@ -171,6 +246,9 @@ async def sync_emails_job():
 
     except Exception as e:
         logger.error(f"Error during IMAP email sync: {e}")
+        summary["status"] = "error"
+        summary["errors"] += 1
+        summary["message"] = str(e)
     finally:
         if mail:
             try:
@@ -178,3 +256,4 @@ async def sync_emails_job():
                 mail.logout()
             except Exception as logout_err:
                 logger.debug(f"IMAP logout error: {logout_err}")
+    return summary
