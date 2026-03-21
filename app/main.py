@@ -174,11 +174,24 @@ app.add_middleware(
 @app.middleware("http")
 async def csrf_protect(request: Request, call_next):
     if request.method in ["POST", "PUT", "DELETE", "PATCH"]:
-        if request.url.path.startswith("/api/") and request.url.path not in ["/api/v1/auth/login", "/api/v1/auth/refresh", "/api/v1/payment/webhook"]:
+        exempt_paths = [
+            "/api/v1/auth/login",
+            "/api/v1/auth/refresh",
+            "/api/v1/payment/webhook",
+            "/payments/webhook",
+        ]
+        path = request.url.path
+        is_payments_api = path.startswith("/api/v1/payments/")
+        is_exempt = path in exempt_paths
+        if not is_payments_api and not is_exempt:
             cookie_csrf = request.cookies.get("csrf_token")
-            header_csrf = request.headers.get("x-csrf-token", request.headers.get("X-CSRF-Token"))
+            header_csrf = request.headers.get(
+                "x-csrf-token", request.headers.get("X-CSRF-Token")
+            )
             if not cookie_csrf or not header_csrf or cookie_csrf != header_csrf:
-                return JSONResponse(status_code=403, content={"detail": "CSRF verification failed"})
+                return JSONResponse(
+                    status_code=403, content={"detail": "CSRF verification failed"}
+                )
     return await call_next(request)
 app.add_middleware(
     CORSMiddleware,
