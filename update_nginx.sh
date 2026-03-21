@@ -1,6 +1,12 @@
 #!/bin/bash
 set -e
 
+echo "Setting up global Nginx security configs..."
+sudo tee /etc/nginx/conf.d/security.conf > /dev/null << 'GLOBAL_CONFIG'
+server_tokens off;
+limit_req_zone $binary_remote_addr zone=api_limit:10m rate=10r/s;
+GLOBAL_CONFIG
+
 echo "Setting up makemystay config..."
 sudo tee /etc/nginx/sites-available/makemystay > /dev/null << 'CONFIG'
 server {
@@ -16,6 +22,16 @@ server {
     ssl_certificate /etc/letsencrypt/live/makemystay.ai/fullchain.pem;
     ssl_certificate_key /etc/letsencrypt/live/makemystay.ai/privkey.pem;
 
+    # Block bad user agents
+    if ($http_user_agent ~* (sqlmap|nikto|curl|wget)) {
+        return 403;
+    }
+
+    # Block suspicious queries
+    if ($query_string ~* "(union|select|drop|insert)") {
+        return 403;
+    }
+
     # React frontend
     location / {
         root /var/www/react-app;
@@ -25,6 +41,7 @@ server {
 
     # API backend
     location /api/ {
+        limit_req zone=api_limit burst=20 nodelay;
         proxy_pass http://127.0.0.1:8000;
         proxy_set_header Host $host;
         proxy_set_header X-Real-IP $remote_addr;

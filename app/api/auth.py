@@ -1,16 +1,18 @@
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, status, Request
 from sqlalchemy.orm import Session
 
 from app.configs.db_config import get_mysql_db
 from app.core import security
+from app.core.rate_limit import limiter
 from app.repo import user as user_repo
-from app.schemas.auth import LoginRequest, PasswordChangeRequest, Token, UserResponse
+from app.schemas.auth import LoginRequest, PasswordChangeRequest, Token, UserResponse, RefreshTokenRequest
 
 router = APIRouter(tags=["Authentication"])
 
 
 @router.post("/auth/login", response_model=Token)
-def login(login_data: LoginRequest, db: Session = Depends(get_mysql_db)):
+@limiter.limit("5/minute")
+def login(request: Request, login_data: LoginRequest, db: Session = Depends(get_mysql_db)):
     """Authenticate user and return JWT token."""
     user = user_repo.get_user_by_email(db, login_data.email)
     if not user or not security.verify_password(
@@ -25,7 +27,45 @@ def login(login_data: LoginRequest, db: Session = Depends(get_mysql_db)):
     access_token = security.create_access_token(
         data={"sub": user.email, "role": user.role}
     )
-    return {"access_token": access_token, "token_type": "bearer", "role": user.role}
+    refresh_token = security.create_refresh_token(
+        data={"sub": user.email, "role": user.role}
+    )
+    return {
+        "access_token": access_token, 
+        "refresh_token": refresh_token,
+        "token_type": "bearer", 
+        "role": user.role
+    }
+
+
+@router.post("/auth/refresh", response_model=Token)
+@limiter.limit("10/minute")
+def refresh_token(request: Request, data: RefreshTokenRequest, db: Session = Depends(get_mysql_db)):
+    """Refresh access token."""
+    email = security.verify_refresh_token(data.refresh_token)
+    if not email:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid or expired refresh token",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+        
+    user = user_repo.get_user_by_email(db, email)
+    if not user:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
+        
+    access_token = security.create_access_token(
+        data={"sub": user.email, "role": user.role}
+    )
+    new_refresh_token = security.create_refresh_token(
+        data={"sub": user.email, "role": user.role}
+    )
+    return {
+        "access_token": access_token, 
+        "refresh_token": new_refresh_token,
+        "token_type": "bearer", 
+        "role": user.role
+    }
 
 
 @router.get("/auth/me", response_model=UserResponse)

@@ -10,9 +10,8 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from loguru import logger
 from prometheus_fastapi_instrumentator import Instrumentator
-from slowapi import Limiter, _rate_limit_exceeded_handler
+from slowapi import _rate_limit_exceeded_handler
 from slowapi.errors import RateLimitExceeded
-from slowapi.util import get_remote_address
 
 from app.api.agent_routes import router as agent_router
 from app.api.auth import router as auth_router
@@ -26,7 +25,7 @@ logging.basicConfig(level=logging.INFO)
 logger.info(f"ENV={settings.ENV}")
 
 # --- Rate Limiter ---
-limiter = Limiter(key_func=get_remote_address)
+from app.core.rate_limit import limiter
 
 # --- Background Scheduler ---
 import asyncio
