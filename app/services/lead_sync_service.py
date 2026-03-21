@@ -16,6 +16,7 @@ Crash-proofing guarantees:
 import asyncio
 import time
 from datetime import datetime
+from typing import Optional
 
 from loguru import logger
 from sqlalchemy.orm import Session
@@ -46,16 +47,27 @@ async def sync_all_sources():
         if isinstance(r, Exception):
             logger.error(f"sync_all_sources: a source sync raised: {r}")
 
+async def sync_daily_recovery():
+    """Daily safety sync that force-pulls the latest 24-hour window."""
+    results = await asyncio.gather(
+        _run_housing_sync(forced_lookback_seconds=86400),
+        _run_99acres_sync(),
+        return_exceptions=True,
+    )
+    for r in results:
+        if isinstance(r, Exception):
+            logger.error(f"sync_daily_recovery: a source sync raised: {r}")
+
 
 # ---------------------------------------------------------------------------
 # Housing.com sync (builder + broker)
 # ---------------------------------------------------------------------------
 
-async def _run_housing_sync():
+async def _run_housing_sync(forced_lookback_seconds: Optional[int] = None):
     """Top-level wrapper: creates its own DB session, never leaks exceptions."""
     db = MySQLSessionLocal()
     try:
-        await sync_housing_leads(db)
+        await sync_housing_leads(db, forced_lookback_seconds=forced_lookback_seconds)
     except Exception as e:
         logger.error(f"Housing sync wrapper caught unhandled error: {e}")
         try:
@@ -66,7 +78,7 @@ async def _run_housing_sync():
         db.close()
 
 
-async def sync_housing_leads(db: Session):
+async def sync_housing_leads(db: Session, forced_lookback_seconds: Optional[int] = None):
     """Fetch and store leads from Housing.com (builder + broker endpoints)."""
     if not housing_lead_service.is_configured:
         logger.debug("Housing.com sync skipped — not configured")
@@ -82,20 +94,24 @@ async def sync_housing_leads(db: Session):
 
     now = int(time.time())
 
-    # Safe float-string parsing: "1742400000.0" would crash int("1742400000.0")
-    if meta.last_lead_timestamp:
-        try:
-            start_int = int(float(str(meta.last_lead_timestamp)))
-        except (ValueError, TypeError):
-            logger.warning("Corrupt last_lead_timestamp — defaulting to 24h ago")
-            start_int = now - 86400
+    if forced_lookback_seconds is not None and forced_lookback_seconds > 0:
+        # Explicit daily recovery mode: always fetch a full recent window.
+        start_int = now - forced_lookback_seconds
     else:
-        start_int = now - 86400   # first run: look back 24 h
+        # Safe float-string parsing: "1742400000.0" would crash int("1742400000.0")
+        if meta.last_lead_timestamp:
+            try:
+                start_int = int(float(str(meta.last_lead_timestamp)))
+            except (ValueError, TypeError):
+                logger.warning("Corrupt last_lead_timestamp — defaulting to 24h ago")
+                start_int = now - 86400
+        else:
+            start_int = now - 86400   # first run: look back 24 h
 
-    # Always overlap the last 25 h so short-downtime gaps are self-healing.
-    # Example: server was down for 1 h → overlap re-fetches that window next cycle.
-    overlap_start = now - 90000  # 25 h ago
-    start_int = min(start_int, overlap_start)
+        # Always overlap the last 25 h so short-downtime gaps are self-healing.
+        # Example: server was down for 1 h → overlap re-fetches that window next cycle.
+        overlap_start = now - 90000  # 25 h ago
+        start_int = min(start_int, overlap_start)
 
     # Housing API hard limit: ≤ 48 h per request (our service chunks automatically,
     # but cap the total window at 47 h so one slow sync doesn't snowball).

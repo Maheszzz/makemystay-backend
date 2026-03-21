@@ -4,7 +4,7 @@ from datetime import datetime
 from enum import Enum
 from typing import Optional
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, EmailStr, Field
 
 
 class LeadStatus(str, Enum):
@@ -24,8 +24,8 @@ class LeadCreate(BaseModel):
     """
 
     name: Optional[str] = Field(None, max_length=200)
-    email: Optional[str] = Field(None, max_length=200)
-    phone: str = Field(..., min_length=7, max_length=20)
+    email: Optional[EmailStr] = Field(None, max_length=200)
+    phone: str = Field(..., pattern=r"^[6-9]\d{9}$")
     project_name: Optional[str] = Field(None, max_length=300)
     city: Optional[str] = Field(None, max_length=100)
     location: Optional[str] = Field(None, max_length=200)

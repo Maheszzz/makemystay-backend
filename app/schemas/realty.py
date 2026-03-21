@@ -44,7 +44,7 @@ class ContactBase(BaseModel):
     """Base schema for Contact with validation."""
 
     name_: str = Field(..., min_length=1, max_length=100, alias="name")
-    phone: str = Field(..., min_length=10, max_length=15)
+    phone: str = Field(..., pattern=r"^[6-9]\d{9}$")
     email: EmailStr = Field(..., max_length=150)
     message: str = Field(..., max_length=250)
     location: Optional[str] = Field(None, max_length=100)
@@ -62,7 +62,7 @@ class ContactUpdate(BaseModel):
     """Schema for updating an existing contact (all fields optional)."""
 
     name_: Optional[str] = Field(None, min_length=1, max_length=100, alias="name")
-    phone: Optional[str] = Field(None, min_length=10, max_length=15)
+    phone: Optional[str] = Field(None, pattern=r"^[6-9]\d{9}$")
     email: Optional[EmailStr] = Field(None, max_length=150)
     message: Optional[str] = Field(None, max_length=250)
     location: Optional[str] = Field(None, max_length=100)

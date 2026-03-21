@@ -6,10 +6,12 @@ asynchronous CRM synchronization.
 """
 
 import traceback
+from datetime import datetime, timezone
 from typing import Optional
 
 from loguru import logger
 from sqlalchemy.exc import IntegrityError
+from sqlalchemy import and_, func, or_
 from sqlalchemy.orm import Session
 
 from app.core.redis import lead_queue
@@ -45,37 +47,45 @@ async def process_lead(
     """
     try:
         # ── 1. Deduplication ────────────────────────────────────────────
-        # Priority:
-        #   a) external_id match (most precise — same inquiry ID from source)
-        #   b) phone + source + lead_date (same customer, same timestamp)
-        #   c) phone + source only (last-resort fallback when no date/id)
-        #
-        # We do NOT deduplicate on phone+source alone because a customer can
-        # legitimately inquire about multiple properties over time.
-        existing = None
+        # Canonical dedup key: phone + property identity + lead day.
+        # This allows repeat enquiries for different properties and/or different days.
+        property_candidates = []
+        for raw_value in [lead_data.property_id, lead_data.external_id, lead_data.project_name]:
+            value = str(raw_value).strip() if raw_value else ""
+            if value and value not in property_candidates:
+                property_candidates.append(value)
 
-        if lead_data.external_id:
-            existing = (
-                db.query(Lead)
-                .filter(Lead.source == source, Lead.external_id == lead_data.external_id)
-                .first()
-            )
-        elif lead_data.lead_date:
-            existing = (
-                db.query(Lead)
-                .filter(
-                    Lead.phone == lead_data.phone,
-                    Lead.source == source,
-                    Lead.lead_date == lead_data.lead_date,
-                )
-                .first()
-            )
+        if lead_data.lead_date:
+            lead_ts = int(lead_data.lead_date)
         else:
-            existing = (
-                db.query(Lead)
-                .filter(Lead.phone == lead_data.phone, Lead.source == source)
-                .first()
-            )
+            lead_ts = int(datetime.now(timezone.utc).timestamp())
+
+        lead_day_start = lead_ts - (lead_ts % 86400)
+        lead_day_end = lead_day_start + 86400
+        lead_day_date = datetime.fromtimestamp(lead_day_start, tz=timezone.utc).date()
+
+        existing_query = db.query(Lead).filter(
+            Lead.phone == lead_data.phone,
+            Lead.source == source,
+        )
+
+        if property_candidates:
+            property_filters = []
+            for candidate in property_candidates:
+                property_filters.append(Lead.property_id == candidate)
+                property_filters.append(Lead.external_id == candidate)
+                property_filters.append(Lead.project_name == candidate)
+            existing_query = existing_query.filter(or_(*property_filters))
+
+        day_filter = or_(
+            and_(
+                Lead.lead_date.isnot(None),
+                Lead.lead_date >= lead_day_start,
+                Lead.lead_date < lead_day_end,
+            ),
+            and_(Lead.lead_date.is_(None), func.date(Lead.created_at) == lead_day_date),
+        )
+        existing = existing_query.filter(day_filter).first()
 
         if existing:
             logger.info(f"Duplicate lead skipped: {lead_data.phone} from {source}")
@@ -93,7 +103,7 @@ async def process_lead(
             property_type=lead_data.property_type,
             budget=lead_data.budget,
             message=lead_data.message or lead_data.requirement,
-            lead_date=lead_data.lead_date,
+            lead_date=lead_ts,
             external_id=lead_data.external_id,
             campaign=lead_data.campaign,
             ad_id=lead_data.ad_id,
@@ -152,7 +162,24 @@ async def process_lead(
             f"New lead stored: ID={new_lead.id}, "
             f"Phone={new_lead.phone}, Source={source}"
         )
-        publish_event(new_lead.id, "LEAD_CREATED", f"Lead created from {source}")
+        publish_event(
+            new_lead.id,
+            "LEAD_CREATED",
+            f"Lead created from {source}",
+            payload={
+                "id": new_lead.id,
+                "name": new_lead.name,
+                "phone": new_lead.phone,
+                "email": new_lead.email,
+                "source": new_lead.source,
+                "project_name": new_lead.project_name,
+                "property_id": new_lead.property_id,
+                "status": new_lead.status,
+                "created_at": (
+                    new_lead.created_at.isoformat() if new_lead.created_at else None
+                ),
+            },
+        )
 
         # ── 5. Enqueue CRM Sync (Asynchronous) ───────────────────────
         _enqueue_crm_sync(db, new_lead)

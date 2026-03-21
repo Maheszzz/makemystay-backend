@@ -1,4 +1,6 @@
-from fastapi import APIRouter, Depends, HTTPException, status, Request
+import secrets
+from fastapi import APIRouter, Depends, HTTPException, status, Request, Response
+from loguru import logger
 from sqlalchemy.orm import Session
 
 from app.configs.db_config import get_mysql_db
@@ -12,12 +14,13 @@ router = APIRouter(tags=["Authentication"])
 
 @router.post("/auth/login", response_model=Token)
 @limiter.limit("5/minute")
-def login(request: Request, login_data: LoginRequest, db: Session = Depends(get_mysql_db)):
+def login(request: Request, response: Response, login_data: LoginRequest, db: Session = Depends(get_mysql_db)):
     """Authenticate user and return JWT token."""
     user = user_repo.get_user_by_email(db, login_data.email)
     if not user or not security.verify_password(
         login_data.password, user.password_hash
     ):
+        logger.bind(audit=True).warning(f"LOGIN_FAILED: {login_data.email}")
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Incorrect email or password",
@@ -30,6 +33,19 @@ def login(request: Request, login_data: LoginRequest, db: Session = Depends(get_
     refresh_token = security.create_refresh_token(
         data={"sub": user.email, "role": user.role}
     )
+    
+    csrf_token = secrets.token_hex(32)
+
+    # Set HttpOnly Cookies
+    secure_cookie = True
+    response.set_cookie(key="access_token", value=access_token, httponly=True, secure=secure_cookie, samesite="strict")
+    response.set_cookie(key="refresh_token", value=refresh_token, httponly=True, secure=secure_cookie, samesite="strict")
+    response.set_cookie(key="csrf_token", value=csrf_token, httponly=True, secure=secure_cookie, samesite="strict")
+    
+    # Expose to frontend
+    response.headers["X-CSRF-Token"] = csrf_token
+
+    logger.bind(audit=True).info(f"LOGIN_SUCCESS: {user.email}")
     return {
         "access_token": access_token, 
         "refresh_token": refresh_token,

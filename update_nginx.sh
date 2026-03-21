@@ -5,6 +5,7 @@ echo "Setting up global Nginx security configs..."
 sudo tee /etc/nginx/conf.d/security.conf > /dev/null << 'GLOBAL_CONFIG'
 server_tokens off;
 limit_req_zone $binary_remote_addr zone=api_limit:10m rate=10r/s;
+limit_req_zone $binary_remote_addr zone=global:10m rate=20r/s;
 GLOBAL_CONFIG
 
 echo "Setting up makemystay config..."
@@ -21,6 +22,9 @@ server {
 
     ssl_certificate /etc/letsencrypt/live/makemystay.ai/fullchain.pem;
     ssl_certificate_key /etc/letsencrypt/live/makemystay.ai/privkey.pem;
+
+    # Global Rate Limiting Layer
+    limit_req zone=global burst=50 nodelay;
 
     # Block bad user agents
     if ($http_user_agent ~* (sqlmap|nikto|curl|wget)) {

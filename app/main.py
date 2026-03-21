@@ -12,6 +12,8 @@ from loguru import logger
 from prometheus_fastapi_instrumentator import Instrumentator
 from slowapi import _rate_limit_exceeded_handler
 from slowapi.errors import RateLimitExceeded
+import time
+from collections import defaultdict
 
 from app.api.agent_routes import router as agent_router
 from app.api.auth import router as auth_router
@@ -25,6 +27,24 @@ load_dotenv()
 logging.basicConfig(level=logging.INFO)
 logger.info(f"ENV={settings.ENV}")
 
+failed_logins = defaultdict(list)
+
+def security_alerter(message):
+    try:
+        msg_str = message.record["message"]
+        if "LOGIN_FAILED:" in msg_str:
+            email = msg_str.split("LOGIN_FAILED: ")[-1].strip()
+            now = time.time()
+            failed_logins[email].append(now)
+            failed_logins[email] = [t for t in failed_logins[email] if now - t < 60]
+            if len(failed_logins[email]) >= 10:
+                logger.error(f"SECURITY ALERT: >10 failed logins for {email} detected in 60s!")
+                failed_logins[email].clear()
+    except Exception as e:
+        pass
+
+logger.add(security_alerter, filter=lambda record: "audit" in record["extra"])
+
 # --- Rate Limiter ---
 from app.core.rate_limit import limiter
 
@@ -34,7 +54,8 @@ from datetime import datetime
 
 from apscheduler.schedulers.background import BackgroundScheduler
 
-from app.services.lead_sync_service import sync_all_sources
+from app.services.lead_sync_service import sync_all_sources, sync_daily_recovery
+from app.services.email_service import sync_emails_job
 
 scheduler = BackgroundScheduler()
 THROTTLED_ERROR_ENDPOINTS = {"/api/v1/admin/analytics", "/api/v1/realty/properties"}
@@ -53,6 +74,15 @@ def sync_all_job():
     """APScheduler wrapper for the unified sync function."""
     asyncio.run(sync_all_sources())
 
+
+def daily_recovery_sync_job():
+    """Daily safety-net sync for last 24h lead window."""
+    asyncio.run(sync_daily_recovery())
+
+def email_sync_wrapper_job():
+    """APScheduler wrapper for the IMAP email sync function."""
+    asyncio.run(sync_emails_job())
+
 # --- Lifespan Manager ---
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -66,9 +96,35 @@ async def lifespan(app: FastAPI):
         id="sync_all_job",
         next_run_time=datetime.now(),
     )
+    if settings.LEAD_DAILY_SYNC_ENABLED:
+        scheduler.add_job(
+            daily_recovery_sync_job,
+            "cron",
+            hour=settings.LEAD_DAILY_SYNC_HOUR_UTC,
+            minute=settings.LEAD_DAILY_SYNC_MINUTE_UTC,
+            id="daily_recovery_sync_job",
+        )
+
+    if getattr(settings, "EMAIL_POLL_INTERVAL_MINUTES", 0) > 0:
+        scheduler.add_job(
+            email_sync_wrapper_job,
+            "interval",
+            minutes=settings.EMAIL_POLL_INTERVAL_MINUTES,
+            id="email_sync_job",
+            next_run_time=datetime.now(),
+        )
 
     scheduler.start()
-    logger.info(f"APScheduler started: sync_all_job scheduled every {settings.HOUSING_SYNC_INTERVAL_SECONDS}s")
+    logger.info(
+        f"APScheduler started: sync_all_job every {settings.HOUSING_SYNC_INTERVAL_SECONDS}s"
+    )
+    if settings.LEAD_DAILY_SYNC_ENABLED:
+        logger.info(
+            "Daily recovery sync enabled at "
+            f"{settings.LEAD_DAILY_SYNC_HOUR_UTC:02d}:{settings.LEAD_DAILY_SYNC_MINUTE_UTC:02d} UTC"
+        )
+    if getattr(settings, "EMAIL_POLL_INTERVAL_MINUTES", 0) > 0:
+        logger.info(f"Email sync job scheduled every {settings.EMAIL_POLL_INTERVAL_MINUTES}m")
     yield
     logger.info("Shutting down background scheduler...")
     scheduler.shutdown()
@@ -90,17 +146,43 @@ app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 # --- Middleware ---
 # Configure CORS for frontend connection
 # (no-op) This comment exists to trigger uvicorn reload in local development.
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=[
+if settings.ENV == "production":
+    allowed_origins = [
+        "https://makemystay.ai",
+        "https://www.makemystay.ai",
+        "https://admin.makemystay.ai",
+        "https://api.makemystay.ai",
+    ]
+else:
+    allowed_origins = [
         "http://localhost:3000",
         "http://localhost:5173",
         "http://localhost:5174",
         "https://makemystay.ai",
         "https://www.makemystay.ai",
         "https://admin.makemystay.ai",
-        "https://api.makemystay.ai",
-    ],  # In production, replace with specific origins
+    ]
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=allowed_origins,
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+@app.middleware("http")
+async def csrf_protect(request: Request, call_next):
+    if request.method in ["POST", "PUT", "DELETE", "PATCH"]:
+        if request.url.path.startswith("/api/") and request.url.path not in ["/api/v1/auth/login", "/api/v1/auth/refresh", "/api/v1/payment/webhook"]:
+            cookie_csrf = request.cookies.get("csrf_token")
+            header_csrf = request.headers.get("x-csrf-token", request.headers.get("X-CSRF-Token"))
+            if not cookie_csrf or not header_csrf or cookie_csrf != header_csrf:
+                return JSONResponse(status_code=403, content={"detail": "CSRF verification failed"})
+    return await call_next(request)
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=allowed_origins,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],

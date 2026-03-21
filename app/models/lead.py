@@ -75,5 +75,9 @@ class Lead(MySQLBase):
         UniqueConstraint(
             "phone", "lead_date", "external_id", name="uq_lead_phone_date_ext"
         ),
+        # Strict protection against duplicate floods for the same property on the same day
+        UniqueConstraint(
+            "phone", "property_id", "lead_date", name="uq_lead_phone_property_date"
+        ),
         Index("ix_leads_status_created_at", "status", "created_at"),
     )

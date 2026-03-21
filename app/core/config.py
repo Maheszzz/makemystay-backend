@@ -45,6 +45,13 @@ class Settings(BaseSettings):
     MAIL_SERVER: str
     MAIL_FROM_NAME: str
 
+    # IMAP Configuration (for Email Fallback Ingestion)
+    IMAP_SERVER: str = ""
+    IMAP_PORT: int = 993
+    IMAP_USERNAME: str = ""
+    IMAP_PASSWORD: str = ""
+    EMAIL_POLL_INTERVAL_MINUTES: int = 5
+
     # Zoho CRM
     ZOHO_CRM_CLIENT_ID: str = ""
     ZOHO_CRM_CLIENT_SECRET: str = ""
@@ -81,6 +88,9 @@ class Settings(BaseSettings):
     HOUSING_API_KEY: str = ""
     HOUSING_API_ID: str = ""
     HOUSING_SYNC_INTERVAL_SECONDS: int = 30
+    LEAD_DAILY_SYNC_ENABLED: bool = True
+    LEAD_DAILY_SYNC_HOUR_UTC: int = 2
+    LEAD_DAILY_SYNC_MINUTE_UTC: int = 0
 
     # Load env files in increasing priority (later files override earlier ones).
     # This makes local development work out-of-the-box (e.g. DB on a different port)
