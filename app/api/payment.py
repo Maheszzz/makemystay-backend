@@ -795,11 +795,8 @@ def get_payment_transactions(
         selected_webhook = latest_webhook
 
         # Priority: webhook (truth) -> gateway (fallback) -> db.
-        if selected_webhook is None and source_filter in {"all", "gateway"}:
-            if db_payment_id is not None:
-                selected_gateway_payment = _fetch_razorpay_payment(db_payment_id)
-            elif db_order_id:
-                selected_gateway_payment = _fetch_order_payment(db_order_id)
+        # Priority: webhook (truth) -> db. (Gateway lookups removed to solve N+1 timeouts)
+        selected_gateway_payment = None
 
         normalized = normalize_transaction(
             payment=selected_gateway_payment,
