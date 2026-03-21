@@ -35,3 +35,4 @@ aiolimiter
 tenacity
 rq
 redis
+celery

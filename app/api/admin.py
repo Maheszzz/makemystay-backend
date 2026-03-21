@@ -339,10 +339,38 @@ async def get_payment_analytics(
     # Refunds 
     refunded_count = count_dict.get("refunded", 0)
 
-    # Alerts
-    ignored_webhooks = db.query(func.count(PaymentWebhookEvent.id)).filter(PaymentWebhookEvent.status == "ignored").scalar() or 0
-    failed_webhooks = db.query(func.count(PaymentWebhookEvent.id)).filter(PaymentWebhookEvent.status == "error").scalar() or 0
-    reconciliation_mismatches = db.query(func.count(ReconciliationIssue.id)).filter(ReconciliationIssue.resolved == False).scalar() or 0
+    # Alerts: keep focused on recent, actionable events to avoid stale/noisy banners.
+    alert_window_start = now - timedelta(days=14)
+    risky_ignored_reasons = {
+        "identifiers_missing",
+        "payment_creation_failed",
+        "event_not_mapped",
+    }
+    ignored_webhooks = (
+        db.query(func.count(PaymentWebhookEvent.id))
+        .filter(
+            PaymentWebhookEvent.status == "ignored",
+            PaymentWebhookEvent.reason.in_(risky_ignored_reasons),
+            PaymentWebhookEvent.created_at >= alert_window_start,
+        )
+        .scalar()
+        or 0
+    )
+    failed_webhooks = (
+        db.query(func.count(PaymentWebhookEvent.id))
+        .filter(
+            PaymentWebhookEvent.status.in_(("error", "rejected")),
+            PaymentWebhookEvent.created_at >= alert_window_start,
+        )
+        .scalar()
+        or 0
+    )
+    reconciliation_mismatches = (
+        db.query(func.count(ReconciliationIssue.id))
+        .filter(ReconciliationIssue.resolved == False)
+        .scalar()
+        or 0
+    )
 
     return {
         "revenue_total_all_time": float(success_all),

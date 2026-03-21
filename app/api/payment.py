@@ -15,6 +15,7 @@ from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import FileResponse
 from loguru import logger
 from pydantic import BaseModel
+from sqlalchemy import func
 from sqlalchemy.orm import Session
 
 from app.configs.db_config import get_db
@@ -751,15 +752,18 @@ def get_payment_transactions(
     query = db.query(Payment).order_by(Payment.created_at.desc())
     if status:
         query = query.filter(Payment.status == status)
-    webhook_order_ids_query = (
-        db.query(PaymentWebhookEvent.order_id)
-        .filter(PaymentWebhookEvent.order_id.isnot(None))
-        .distinct()
+    webhook_exists = (
+        db.query(PaymentWebhookEvent.id)
+        .filter(
+            PaymentWebhookEvent.order_id.isnot(None),
+            PaymentWebhookEvent.order_id == Payment.order_id,
+        )
+        .exists()
     )
     if source_filter == "webhook":
-        query = query.filter(Payment.order_id.in_(webhook_order_ids_query))
+        query = query.filter(webhook_exists)
     elif source_filter == "db":
-        query = query.filter(~Payment.order_id.in_(webhook_order_ids_query))
+        query = query.filter(~webhook_exists)
 
     rows = query.offset(skip).limit(limit).all()
     transactions: List[PaymentTransactionSchema] = []
@@ -768,23 +772,28 @@ def get_payment_transactions(
 
     order_ids = [str(r.order_id) for r in rows if r.order_id is not None]
     if order_ids:
+        latest_webhook_ids = (
+            db.query(
+                PaymentWebhookEvent.order_id.label("order_id"),
+                func.max(PaymentWebhookEvent.id).label("max_id"),
+            )
+            .filter(
+                PaymentWebhookEvent.order_id.isnot(None),
+                PaymentWebhookEvent.order_id.in_(order_ids),
+            )
+            .group_by(PaymentWebhookEvent.order_id)
+            .subquery()
+        )
         webhook_rows = (
             db.query(PaymentWebhookEvent)
-            .filter(PaymentWebhookEvent.order_id.in_(order_ids))
-            .order_by(
-                PaymentWebhookEvent.created_at.desc(),
-                PaymentWebhookEvent.id.desc(),
-            )
+            .join(latest_webhook_ids, PaymentWebhookEvent.id == latest_webhook_ids.c.max_id)
             .all()
         )
-        for webhook_row in webhook_rows:
-            oid = (
-                str(webhook_row.order_id)
-                if webhook_row.order_id is not None
-                else ""
-            )
-            if oid and oid not in latest_webhook_by_order:
-                latest_webhook_by_order[oid] = webhook_row
+        latest_webhook_by_order = {
+            str(webhook_row.order_id): webhook_row
+            for webhook_row in webhook_rows
+            if webhook_row.order_id is not None
+        }
 
     for row in rows:
         db_payment_id = str(row.payment_id) if row.payment_id is not None else None
