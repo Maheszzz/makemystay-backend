@@ -226,7 +226,7 @@ def _assign_rm(db: Session, lead_id: int) -> Optional[Agent]:
         return None
 
 
-def _ask_interest(name: str | None = None) -> str:
+def _ask_interest(name: Optional[str] = None) -> str:
     nm = f" {name}" if name else ""
     return (
         f"Hi{nm}! Thanks for reaching out.\n\n"
@@ -307,7 +307,7 @@ def _send_text_checked(*, to: str, body: str) -> None:
     Send a free-form WhatsApp message and log Twilio failure details.
     Helps when you locally "replay" webhook payloads and nothing arrives.
     """
-    def _is_transient(err: str | None) -> bool:
+    def _is_transient(err: Optional[str]) -> bool:
         e = (err or "").lower()
         return any(
             key in e
@@ -320,7 +320,7 @@ def _send_text_checked(*, to: str, body: str) -> None:
             ]
         )
 
-    def _is_outside_customer_care(err: str | None) -> bool:
+    def _is_outside_customer_care(err: Optional[str]) -> bool:
         e = (err or "").lower()
         return any(
             key in e
@@ -333,7 +333,7 @@ def _send_text_checked(*, to: str, body: str) -> None:
             ]
         )
 
-    last_err: str | None = None
+    last_err: Optional[str] = None
     for attempt in range(3):
         res = send_text_whatsapp(to=to, body=body)
         if getattr(res, "ok", False):

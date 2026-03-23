@@ -32,7 +32,7 @@
 ## 🛠️ Tech Stack
 
 - **Framework**: [FastAPI](https://fastapi.tiangolo.com/)
-- **Language**: [Python 3.9+](https://www.python.org/)
+- **Language**: [Python 3.10+](https://www.python.org/) (production; **3.9** is OK locally if annotations use `typing.Optional` / `Union` — avoid `X | None` in type hints, which requires 3.10+)
 - **ORM**: [SQLAlchemy](https://www.sqlalchemy.org/)
 - **Database**: [MySQL](https://www.mysql.com/)
 - **Server**: [Uvicorn](https://www.uvicorn.org/)

@@ -1,5 +1,5 @@
 import asyncio
-from typing import List
+from typing import List, Optional
 
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect
 from loguru import logger
@@ -16,7 +16,7 @@ class ConnectionManager:
         # Create an async redis client for the WebSocket manager to avoid blocking the event loop
         self.redis_client = aioredis.from_url(settings.REDIS_URL or "redis://localhost:6379/0")
         self.pubsub = self.redis_client.pubsub()
-        self.listen_task: asyncio.Task | None = None
+        self.listen_task: Optional[asyncio.Task] = None
 
     async def connect(self, websocket: WebSocket):
         await websocket.accept()

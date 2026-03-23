@@ -2,15 +2,20 @@
 CRM / leads admin: metadata, RMs, lead CRUD, assignments, timeline, funnel, workload.
 """
 
+import asyncio
 from datetime import datetime, timezone
 from typing import Optional
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, Request
+from loguru import logger
 from sqlalchemy import case, func
 from sqlalchemy.orm import Session, joinedload
 
 from app.configs.db_config import get_mysql_db
 from app.core import security
+from app.core.log_dedupe import should_log_once
+from app.core.rate_limit import limiter
+from app.core.redis import lead_queue
 from app.core.lead_schema import (
     VALID_LEAD_STATUSES,
     build_lead_metadata_payload,
@@ -23,6 +28,7 @@ from app.models.assignment_batch import AssignmentBatch
 from app.models.lead import Lead
 from app.models.lead_activity import LeadActivity
 from app.models.lead_assignment import LeadAssignment
+from app.models.sync_metadata import SyncMetadata
 from app.models.user import User
 
 from app.api.admin.schemas import (
@@ -44,6 +50,62 @@ def get_lead_metadata(user=Depends(security.get_current_user)):
     if user.role not in ["admin", "RM", "employee"]:
         raise HTTPException(status_code=403, detail="Not allowed")
     return build_lead_metadata_payload()
+
+
+@router.get("/admin/stats", summary="Get lead ingestion statistics")
+async def get_stats(db: Session = Depends(get_mysql_db)):
+    """Provides visibility into lead ingestion health and queue status."""
+    try:
+        today = func.date(Lead.created_at) == func.current_date()
+        total_today = db.query(Lead).filter(today).count()
+
+        status_counts = db.query(Lead.crm_status, func.count(Lead.id)).filter(today).group_by(Lead.crm_status).all()
+
+        sync_meta = db.query(SyncMetadata).all()
+        sync_info = [
+            {
+                "source": s.source,
+                "last_sync": s.last_sync_at,
+                "status": s.status,
+                "leads_fetched": s.leads_fetched,
+                "last_error": s.last_error,
+            }
+            for s in sync_meta
+        ]
+
+        queue_size = len(lead_queue.job_ids) if lead_queue else 0
+
+        return {
+            "today": {"total": total_today, "breakdown": dict(status_counts)},
+            "sync_status": sync_info,
+            "queue_backlog": queue_size,
+        }
+    except Exception as e:
+        logger.error(f"Failed to fetch admin stats: {e}")
+        raise HTTPException(status_code=500, detail="Failed to fetch stats")
+
+
+@router.get("/admin/analytics", summary="Get simple analytics metrics")
+@limiter.limit("10/minute")
+async def analytics(request: Request, db: Session = Depends(get_mysql_db)):
+    """Provides high-level metrics (Total Leads, Today Leads, Failed)."""
+
+    def _fetch_data():
+        total_leads = db.query(Lead).count()
+        today = func.date(Lead.created_at) == func.current_date()
+        today_leads = db.query(Lead).filter(today).count()
+        failed = db.query(Lead).filter(Lead.crm_status == "failed").count()
+        return {"total_leads": total_leads, "today_leads": today_leads, "failed": failed}
+
+    try:
+        data = await asyncio.wait_for(asyncio.to_thread(_fetch_data), timeout=5.0)
+        return data
+    except asyncio.TimeoutError:
+        return {"error": "timeout"}
+    except Exception as e:
+        if should_log_once("error:/admin/analytics", window_seconds=60):
+            logger.error(f"Failed to fetch analytics: {e}")
+        raise HTTPException(status_code=500, detail="Failed to fetch analytics")
 
 
 @router.get("/users/rms", summary="Get all active Relationship Managers")
@@ -84,7 +146,7 @@ def get_leads(
     return query.order_by(Lead.created_at.desc()).limit(500).all()
 
 
-def _log_activity(db: Session, lead_id: int, activity_type: str, message: str, user_id: int | None = None):
+def _log_activity(db: Session, lead_id: int, activity_type: str, message: str, user_id: Optional[int] = None):
     db.add(LeadActivity(lead_id=lead_id, type=activity_type, message=message, created_by=user_id))
     db.flush()
 

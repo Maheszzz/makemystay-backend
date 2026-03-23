@@ -12,11 +12,9 @@ from sqlalchemy.orm import Session
 from app.configs.db_config import get_mysql_db
 from app.core import security
 from app.core.config import settings
-from app.core.log_dedupe import should_log_once
 from app.core.rate_limit import limiter
 from app.core.redis import lead_queue, redis_conn
 from app.models.lead import Lead
-from app.models.sync_metadata import SyncMetadata
 from app.schemas.whatsapp import WhatsAppBulkSendRequest, WhatsAppBulkSendResponse
 from app.tasks.lead_tasks import sync_lead_to_zoho_task
 from app.tasks.whatsapp_tasks import send_whatsapp_bulk_task
@@ -32,63 +30,6 @@ def _normalize_phone(phone: str) -> str:
     if raw.startswith("whatsapp:"):
         raw = raw.replace("whatsapp:", "", 1)
     return raw
-
-
-@router.get("/admin/stats", summary="Get lead ingestion statistics")
-async def get_stats(db: Session = Depends(get_mysql_db)):
-    """Provides visibility into lead ingestion health and queue status."""
-    try:
-        today = func.date(Lead.created_at) == func.current_date()
-        total_today = db.query(Lead).filter(today).count()
-
-        status_counts = db.query(Lead.crm_status, func.count(Lead.id)).filter(today).group_by(Lead.crm_status).all()
-
-        sync_meta = db.query(SyncMetadata).all()
-        sync_info = [
-            {
-                "source": s.source,
-                "last_sync": s.last_sync_at,
-                "status": s.status,
-                "leads_fetched": s.leads_fetched,
-                "last_error": s.last_error,
-            }
-            for s in sync_meta
-        ]
-
-        queue_size = len(lead_queue.job_ids) if lead_queue else 0
-
-        return {
-            "today": {"total": total_today, "breakdown": dict(status_counts)},
-            "sync_status": sync_info,
-            "queue_backlog": queue_size,
-        }
-    except Exception as e:
-        logger.error(f"Failed to fetch admin stats: {e}")
-        raise HTTPException(status_code=500, detail="Failed to fetch stats")
-
-
-@router.get("/admin/analytics", summary="Get simple analytics metrics")
-@limiter.limit("10/minute")
-async def analytics(request: Request, db: Session = Depends(get_mysql_db)):
-    """Provides high-level metrics (Total Leads, Today Leads, Failed)."""
-    import asyncio
-
-    def _fetch_data():
-        total_leads = db.query(Lead).count()
-        today = func.date(Lead.created_at) == func.current_date()
-        today_leads = db.query(Lead).filter(today).count()
-        failed = db.query(Lead).filter(Lead.crm_status == "failed").count()
-        return {"total_leads": total_leads, "today_leads": today_leads, "failed": failed}
-
-    try:
-        data = await asyncio.wait_for(asyncio.to_thread(_fetch_data), timeout=5.0)
-        return data
-    except asyncio.TimeoutError:
-        return {"error": "timeout"}
-    except Exception as e:
-        if should_log_once("error:/admin/analytics", window_seconds=60):
-            logger.error(f"Failed to fetch analytics: {e}")
-        raise HTTPException(status_code=500, detail="Failed to fetch analytics")
 
 
 @router.post("/admin/retry-failed", summary="Retry failed CRM syncs")

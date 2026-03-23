@@ -211,12 +211,13 @@ async def receive_99acres_xml(
 
 
 # ================================================================== #
-#  GET /leads  —  List all leads (admin)
+#  GET /webhooks/lead-list  —  Repo-based lead listing (filters)
+#  NOTE: Do not use GET /leads here — that path is reserved for CRM (role-based) in admin/crm.py
 # ================================================================== #
 @webhooks_router.get(
-    "/leads",
+    "/webhooks/lead-list",
     response_model=List[LeadResponse],
-    summary="List all leads",
+    summary="List leads (repo filters; use GET /leads for CRM role-based list)",
 )
 def list_leads(
     skip: int = Query(0, ge=0),

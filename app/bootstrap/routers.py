@@ -12,7 +12,7 @@ from app.api.auth import router as auth_router
 from app.api.demo import router as demo_router
 from app.api.housing import housing_router
 from app.api.meta_whatsapp import meta_whatsapp_router
-from app.api.payment import payment_router, razorpay_webhook
+from app.api.payment import router as payment_router, razorpay_webhook
 from app.api.realty import realty_router
 from app.api.retell import retell_router
 from app.api.upload import router as upload_router

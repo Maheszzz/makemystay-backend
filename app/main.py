@@ -141,33 +141,8 @@ app.state.limiter = limiter
 app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 
 # --- Middleware ---
-# Configure CORS for frontend connection
-# (no-op) This comment exists to trigger uvicorn reload in local development.
-if settings.ENV == "production":
-    allowed_origins = [
-        "https://makemystay.ai",
-        "https://www.makemystay.ai",
-        "https://admin.makemystay.ai",
-        "https://api.makemystay.ai",
-    ]
-else:
-    allowed_origins = [
-        "http://localhost:3000",
-        "http://localhost:5173",
-        "http://localhost:5174",
-        "https://makemystay.ai",
-        "https://www.makemystay.ai",
-        "https://admin.makemystay.ai",
-    ]
-
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=allowed_origins,
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
-
+# CSRF first, then CORS (last add_middleware = outermost in Starlette) so OPTIONS preflights
+# hit CORSMiddleware before any other logic. See Starlette `reversed(user_middleware)` stack build.
 @app.middleware("http")
 async def csrf_protect(request: Request, call_next):
     if request.method in ["POST", "PUT", "DELETE", "PATCH"]:
@@ -202,6 +177,44 @@ async def csrf_protect(request: Request, call_next):
                 status_code=403, content={"detail": "CSRF verification failed"}
             )
     return await call_next(request)
+
+# CORS — registered after CSRF so CORS wraps the app outermost (handles OPTIONS immediately).
+# Starlette returns 400 on OPTIONS preflight when Origin is not allowed ("Disallowed CORS origin").
+# ENV defaults to production in Settings — local admin (localhost / 127.0.0.1, any port) must still work.
+if settings.ENV == "production":
+    allowed_origins = [
+        "https://makemystay.ai",
+        "https://www.makemystay.ai",
+        "https://admin.makemystay.ai",
+        "https://api.makemystay.ai",
+    ]
+else:
+    allowed_origins = [
+        "http://localhost:3000",
+        "http://localhost:5173",
+        "http://localhost:5174",
+        "http://127.0.0.1:3000",
+        "http://127.0.0.1:5173",
+        "http://127.0.0.1:5174",
+        "https://makemystay.ai",
+        "https://www.makemystay.ai",
+        "https://admin.makemystay.ai",
+    ]
+
+_extra = (getattr(settings, "CORS_EXTRA_ORIGINS", None) or "").strip()
+if _extra:
+    allowed_origins = list(allowed_origins) + [o.strip() for o in _extra.split(",") if o.strip()]
+
+_LOCAL_ORIGIN_REGEX = r"https?://(localhost|127\.0\.0\.1)(:\d+)?$"
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=allowed_origins,
+    allow_origin_regex=_LOCAL_ORIGIN_REGEX,
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
 # --- Database initialization (optional create_all; Alembic is source of truth in prod) ---
 from app.bootstrap.database import maybe_create_tables_from_metadata  # noqa: E402

@@ -13,6 +13,8 @@ class Settings(BaseSettings):
     DB_NAME: str
 
     ENV: str = "production"
+    # Comma-separated extra browser origins for CORS (e.g. staging admin URL).
+    CORS_EXTRA_ORIGINS: str = ""
     # Dev-only: run SQLAlchemy create_all on startup. Production should use Alembic only.
     SQLALCHEMY_CREATE_ALL_ON_STARTUP: bool = False
     SENTRY_DSN: Optional[str] = None
