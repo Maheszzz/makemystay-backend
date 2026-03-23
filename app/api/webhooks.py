@@ -93,7 +93,6 @@ async def receive_lead(
     request: Request,
     x_api_key: Optional[str] = Header(None, alias="X-API-Key"),
     api_key: Optional[str] = Query(None, description="API Key via query param"),
-    db: Session = Depends(get_mysql_db),
 ):
     """
     Receives lead data from any source and processes it through the pipeline:
@@ -108,11 +107,9 @@ async def receive_lead(
     """
     _verify_api_key(x_api_key, api_key)
 
-    db_lead = await _process_lead_pipeline(source, payload, db)
-    if not db_lead:
-        return LeadWebhookResponse(
-            status="skipped", message="Duplicate lead detected"
-        )
+    # 100% production-ready: Enqueue to background worker instantly
+    from app.tasks.webhook_tasks import process_webhook_lead_task
+    process_webhook_lead_task.delay(source, payload.model_dump())
 
     return LeadWebhookResponse(
         status="ok",
@@ -120,7 +117,7 @@ async def receive_lead(
             f"Lead received from {_get_display_source(source)} "
             "and queued for processing"
         ),
-        lead_id=db_lead.id,
+        lead_id=0,
     )
 
 
@@ -156,7 +153,6 @@ async def receive_99acres_xml(
     request: Request,
     x_api_key: Optional[str] = Header(None, alias="X-API-Key"),
     api_key: Optional[str] = Query(None, description="API Key via query param"),
-    db: Session = Depends(get_mysql_db),
 ):
     """
     Receives an XML payload of multiple leads from 99acres and returns an
@@ -196,12 +192,14 @@ async def receive_99acres_xml(
             continue
 
         try:
-            await _process_lead_pipeline("99acres", lead_data, db)
+            from app.tasks.webhook_tasks import process_webhook_lead_task
+            process_webhook_lead_task.delay("99acres", lead_data.model_dump())
+            
             resp_qry = ET.SubElement(resp_root, "QryResp")
             ET.SubElement(resp_qry, "QryId").text = qry_id
             ET.SubElement(resp_qry, "status").text = "Y"
         except Exception as e:
-            logger.error(f"Failed to process 99acres lead {qry_id}: {e}")
+            logger.error(f"Failed to enqueue 99acres lead {qry_id}: {e}")
             resp_qry = ET.SubElement(resp_root, "QryResp")
             ET.SubElement(resp_qry, "QryId").text = qry_id
             ET.SubElement(resp_qry, "status").text = "N"

@@ -40,6 +40,18 @@ def create_contact(db: Session, contact_data: dict) -> Contact:
         db.add(db_contact)
         db.commit()
         db.refresh(db_contact)
+        
+        # Trigger Retell AI outbound call asynchronously after 10 seconds
+        try:
+            from app.tasks.lead_tasks import enqueue_call_task
+            enqueue_call_task.apply_async(
+                args=[db_contact.id, db_contact.phone, db_contact.name_],
+                countdown=10
+            )
+        except Exception as e:
+            from loguru import logger
+            logger.error(f"Failed to enqueue AI call for contact {db_contact.id}: {str(e)}")
+
         return db_contact
     except SQLAlchemyError:
         db.rollback()

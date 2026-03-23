@@ -13,7 +13,10 @@ sys.path.insert(0, os.path.realpath(os.path.join(os.path.dirname(__file__), ".."
 # for 'autogenerate' support
 from app.configs.db_config import MYSQL_DATABASE_URL, Base
 
+from app.models.assignment_batch import AssignmentBatch
 from app.models.lead import Lead
+from app.models.lead_activity import LeadActivity
+from app.models.lead_assignment import LeadAssignment
 from app.models.retell_call import RetellCall
 from app.models.realty import Contact, Property, PropertyImage, Review
 from app.models.sync_metadata import SyncMetadata

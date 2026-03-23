@@ -36,7 +36,11 @@ class Lead(MySQLBase):
     budget = Column(String(100), nullable=True)
     message = Column(Text, nullable=True)
     status = Column(
-        Enum("new", "contacted", "qualified", "followup", "converted", "lost", name="lead_status_enum"),
+        Enum(
+            "new", "contacted", "qualified", "followup", "converted", "lost",
+            "interested", "not_interested",
+            name="lead_status_enum",
+        ),
         default="new",
         nullable=False,
         index=True,
@@ -64,10 +68,19 @@ class Lead(MySQLBase):
     # Assignment
     assigned_to = Column(Integer, ForeignKey("agents.id"), nullable=True, index=True)
     priority = Column(Integer, default=1, index=True)
+    
+    # Ownership (Admin -> RM)
+    owner_id = Column(Integer, ForeignKey("users.id"), nullable=True, index=True)
+
+    # Follow-up scheduling
+    follow_up_at = Column(DateTime(timezone=True), nullable=True, index=True)
 
     # Relationships
     agent = relationship("Agent", back_populates="leads")
+    owner = relationship("User", back_populates="leads")
     retell_calls = relationship("RetellCall", back_populates="lead")
+    assignments = relationship("LeadAssignment", back_populates="lead", order_by="LeadAssignment.assigned_at.desc()")
+    activities = relationship("LeadActivity", back_populates="lead", order_by="LeadActivity.created_at.desc()")
 
     __table_args__ = (
         # Dedup: same inquiry = same phone + same lead timestamp + same external reference.

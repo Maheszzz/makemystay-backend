@@ -137,6 +137,7 @@ async def process_lead(
                     new_lead.id,
                     "ASSIGNED",
                     f"Assigned to agent {assigned_agent.name}",
+                    session=db,
                 )
             else:
                 logger.warning(
@@ -147,6 +148,7 @@ async def process_lead(
                     new_lead.id,
                     "UNASSIGNED",
                     "No available agents for assignment",
+                    session=db,
                 )
         except Exception as assign_err:
             logger.error(
@@ -179,9 +181,10 @@ async def process_lead(
                     new_lead.created_at.isoformat() if new_lead.created_at else None
                 ),
             },
+            session=db,
         )
 
-        # ── 5. Enqueue CRM Sync (Asynchronous) ───────────────────────
+        # ── 5. Enqueue Async Tasks ───────────────────────────────────
         _enqueue_crm_sync(db, new_lead)
 
         return new_lead
@@ -220,23 +223,12 @@ async def process_lead(
 
 
 def _enqueue_crm_sync(db: Session, lead: Lead) -> None:
-    """Enqueue the lead for Zoho CRM synchronisation via RQ."""
-    if not lead_queue:
-        logger.warning(
-            "Redis Queue (lead_queue) not available. "
-            "CRM sync will not happen automatically."
-        )
-        return
-
+    """Enqueue the lead for Zoho CRM synchronisation via Celery."""
     try:
-        from rq import Retry
+        from app.tasks.lead_tasks import sync_lead_to_zoho_task
 
-        lead_queue.enqueue(
-            sync_lead_to_zoho_task,
-            lead.id,
-            job_id=f"sync_zoho_{lead.id}",
-            retry=Retry(max=5, interval=[10, 30, 60, 300, 600]),
-        )
+        sync_lead_to_zoho_task.delay(lead.id)
+        
         lead.crm_status = "queued"
         db.commit()
         logger.info(f"Enqueued Zoho sync for lead {lead.id}")

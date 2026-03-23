@@ -52,11 +52,14 @@ class CRMLeadAdapter:
         last_name = "User"  # Zoho requires Last Name
 
         if self.name_:
-            names = self.name_.split(" ", 1)
+            names = str(self.name_).strip().split(" ", 1)
             if len(names) > 1:
                 first_name, last_name = names[0], names[1]
-            else:
+            elif names[0]:
                 last_name = names[0]
+                
+        if not last_name or not last_name.strip():
+            last_name = "Unknown"
 
         description_parts = []
         if self.message:

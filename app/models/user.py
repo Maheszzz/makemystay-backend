@@ -1,4 +1,5 @@
 from sqlalchemy import Column, DateTime, Enum, Integer, String, func
+from sqlalchemy.orm import relationship
 
 from app.configs.db_config import MySQLBase
 
@@ -21,3 +22,6 @@ class User(MySQLBase):
     updated_at = Column(
         DateTime, server_default=func.now(), onupdate=func.now(), nullable=True
     )
+
+    # Relationships
+    leads = relationship("Lead", back_populates="owner")

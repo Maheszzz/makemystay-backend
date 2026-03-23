@@ -1,12 +1,9 @@
 import os
 from celery import Celery
 from loguru import logger
-from dotenv import load_dotenv
+from app.core.config import settings
 
-load_dotenv(os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(__file__))), ".env"))
-load_dotenv(os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(__file__))), ".env.production"), override=True)
-
-redis_url = os.getenv("REDIS_URL", "redis://localhost:6379/0")
+redis_url = settings.REDIS_URL
 
 # Initialize the Celery App using Redis as the message broker and result backend
 celery_app = Celery(
@@ -18,7 +15,9 @@ celery_app = Celery(
         "app.api.housing", 
         "app.api.realty", 
         "app.api.demo", 
-        "app.api.admin"
+        "app.api.admin",
+        "app.tasks.webhook_tasks",
+        "app.tasks.lead_tasks"
     ]
 )
 

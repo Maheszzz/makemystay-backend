@@ -102,6 +102,7 @@ async def trigger_outbound_call(
     property_type: str = "",
     message: str = "",
     test_id: Optional[int] = None,
+    contact_id: Optional[int] = None,
 ):
     """
     Trigger outbound AI call using Retell.
@@ -124,6 +125,7 @@ async def trigger_outbound_call(
         "agent_id": RETELL_AGENT_ID,
         "metadata": {
             "test_id": test_id,
+            "contact_id": contact_id,
         },
         "retell_llm_dynamic_variables": {
             "name": name,
@@ -233,13 +235,50 @@ async def retell_webhook(request: Request, db: Session = Depends(get_mysql_db)):
         else:
             test_row.status = "called"  # Updated according to spec
 
-        if test_row.lead_id:
-            from app.models.lead import Lead
-            lead = db.query(Lead).filter(Lead.id == test_row.lead_id).first()
-            if lead:
-                lead.is_ai_called = True
-
         # Parse SUMMARY line if present:
+        # SUMMARY: interested=<true|false>, location=<...>, budget=<...>, move_in=<...>
+        interested: Optional[bool] = None
+        location: Optional[str] = None
+        budget: Optional[str] = None
+        move_in: Optional[str] = None
+
+        summary_match = re.search(
+            r"SUMMARY:\s*interested\s*=\s*(true|false)\s*,\s*location\s*=\s*(.*?)\s*,\s*budget\s*=\s*(.*?)\s*,\s*move_in\s*=\s*(.*)$",
+            transcript_str,
+            flags=re.IGNORECASE | re.DOTALL,
+        )
+        if summary_match:
+            interested = summary_match.group(1).lower() == "true"
+            location = summary_match.group(2).strip()
+            budget = summary_match.group(3).strip()
+            move_in = summary_match.group(4).strip()
+        else:
+            # Fallback to simpler extraction
+            it = re.search(r"interested\s*=\s*(true|false)", transcript_str, flags=re.I)
+            if it:
+                interested = it.group(1).lower() == "true"
+            loc = re.search(r"location\s*=\s*([^,]+)", transcript_str, flags=re.I)
+            bd = re.search(r"budget\s*=\s*([^,]+)", transcript_str, flags=re.I)
+            mv = re.search(r"move_in\s*=\s*(.+)$", transcript_str, flags=re.I | re.DOTALL)
+            if loc:
+                location = loc.group(1).strip()
+            if bd:
+                budget = bd.group(1).strip()
+            if mv:
+                move_in = mv.group(1).strip()
+
+        if test_row.contact_id:
+            from app.models.realty import Contact
+            contact = db.query(Contact).filter(Contact.id == test_row.contact_id).first()
+            if contact:
+                contact.is_ai_called = True
+                contact.call_status = test_row.status
+                if interested is not None:
+                    contact.interested = interested
+                if budget:
+                    contact.budget = budget
+                if location:
+                    contact.location = location
         # SUMMARY: interested=<true|false>, location=<...>, budget=<...>, move_in=<...>
         interested: Optional[bool] = None
         location: Optional[str] = None

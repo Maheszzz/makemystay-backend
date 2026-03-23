@@ -10,6 +10,7 @@ import traceback
 from loguru import logger
 
 from app.configs.db_config import MySQLSessionLocal
+from app.core.celery_app import celery_app
 from app.events.event_service import publish_event
 from app.models.failed_job import FailedJob
 from app.repo import lead as lead_repo
@@ -26,14 +27,14 @@ MAX_RETRIES: int = 5
 # ────────────────────────────────────────────────────────────────────
 #  Zoho CRM Sync Task
 # ────────────────────────────────────────────────────────────────────
-def sync_lead_to_zoho_task(lead_id: int) -> None:
-    """RQ Task: Sync a stored lead to Zoho CRM using only its ID.
+@celery_app.task(name="sync_lead_to_zoho_task", bind=True, max_retries=5, default_retry_delay=60)
+def sync_lead_to_zoho_task(self, lead_id: int) -> None:
+    """Celery Task: Sync a stored lead to Zoho CRM using only its ID.
 
-    Retry / DLQ behaviour is handled by RQ's built-in ``Retry`` (configured
-    at enqueue time in ``lead_processor._enqueue_crm_sync``).  When all
-    retries are exhausted the task falls through to the DLQ branch below.
+    Retry / DLQ behaviour is handled by Celery's built-in ``Retry``. When all
+    retries are exhausted the task logs it to FailedJobs.
     """
-    logger.info(f"RQ Task: Syncing Lead #{lead_id} to Zoho CRM…")
+    logger.info(f"Celery Task: Syncing Lead #{lead_id} to Zoho CRM...")
 
     with MySQLSessionLocal() as session:
         lead_obj = lead_repo.get_lead_by_id(session, lead_id)
@@ -91,70 +92,59 @@ def sync_lead_to_zoho_task(lead_id: int) -> None:
             )
 
         except Exception as e:
-            _handle_sync_failure(session, lead_obj, lead_id, e)
+            if self.request.retries < self.max_retries:
+                retry_num = self.request.retries + 1
+                logger.warning(
+                    f"Sync attempt {retry_num}/{self.max_retries} failed for "
+                    f"Lead #{lead_id}: {e}. Retrying..."
+                )
+                lead_repo.update_lead(session, lead_obj, {"crm_status": "retrying"})
+                session.commit()
+                publish_event(
+                    lead_id,
+                    "CRM_SYNC_RETRYING",
+                    f"Sync failed, retrying (attempt {retry_num})",
+                    payload=str(e),
+                )
+                raise self.retry(exc=e)
 
+            # ── Dead Letter Queue: permanently failed ─────────────────
+            logger.error(
+                f"CRM Sync permanently failed for Lead #{lead_id} "
+                f"after retries: {e}"
+            )
+            lead_repo.update_lead(session, lead_obj, {"crm_status": "permanently_failed"})
+            session.commit()
+            publish_event(
+                lead_id,
+                "CRM_SYNC_FAILED",
+                "Sync permanently failed after maximum retries",
+                payload=str(e),
+            )
 
-def _handle_sync_failure(session, lead_obj, lead_id: int, error: Exception) -> None:
-    """Handle CRM sync failure — retry or move to DLQ."""
-    from rq import get_current_job
-
-    job = get_current_job()
-
-    if job and hasattr(job, "retries_left") and job.retries_left > 0:
-        # RQ will automatically retry — just update status
-        retry_num = MAX_RETRIES - job.retries_left + 1
-        logger.warning(
-            f"Sync attempt {retry_num}/{MAX_RETRIES} failed for "
-            f"Lead #{lead_id}: {error}. Retrying…"
-        )
-        lead_repo.update_lead(session, lead_obj, {"crm_status": "retrying"})
-        session.commit()
-        publish_event(
-            lead_id,
-            "CRM_SYNC_RETRYING",
-            f"Sync failed, retrying (attempt {retry_num})",
-            payload=str(error),
-        )
-        raise  # Re-raise to trigger RQ retry
-
-    # ── Dead Letter Queue: permanently failed ─────────────────
-    logger.error(
-        f"CRM Sync permanently failed for Lead #{lead_id} "
-        f"after retries: {error}"
-    )
-    lead_repo.update_lead(
-        session, lead_obj, {"crm_status": "permanently_failed"}
-    )
-    session.commit()
-    publish_event(
-        lead_id,
-        "CRM_SYNC_FAILED",
-        "Sync permanently failed after maximum retries",
-        payload=str(error),
-    )
-
-    # Log to FailedJobs for visibility (Dead Letter Queue)
-    try:
-        failed = FailedJob(
-            job_name=f"sync_zoho_{lead_id}",
-            payload={"lead_id": lead_id},
-            error=str(error),
-            stack_trace=traceback.format_exc(),
-        )
-        session.add(failed)
-        session.commit()
-    except Exception as log_err:
-        logger.error(f"Failed to record DLQ entry: {log_err}")
+            # Log to FailedJobs for visibility
+            try:
+                failed = FailedJob(
+                    job_name=f"sync_zoho_{lead_id}",
+                    payload={"lead_id": lead_id},
+                    error=str(e),
+                    stack_trace=traceback.format_exc(),
+                )
+                session.add(failed)
+                session.commit()
+            except Exception as log_err:
+                logger.error(f"Failed to record DLQ entry: {log_err}")
 
 
 # ────────────────────────────────────────────────────────────────────
 #  Contact Notification Task
 # ────────────────────────────────────────────────────────────────────
+@celery_app.task(name="process_contact_notifications_task")
 def process_contact_notifications_task(
     contact_data_dict: dict, contact_id: int
 ) -> None:
-    """RQ Task: Handle all post-creation notifications for a website contact."""
-    logger.info(f"RQ Task: Processing notifications for Contact #{contact_id}…")
+    """Celery Task: Handle all post-creation notifications for a website contact."""
+    logger.info(f"Celery Task: Processing notifications for Contact #{contact_id}...")
 
     from app.api.retell import trigger_outbound_call
     from app.repo import realty as realty_repo
@@ -209,9 +199,10 @@ def process_contact_notifications_task(
 # ────────────────────────────────────────────────────────────────────
 #  Historical Recovery Task
 # ────────────────────────────────────────────────────────────────────
+@celery_app.task(name="sync_historical_housing_task")
 def sync_historical_housing_task(days: int = 5) -> None:
-    """RQ Task: Fetch historical housing leads over X days."""
-    logger.info(f"RQ Task: Starting historical sync for last {days} days")
+    """Celery Task: Fetch historical housing leads over X days."""
+    logger.info(f"Celery Task: Starting historical sync for last {days} days")
     
     async def _run_sync():
         from datetime import datetime
@@ -281,3 +272,53 @@ def sync_historical_housing_task(days: int = 5) -> None:
         if redis_conn:
             redis_conn.delete("lock:historical_sync_housing")
         raise
+
+# ────────────────────────────────────────────────────────────────────
+#  AI Call Trigger Task
+# ────────────────────────────────────────────────────────────────────
+@celery_app.task(name="enqueue_call_task", bind=True, max_retries=3, default_retry_delay=30)
+def enqueue_call_task(self, contact_id: int, phone: str, name: str) -> None:
+    """Celery Task: Trigger an outbound AI call for a new website contact."""
+    logger.info(f"Celery Task: Enqueuing AI call for Contact #{contact_id}...")
+    
+    from app.models.retell_call import RetellCall
+    from app.api.retell import trigger_outbound_call
+
+    with MySQLSessionLocal() as session:
+        # Create tracking row directly. Since we don't query Contact, we save a read query.
+        call_log = RetellCall(
+            contact_id=contact_id,
+            to_phone=phone,
+            status="queued"
+        )
+        session.add(call_log)
+        session.commit()
+        session.refresh(call_log)
+        
+        try:
+            data = asyncio.run(trigger_outbound_call(
+                name=name or "User",
+                phone=phone,
+                location="",
+                property_type="",
+                message="interested in property options",
+                test_id=call_log.id,
+                contact_id=contact_id
+            ))
+            
+            if data and (data.get("call_id") or data.get("id")):
+                call_id = data.get("call_id") or data.get("id")
+                call_log.retell_call_id = call_id
+                call_log.status = "calling"
+                session.commit()
+                logger.success(f"Successfully triggered AI call {call_id} for Contact #{contact_id}")
+            else:
+                call_log.status = "failed"
+                session.commit()
+                logger.error(f"Failed to trigger AI call for Contact #{contact_id}: No call_id from Retell")
+                
+        except Exception as e:
+            call_log.status = "failed"
+            session.commit()
+            logger.error(f"Error triggering AI call for Contact #{contact_id}: {e}")
+            raise self.retry(exc=e)

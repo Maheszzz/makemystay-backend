@@ -13,6 +13,8 @@ class Settings(BaseSettings):
     DB_NAME: str
 
     ENV: str = "production"
+    # Dev-only: run SQLAlchemy create_all on startup. Production should use Alembic only.
+    SQLALCHEMY_CREATE_ALL_ON_STARTUP: bool = False
     SENTRY_DSN: Optional[str] = None
     REDIS_URL: str = "redis://localhost:6379"
 

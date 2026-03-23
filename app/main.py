@@ -15,9 +15,6 @@ from slowapi.errors import RateLimitExceeded
 import time
 from collections import defaultdict
 
-from app.api.agent_routes import router as agent_router
-from app.api.auth import router as auth_router
-from app.api.realty import realty_router
 from app.core.config import settings
 from app.core.log_dedupe import should_log_once
 
@@ -206,22 +203,10 @@ async def csrf_protect(request: Request, call_next):
             )
     return await call_next(request)
 
-# --- Database Initialization ---
-# Create Database Tables
-from app.configs.db_config import MySQLBase, mysql_engine  # noqa: E402
-from app.models import (  # noqa: E402, F401
-    agent,
-    booking,
-    failed_job,
-    lead,
-    lead_event,
-    payment,
-    payment_webhook_event,
-    retell_call,
-    sync_metadata,
-)
+# --- Database initialization (optional create_all; Alembic is source of truth in prod) ---
+from app.bootstrap.database import maybe_create_tables_from_metadata  # noqa: E402
 
-MySQLBase.metadata.create_all(bind=mysql_engine)
+maybe_create_tables_from_metadata()
 
 
 @app.exception_handler(Exception)
@@ -264,63 +249,10 @@ async def health():
         "scheduler": "running" if scheduler.running else "stopped"
     }
 
-# --- Include Routers ---
-# Include routers
-app.include_router(realty_router, prefix="/api/v1")
-app.include_router(auth_router, prefix="/api/v1")
-from app.api.upload import router as upload_router  # noqa: E402
+# --- Routers (see app/bootstrap/routers.py) ---
+from app.bootstrap.routers import register_routers  # noqa: E402
 
-app.include_router(upload_router, prefix="/api/v1")
-from app.api.payment import router as payment_router  # noqa: E402
-
-app.include_router(payment_router, prefix="/api/v1")
-
-# Mount the webhook endpoint at root level too so Razorpay can reach it at
-# /payments/webhook even if the dashboard URL is missing the /api/v1 prefix.
-from fastapi import APIRouter as _APIRouter  # noqa: E402
-from app.api.payment import razorpay_webhook  # noqa: E402
-
-_webhook_alias_router = _APIRouter()
-_webhook_alias_router.add_api_route(
-    "/payments/webhook",
-    razorpay_webhook,
-    methods=["POST"],
-    include_in_schema=False,  # keep OpenAPI docs tidy
-)
-app.include_router(_webhook_alias_router)
-from app.api.demo import router as demo_router  # noqa: E402
-
-app.include_router(demo_router, prefix="/api/v1")
-from app.api.retell import retell_router  # noqa: E402
-
-app.include_router(retell_router, prefix="/api/v1")
-from app.api.housing import housing_router  # noqa: E402
-
-app.include_router(housing_router, prefix="/api/v1")
-
-# WhatsApp inbound webhook (Twilio)
-from app.api.whatsapp import whatsapp_router  # noqa: E402
-
-app.include_router(whatsapp_router, prefix="/api/v1")
-
-# Meta WhatsApp interactive webhook
-from app.api.meta_whatsapp import meta_whatsapp_router  # noqa: E402
-
-app.include_router(meta_whatsapp_router, prefix="/api/v1")
-
-# Include webhooks at both /api/v1 and root for maximum reachability
-from app.api.webhooks import webhooks_router  # noqa: E402
-
-app.include_router(webhooks_router, prefix="/api/v1")
-app.include_router(webhooks_router)
-
-# Include Admin Dashboard routes
-from app.api.admin import admin_router  # noqa: E402
-from app.api.websockets import ws_router  # noqa: E402
-
-app.include_router(admin_router, prefix="/api/v1")
-app.include_router(ws_router, prefix="/api/v1")
-app.include_router(agent_router, prefix="/api/v1")
+register_routers(app)
 
 
 if __name__ == "__main__":
