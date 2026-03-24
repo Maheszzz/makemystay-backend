@@ -1,13 +1,37 @@
 """Repository layer for Realty models with transaction safety."""
 
 import re
-from typing import List, Optional
+from collections import defaultdict
+from typing import Dict, List, Optional
 
 from sqlalchemy import desc, func
 from sqlalchemy.exc import OperationalError, SQLAlchemyError
-from sqlalchemy.orm import Session, joinedload, subqueryload
+from sqlalchemy.orm import Session, attributes, joinedload, selectinload
 
 from app.models.realty import Contact, Property, PropertyImage, Review
+
+
+def _attach_property_images_bulk(db: Session, properties: List[Property]) -> None:
+    """Load images for many properties in one query.
+
+    ``selectinload``/``subqueryload`` on list queries has been unreliable in production
+    (list returned ``images: []`` while ``get_property_by_id`` had full galleries).
+    Attaching rows explicitly matches detail behaviour and avoids N+1 queries.
+    """
+    if not properties:
+        return
+    pids = [p.id for p in properties]
+    rows = (
+        db.query(PropertyImage)
+        .filter(PropertyImage.property_id.in_(pids))
+        .order_by(PropertyImage.property_id, PropertyImage.sort_order)
+        .all()
+    )
+    by_pid: Dict[int, List[PropertyImage]] = defaultdict(list)
+    for img in rows:
+        by_pid[img.property_id].append(img)
+    for p in properties:
+        attributes.set_committed_value(p, "images", by_pid.get(p.id, []))
 
 def _is_missing_soft_delete_column_error(exc: Exception) -> bool:
     """Detect MySQL errors caused by missing legacy soft-delete columns."""
@@ -135,7 +159,7 @@ def get_properties(
         .outerjoin(
             avg_rating_subquery, Property.id == avg_rating_subquery.c.property_id
         )
-        .options(subqueryload(Property.images), subqueryload(Property.reviews))
+        .options(selectinload(Property.reviews))
         .order_by(desc(func.coalesce(avg_rating_subquery.c.avg_rating, 0)))
     )
 
@@ -208,7 +232,7 @@ def get_properties(
             .outerjoin(
                 avg_rating_subquery, Property.id == avg_rating_subquery.c.property_id
             )
-            .options(subqueryload(Property.images), subqueryload(Property.reviews))
+            .options(selectinload(Property.reviews))
             .order_by(desc(func.coalesce(avg_rating_subquery.c.avg_rating, 0)))
         )
         if category:
@@ -262,6 +286,8 @@ def get_properties(
             fallback_query = fallback_query.filter(or_(*conditions))
 
         properties = fallback_query.offset(skip).limit(limit).all()
+
+    _attach_property_images_bulk(db, properties)
 
     # Calculate stats for each property
     for p in properties:
