@@ -19,8 +19,10 @@ from datetime import datetime
 from typing import Optional
 
 from loguru import logger
+from sqlalchemy.exc import OperationalError
 from sqlalchemy.orm import Session
 
+from app.core.log_dedupe import should_log_once
 from app.configs.db_config import MySQLSessionLocal
 from app.models.sync_metadata import SyncMetadata
 from app.schemas.lead import LeadCreate
@@ -68,6 +70,18 @@ async def _run_housing_sync(forced_lookback_seconds: Optional[int] = None):
     db = MySQLSessionLocal()
     try:
         await sync_housing_leads(db, forced_lookback_seconds=forced_lookback_seconds)
+    except OperationalError as e:
+        try:
+            db.rollback()
+        except Exception:
+            pass
+        # MySQL down / wrong host: expected in local dev; avoid ERROR every 30s.
+        if should_log_once("housing_sync_mysql_unreachable", 300):
+            logger.warning(
+                "Housing lead sync skipped: cannot connect to MySQL. "
+                "Start the DB, fix DB_HOST/DB_PORT in .env, or set LEAD_PULL_SYNC_ENABLED=false. "
+                f"({e})"
+            )
     except Exception as e:
         logger.error(f"Housing sync wrapper caught unhandled error: {e}")
         try:
@@ -226,6 +240,16 @@ async def _run_99acres_sync():
     db = MySQLSessionLocal()
     try:
         await sync_99acres_leads(db)
+    except OperationalError as e:
+        try:
+            db.rollback()
+        except Exception:
+            pass
+        if should_log_once("99acres_sync_mysql_unreachable", 300):
+            logger.warning(
+                "99acres sync skipped: cannot connect to MySQL. ({})",
+                e,
+            )
     except Exception as e:
         logger.error(f"99acres sync wrapper caught: {e}")
     finally:

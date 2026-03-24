@@ -88,7 +88,7 @@ async def process_lead(
         existing = existing_query.filter(day_filter).first()
 
         if existing:
-            logger.info(f"Duplicate lead skipped: {lead_data.phone} from {source}")
+            logger.debug("Duplicate lead skipped: {} from {}", lead_data.phone, source)
             return None
 
         # ── 2. Store Lead ─────────────────────────────────────────────

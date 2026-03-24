@@ -35,7 +35,7 @@ MYSQL_DATABASE_URL = (
 logger.info(f"Creating MySQL engine for {DB_HOST}:{DB_PORT}/{DB_NAME}")
 mysql_engine = create_engine(
     MYSQL_DATABASE_URL,
-    echo=True,
+    echo=settings.SQLALCHEMY_ECHO,
     pool_pre_ping=True,
     pool_size=10,
     max_overflow=20,

@@ -3,8 +3,8 @@ CRM / leads admin: metadata, RMs, lead CRUD, assignments, timeline, funnel, work
 """
 
 import asyncio
-from datetime import datetime, timezone
-from typing import Optional
+from datetime import date, datetime, timezone
+from typing import Optional, Tuple
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from loguru import logger
@@ -26,6 +26,7 @@ from app.core.lead_schema import (
 )
 from app.models.assignment_batch import AssignmentBatch
 from app.models.lead import Lead
+from app.models.realty import Property
 from app.models.lead_activity import LeadActivity
 from app.models.lead_assignment import LeadAssignment
 from app.models.sync_metadata import SyncMetadata
@@ -42,6 +43,22 @@ from app.api.admin.schemas import (
 )
 
 router = APIRouter()
+
+
+def _month_datetime_bounds(d: date) -> Tuple[datetime, datetime]:
+    """Start (inclusive) and end (exclusive) of the calendar month containing `d`."""
+    start = datetime(d.year, d.month, 1)
+    if d.month == 12:
+        end = datetime(d.year + 1, 1, 1)
+    else:
+        end = datetime(d.year, d.month + 1, 1)
+    return start, end
+
+
+def _first_day_prev_month(d: date) -> date:
+    if d.month == 1:
+        return date(d.year - 1, 12, 1)
+    return date(d.year, d.month - 1, 1)
 
 
 @router.get("/admin/lead-metadata", summary="Lead statuses, priorities (single source for admin UI)")
@@ -88,14 +105,86 @@ async def get_stats(db: Session = Depends(get_mysql_db)):
 @router.get("/admin/analytics", summary="Get simple analytics metrics")
 @limiter.limit("10/minute")
 async def analytics(request: Request, db: Session = Depends(get_mysql_db)):
-    """Provides high-level metrics (Total Leads, Today Leads, Failed)."""
+    """High-level CRM + inventory metrics, including month-over-month new listings and leads."""
 
     def _fetch_data():
         total_leads = db.query(Lead).count()
         today = func.date(Lead.created_at) == func.current_date()
         today_leads = db.query(Lead).filter(today).count()
         failed = db.query(Lead).filter(Lead.crm_status == "failed").count()
-        return {"total_leads": total_leads, "today_leads": today_leads, "failed": failed}
+
+        not_deleted = Property.is_deleted == False  # noqa: E712
+        total_properties = db.query(Property).filter(not_deleted).count()
+        active_properties = (
+            db.query(Property).filter(not_deleted, Property.is_available == True).count()  # noqa: E712
+        )
+
+        today_d = date.today()
+        this_start, this_end = _month_datetime_bounds(today_d)
+        prev_anchor = _first_day_prev_month(today_d)
+        prev_start, prev_end = _month_datetime_bounds(prev_anchor)
+
+        properties_added_this_month = (
+            db.query(Property)
+            .filter(
+                not_deleted,
+                Property.created_at.isnot(None),
+                Property.created_at >= this_start,
+                Property.created_at < this_end,
+            )
+            .count()
+        )
+        properties_added_last_month = (
+            db.query(Property)
+            .filter(
+                not_deleted,
+                Property.created_at.isnot(None),
+                Property.created_at >= prev_start,
+                Property.created_at < prev_end,
+            )
+            .count()
+        )
+
+        leads_this_month = (
+            db.query(Lead)
+            .filter(
+                Lead.created_at.isnot(None),
+                Lead.created_at >= this_start,
+                Lead.created_at < this_end,
+            )
+            .count()
+        )
+        leads_last_month = (
+            db.query(Lead)
+            .filter(
+                Lead.created_at.isnot(None),
+                Lead.created_at >= prev_start,
+                Lead.created_at < prev_end,
+            )
+            .count()
+        )
+
+        failed_lead_ids = [
+            row[0]
+            for row in db.query(Lead.id)
+            .filter(Lead.crm_status == "failed")
+            .order_by(Lead.id.asc())
+            .limit(50)
+            .all()
+        ]
+
+        return {
+            "total_leads": total_leads,
+            "today_leads": today_leads,
+            "failed": failed,
+            "failed_lead_ids": failed_lead_ids,
+            "total_properties": total_properties,
+            "active_properties": active_properties,
+            "properties_added_this_month": properties_added_this_month,
+            "properties_added_last_month": properties_added_last_month,
+            "leads_this_month": leads_this_month,
+            "leads_last_month": leads_last_month,
+        }
 
     try:
         data = await asyncio.wait_for(asyncio.to_thread(_fetch_data), timeout=5.0)
@@ -111,9 +200,9 @@ async def analytics(request: Request, db: Session = Depends(get_mysql_db)):
 @router.get("/users/rms", summary="Get all active Relationship Managers")
 def get_rms(db: Session = Depends(get_mysql_db), user=Depends(security.get_current_user)):
     """Fetch active users with the RM or employee role for the assignment dropdown."""
-    if user.role not in ["admin", "RM", "employee"]:
+    if user.role not in ["admin", "employee"]:
         raise HTTPException(status_code=403, detail="Not allowed")
-    return db.query(User).filter(User.role.in_(["RM", "employee"]), User.is_active == True).all()
+    return db.query(User).filter(User.role == "employee").all()
 
 
 @router.get("/leads", summary="Get role-based leads with filters")
@@ -123,6 +212,13 @@ def get_leads(
     source: Optional[str] = Query(None),
     date_from: Optional[str] = Query(None, description="ISO date, e.g. 2026-01-01"),
     date_to: Optional[str] = Query(None, description="ISO date, e.g. 2026-12-31"),
+    limit: int = Query(
+        10_000,
+        ge=1,
+        le=50_000,
+        description="Max rows (default 10k so admin totals match /admin/analytics; was capped at 500)",
+    ),
+    offset: int = Query(0, ge=0, description="Pagination offset"),
     db: Session = Depends(get_mysql_db),
     user=Depends(security.get_current_user),
 ):
@@ -143,7 +239,7 @@ def get_leads(
     if date_to:
         query = query.filter(Lead.created_at <= date_to + " 23:59:59")
 
-    return query.order_by(Lead.created_at.desc()).limit(500).all()
+    return query.order_by(Lead.created_at.desc()).offset(offset).limit(limit).all()
 
 
 def _log_activity(db: Session, lead_id: int, activity_type: str, message: str, user_id: Optional[int] = None):

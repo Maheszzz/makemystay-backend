@@ -17,6 +17,8 @@ class Settings(BaseSettings):
     CORS_EXTRA_ORIGINS: str = ""
     # Dev-only: run SQLAlchemy create_all on startup. Production should use Alembic only.
     SQLALCHEMY_CREATE_ALL_ON_STARTUP: bool = False
+    # Set true only when debugging SQL (prints every query — very noisy during Housing sync).
+    SQLALCHEMY_ECHO: bool = False
     SENTRY_DSN: Optional[str] = None
     REDIS_URL: str = "redis://localhost:6379"
 
@@ -92,6 +94,8 @@ class Settings(BaseSettings):
     HOUSING_API_KEY: str = ""
     HOUSING_API_ID: str = ""
     HOUSING_SYNC_INTERVAL_SECONDS: int = 30
+    # Set to false in .env when MySQL is not running locally (avoids ERROR spam from Housing/99acres pull sync).
+    LEAD_PULL_SYNC_ENABLED: bool = True
     LEAD_DAILY_SYNC_ENABLED: bool = True
     LEAD_DAILY_SYNC_HOUR_UTC: int = 2
     LEAD_DAILY_SYNC_MINUTE_UTC: int = 0

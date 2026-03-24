@@ -33,8 +33,11 @@ def _normalize_phone(phone: str) -> str:
 
 
 @router.post("/admin/retry-failed", summary="Retry failed CRM syncs")
-async def retry_failed_syncs(db: Session = Depends(get_mysql_db)):
-    """Replays leads that failed to sync to CRM."""
+async def retry_failed_syncs(
+    db: Session = Depends(get_mysql_db),
+    _user=Depends(security.admin_or_employee_required),
+):
+    """Requeues leads with crm_status=failed for Zoho sync (admin or employee JWT)."""
     if not lead_queue:
         raise HTTPException(status_code=503, detail="Redis Queue not available")
 
@@ -90,15 +93,10 @@ async def trigger_historical_housing_sync(
 
     from app.tasks.lead_tasks import sync_historical_housing_task
 
-    job = lead_queue.enqueue(
-        sync_historical_housing_task,
-        kwargs={"days": 5},
-        job_timeout=600,
-        result_ttl=86400,
-        job_id=f"historic_sync_{int(time.time())}",
-    )
+    # Queue via Celery instead of legacy RQ to prevent pickling errors
+    task = sync_historical_housing_task.apply_async(kwargs={"days": 5})
 
-    return {"message": "Historical recovery queued successfully.", "job_id": job.id}
+    return {"message": "Historical recovery queued successfully via Celery.", "job_id": task.id}
 
 
 @router.get(
@@ -254,7 +252,7 @@ async def clear_whatsapp_flow_session(
 )
 async def get_payment_analytics(
     db: Session = Depends(get_mysql_db),
-    _admin=Depends(security.admin_required),
+    _user=Depends(security.admin_or_employee_required),
 ):
     from datetime import datetime, timedelta, timezone
 
@@ -302,10 +300,21 @@ async def get_payment_analytics(
         .scalar()
         or 0
     )
+    # Only `error` = operational failure (e.g. secret not configured, DB log failure).
+    # `rejected` = missing/invalid signature or bad JSON — normal internet noise; do not alert.
     failed_webhooks = (
         db.query(func.count(PaymentWebhookEvent.id))
         .filter(
-            PaymentWebhookEvent.status.in_(("error", "rejected")),
+            PaymentWebhookEvent.status == "error",
+            PaymentWebhookEvent.created_at >= alert_window_start,
+        )
+        .scalar()
+        or 0
+    )
+    rejected_inbound_webhooks = (
+        db.query(func.count(PaymentWebhookEvent.id))
+        .filter(
+            PaymentWebhookEvent.status == "rejected",
             PaymentWebhookEvent.created_at >= alert_window_start,
         )
         .scalar()
@@ -329,6 +338,7 @@ async def get_payment_analytics(
         "alerts": {
             "ignored_webhooks": ignored_webhooks,
             "failed_webhooks": failed_webhooks,
+            "rejected_inbound_webhooks": rejected_inbound_webhooks,
             "reconciliation_mismatches": reconciliation_mismatches,
         },
     }

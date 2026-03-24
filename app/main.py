@@ -85,15 +85,20 @@ def email_sync_wrapper_job():
 async def lifespan(app: FastAPI):
     """Lifecycle manager for the app."""
     logger.info("Starting background scheduler...")
-    # Single registration: fires immediately on startup AND repeats on interval
-    scheduler.add_job(
-        sync_all_job,
-        "interval",
-        seconds=settings.HOUSING_SYNC_INTERVAL_SECONDS,
-        id="sync_all_job",
-        next_run_time=datetime.now(),
-    )
-    if settings.LEAD_DAILY_SYNC_ENABLED:
+    # Housing / 99acres pull sync requires MySQL; disable when DB is unavailable locally (see LEAD_PULL_SYNC_ENABLED).
+    if getattr(settings, "LEAD_PULL_SYNC_ENABLED", True):
+        scheduler.add_job(
+            sync_all_job,
+            "interval",
+            seconds=settings.HOUSING_SYNC_INTERVAL_SECONDS,
+            id="sync_all_job",
+            next_run_time=datetime.now(),
+        )
+    else:
+        logger.warning(
+            "LEAD_PULL_SYNC_ENABLED=false — Housing/99acres interval sync not scheduled (set true when MySQL is up)."
+        )
+    if settings.LEAD_DAILY_SYNC_ENABLED and getattr(settings, "LEAD_PULL_SYNC_ENABLED", True):
         scheduler.add_job(
             daily_recovery_sync_job,
             "cron",
@@ -112,10 +117,11 @@ async def lifespan(app: FastAPI):
         )
 
     scheduler.start()
-    logger.info(
-        f"APScheduler started: sync_all_job every {settings.HOUSING_SYNC_INTERVAL_SECONDS}s"
-    )
-    if settings.LEAD_DAILY_SYNC_ENABLED:
+    if getattr(settings, "LEAD_PULL_SYNC_ENABLED", True):
+        logger.info(
+            f"APScheduler: sync_all_job every {settings.HOUSING_SYNC_INTERVAL_SECONDS}s"
+        )
+    if settings.LEAD_DAILY_SYNC_ENABLED and getattr(settings, "LEAD_PULL_SYNC_ENABLED", True):
         logger.info(
             "Daily recovery sync enabled at "
             f"{settings.LEAD_DAILY_SYNC_HOUR_UTC:02d}:{settings.LEAD_DAILY_SYNC_MINUTE_UTC:02d} UTC"

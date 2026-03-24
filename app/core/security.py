@@ -117,3 +117,13 @@ def admin_required(current_user=Depends(get_current_user)):
             detail="The user doesn't have enough privileges",
         )
     return current_user
+
+
+def admin_or_employee_required(current_user=Depends(get_current_user)):
+    """Admin UI allows `employee` role; use this for CRM ops that staff should trigger."""
+    if current_user.role not in ("admin", "employee"):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="The user doesn't have enough privileges",
+        )
+    return current_user
