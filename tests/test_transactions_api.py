@@ -5,11 +5,12 @@ Uses an in-memory SQLite database so the tests run fully offline —
 no MySQL, no Razorpay, no env-file required.
 
 What is exercised:
-- `source` field values (webhook / db) on response rows
+- `source` field values (webhook / db / gateway) on response rows
 - `status` field: authorized → pending, captured → success
 - `bank_rrn` propagated from webhook payload via acquirer_data.rrn
 - `created_at` falls back to DB value when gateway timestamp is absent
 - source-filter query param (?source=webhook, ?source=db)
+- `sync_from_gateway` reconciles pending rows without webhook rows (Razorpay order/payments)
 """
 
 import json
@@ -107,6 +108,7 @@ _settings = SimpleNamespace(
     HOUSING_API_KEY="",
     HOUSING_API_ID="",
     HOUSING_SYNC_INTERVAL_SECONDS=120,
+    SQLALCHEMY_ECHO=False,
 )
 _config_mod = types.ModuleType("app.core.config")
 _config_mod.settings = _settings
@@ -366,3 +368,40 @@ def test_transactions_source_filter_db_only():
     order_ids = [row["order_id"] for row in rows]
     assert "order_filter_db2" in order_ids
     assert "order_filter_wh2" not in order_ids
+
+
+def test_transactions_sync_from_gateway_reconciles_pending_without_webhook(monkeypatch):
+    """When no webhook exists, optional Razorpay order/payments fetch fills capture state."""
+    db = _TestSession()
+    _make_payment(db, order_id="order_gw_recon", status="pending")
+    db.close()
+
+    captured = {
+        "id": "pay_gw_recon_1",
+        "order_id": "order_gw_recon",
+        "amount": 100000,
+        "status": "captured",
+        "currency": "INR",
+        "created_at": 1700000000,
+        "method": "upi",
+    }
+
+    def fake_fetch(order_id: str):
+        return captured if order_id == "order_gw_recon" else None
+
+    monkeypatch.setattr("app.api.payment._fetch_order_payment", fake_fetch)
+
+    r = client.get("/api/v1/payments/transactions")
+    assert r.status_code == 200
+    rows = r.json()
+    assert len(rows) == 1
+    row = rows[0]
+    assert row["source"] == "gateway"
+    assert row["status"] == "success"
+    assert row["payment_id"] == "pay_gw_recon_1"
+
+    db2 = _TestSession()
+    p = db2.query(Payment).filter(Payment.order_id == "order_gw_recon").one()
+    assert p.status == "success"
+    assert p.payment_id == "pay_gw_recon_1"
+    db2.close()

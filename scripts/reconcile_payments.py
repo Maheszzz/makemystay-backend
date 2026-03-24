@@ -2,9 +2,10 @@
 """
 Nightly payment reconciliation job.
 
-Runs every night via cron. For every payment that was created in Razorpay
-in the last 24 hours, it checks our local database to ensure it exists and
-the statuses match accurately.
+1) Razorpay payment.list (time window): match DB by payment_id; fix missing rows and
+   status mismatches.
+2) Pending orders in DB: GET /v1/orders/{order_id}/payments (same as admin
+   `sync_from_gateway`) to fix rows where webhooks never arrived.
 
 If a payment is entirely missing (webhooks failed silently), it is auto-recovered,
 a ReconciliationIssue alert is surfaced to the Admin UI, and a LedgerEntry is fired.
@@ -14,6 +15,7 @@ import argparse
 import os
 import sys
 import time
+from typing import Optional
 from datetime import datetime, timedelta, timezone
 
 # Allow running from repo root without installing the package.
@@ -28,10 +30,12 @@ from loguru import logger
 import razorpay
 from sqlalchemy.orm import Session
 
+from app.api.payment import _fetch_order_payment
 from app.configs.db_config import SessionLocal
 from app.models.payment import Payment
 from app.models.ledger import LedgerEntry
 from app.models.reconciliation import ReconciliationIssue
+from app.services.payment_normalization import _map_status
 
 # ---------------------------------------------------------------------------
 # Config
@@ -86,7 +90,23 @@ def _safe_fetch_all_payments_since(since_timestamp: int):
             
     return results
 
-def run_reconciliation(hours: int, dry_run: bool):
+def _db_status_from_rzp_payment(p_status: Optional[str]) -> str:
+    """Map Razorpay payment.status to our payments.status enum."""
+    s = str(p_status or "").lower()
+    if s in ("captured", "paid", "success"):
+        return "success"
+    if s in ("failed",):
+        return "failed"
+    return "pending"
+
+
+def run_reconciliation(
+    hours: int,
+    dry_run: bool,
+    *,
+    skip_order_backfill: bool = False,
+    max_order_backfill: int = 500,
+):
     db: Session = SessionLocal()
     try:
         now = datetime.now(timezone.utc)
@@ -125,16 +145,12 @@ def run_reconciliation(hours: int, dry_run: bool):
                             payment_id=p_id,
                             amount=safe_amount,
                             currency=p.get('currency', 'INR'),
-                            status=p_status if p_status in ['success', 'captured', 'failed'] else 'pending',
-                            payment_type=p.get('method', 'unknown'),
+                            status=_db_status_from_rzp_payment(p_status),
+                            payment_type="booking",
                             payer_email=p.get('email', ''),
                             payer_phone=p.get('contact', ''),
                             payer_name=None
                         )
-                        
-                        if p_status in ['captured', 'success']:
-                            new_payment.status = "success"
-                            
                         db.add(new_payment)
                         
                         # Apply to Ledger if successfully captured
@@ -191,11 +207,56 @@ def run_reconciliation(hours: int, dry_run: bool):
                 else:
                     already_correct += 1
 
+        # 3) Orders stuck as pending locally (webhooks missed): GET /orders/{id}/payments
+        backfilled = 0
+        failed_from_order = 0
+        if not skip_order_backfill and max_order_backfill > 0:
+            pending_local = (
+                db.query(Payment)
+                .filter(Payment.status == "pending", Payment.order_id.isnot(None))
+                .order_by(Payment.created_at.asc())
+                .limit(max_order_backfill)
+                .all()
+            )
+            logger.info(
+                f"Order/payments backfill: checking {len(pending_local)} pending row(s) "
+                f"(max {max_order_backfill})."
+            )
+            for row in pending_local:
+                oid = str(row.order_id)
+                try:
+                    gp = _fetch_order_payment(oid)
+                except Exception as e:
+                    logger.warning(f"Backfill fetch failed for {oid}: {e}")
+                    gp = None
+                time.sleep(0.12)
+                if not gp:
+                    continue
+                ns = _map_status(str(gp.get("status") or ""))
+                pid = str(gp.get("id") or "").strip()
+                if ns == "success":
+                    if not dry_run:
+                        row.payment_id = pid or row.payment_id
+                        row.status = "success"
+                    backfilled += 1
+                    logger.info(f"Backfill success: order {oid} -> payment {pid}")
+                elif ns == "failed":
+                    if not dry_run:
+                        row.payment_id = row.payment_id or pid
+                        row.status = "failed"
+                    failed_from_order += 1
+                    logger.info(f"Backfill failed status: order {oid} -> payment {pid}")
+            if not dry_run and (backfilled or failed_from_order):
+                db.commit()
+
         logger.info("=== Reconciliation complete ===")
-        logger.info(f"  Total checked    : {len(rzp_payments)}")
-        logger.info(f"  Missing & Fixed  : {missing_count}")
-        logger.info(f"  Mismatched Status: {mismatch_count}")
-        logger.info(f"  Already correct  : {already_correct}")
+        logger.info(f"  Total checked (RZP list) : {len(rzp_payments)}")
+        logger.info(f"  Missing & Fixed          : {missing_count}")
+        logger.info(f"  Mismatched Status        : {mismatch_count}")
+        logger.info(f"  Already correct          : {already_correct}")
+        if not skip_order_backfill:
+            logger.info(f"  Order backfill -> success: {backfilled}")
+            logger.info(f"  Order backfill -> failed : {failed_from_order}")
 
     except Exception as e:
         logger.error(f"Fatal error in reconciliation script: {e}")
@@ -205,7 +266,18 @@ def run_reconciliation(hours: int, dry_run: bool):
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Reconcile payments vs Razorpay API")
     parser.add_argument("--dry-run", action="store_true", help="Report without writing")
-    parser.add_argument("--hours",   type=int, default=24,  help="Look-back window (default 24)")
+    parser.add_argument("--hours", type=int, default=24, help="Look-back window for Razorpay payment.list (default 24)")
+    parser.add_argument(
+        "--skip-order-backfill",
+        action="store_true",
+        help="Skip GET /orders/{id}/payments for pending DB rows (webhook-miss backfill).",
+    )
+    parser.add_argument(
+        "--max-order-backfill",
+        type=int,
+        default=500,
+        help="Max pending orders to check via order/payments API (default 500).",
+    )
     args = parser.parse_args()
 
     started_at = datetime.now(tz=timezone.utc)
@@ -214,4 +286,9 @@ if __name__ == "__main__":
         f"(dry_run={args.dry_run}, hours={args.hours}) ==="
     )
     
-    run_reconciliation(hours=args.hours, dry_run=args.dry_run)
+    run_reconciliation(
+        hours=args.hours,
+        dry_run=args.dry_run,
+        skip_order_backfill=args.skip_order_backfill,
+        max_order_backfill=max(0, args.max_order_backfill),
+    )

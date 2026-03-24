@@ -11,7 +11,7 @@ import jinja2
 import qrcode
 import razorpay
 import httpx
-from fastapi import APIRouter, Depends, HTTPException, Request
+from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from fastapi.responses import FileResponse
 from loguru import logger
 from pydantic import BaseModel
@@ -739,6 +739,13 @@ def get_payment_transactions(
     limit: int = 100,
     status: Optional[str] = None,
     source: Optional[str] = None,
+    sync_from_gateway: bool = Query(
+        True,
+        description=(
+            "When true, for orders with no webhook audit row, fetch Razorpay order/payments "
+            "to reconcile stuck pending rows (capped per request; avoids N+1 on full history)."
+        ),
+    ),
     db: Session = Depends(get_db),
 ):
     """
@@ -795,6 +802,10 @@ def get_payment_transactions(
             if webhook_row.order_id is not None
         }
 
+    gateway_sync_budget = 25 if sync_from_gateway else 0
+    gateway_sync_used = 0
+    gateway_cache: Dict[str, Optional[Dict[str, Any]]] = {}
+
     for row in rows:
         db_payment_id = str(row.payment_id) if row.payment_id is not None else None
         db_order_id = str(row.order_id) if row.order_id is not None else ""
@@ -803,9 +814,17 @@ def get_payment_transactions(
         selected_gateway_payment: Optional[Dict[str, Any]] = None
         selected_webhook = latest_webhook
 
-        # Priority: webhook (truth) -> gateway (fallback) -> db.
-        # Priority: webhook (truth) -> db. (Gateway lookups removed to solve N+1 timeouts)
-        selected_gateway_payment = None
+        # Priority: webhook (truth) -> gateway (reconcile when no webhook) -> db.
+        if sync_from_gateway and latest_webhook is None and db_order_id:
+            st = str(row.status or "").lower()
+            needs_reconcile = st in ("pending", "created", "") or row.payment_id is None
+            if needs_reconcile:
+                if db_order_id in gateway_cache:
+                    selected_gateway_payment = gateway_cache[db_order_id]
+                elif gateway_sync_used < gateway_sync_budget:
+                    gateway_cache[db_order_id] = _fetch_order_payment(db_order_id)
+                    gateway_sync_used += 1
+                    selected_gateway_payment = gateway_cache[db_order_id]
 
         normalized = normalize_transaction(
             payment=selected_gateway_payment,
@@ -813,8 +832,12 @@ def get_payment_transactions(
             db_row=row,
         )
 
-        if source_filter != "all" and normalized["source"] != source_filter:
-            continue
+        if source_filter != "all":
+            if source_filter == "db":
+                if latest_webhook is not None:
+                    continue
+            elif normalized["source"] != source_filter:
+                continue
 
         normalized_payment_id = normalized.get("payment_id")
         if normalized_payment_id and db_payment_id is None:
