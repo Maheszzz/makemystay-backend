@@ -17,6 +17,7 @@ from app.schemas.realty import (
     ContactStatus,
     ContactUpdate,
     ListingType,
+    PropertyCategoryTab,
     PropertyCreate,
     PropertyImageCreate,
     PropertyImageResponse,
@@ -156,6 +157,10 @@ def list_properties(
     limit: int = Query(
         100, ge=1, le=100, description="Maximum number of records to return"
     ),
+    category: Optional[PropertyCategoryTab] = Query(
+        None,
+        description="Admin UI tab: pg | rent | buy | plot (server-side filter; overrides property_type / listing_type)",
+    ),
     property_type: Optional[PropertyType] = Query(
         None, description="Filter by property type"
     ),
@@ -176,21 +181,31 @@ def list_properties(
 
     - **skip**: Number of records to skip (default: 0)
     - **limit**: Maximum records to return (default: 100, max: 100)
-    - **property_type**: Filter by type (PG, 1RK, 1BHK, 2BHK)
-    - **listing_type**: Filter by listing (buy, rent)
+    - **category**: Tab filter — PG (property_type PG), PLOT (Plot), RENT (rent listings excluding PG/Plot), BUY (buy listings excluding PG/Plot)
+    - **property_type**: Filter by type (PG, 1RK, 1BHK, 2BHK) — ignored if **category** is set
+    - **listing_type**: Filter by listing (buy, rent) — ignored if **category** is set
     - **is_available**: Filter by availability (true/false)
     - **search**: Search string for name, location or description
-    - **exclude_property_type**: Exclude a specific type (e.g., PG)
+    - **exclude_property_type**: Exclude a specific type (e.g., PG) — ignored if **category** is set
     """
+    pt = property_type.value if property_type else None
+    lt = listing_type.value if listing_type else None
+    ex = exclude_property_type
+    if category is not None:
+        pt = None
+        lt = None
+        ex = None
+
     properties = realty_repo.get_properties(
         db,
         skip=skip,
         limit=limit,
-        property_type=property_type.value if property_type else None,
-        listing_type=listing_type.value if listing_type else None,
+        property_type=pt,
+        listing_type=lt,
         is_available=is_available,
         search=search,
-        exclude_property_type=exclude_property_type,
+        exclude_property_type=ex,
+        category=category.value if category else None,
     )
     return properties
 

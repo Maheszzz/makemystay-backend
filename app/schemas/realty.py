@@ -37,6 +37,15 @@ class ListingType(str, Enum):
     rent = "rent"
 
 
+class PropertyCategoryTab(str, Enum):
+    """Admin / public UI tabs — maps to property_type + listing_type (see PropertyResponse.derive_category)."""
+
+    pg = "pg"
+    rent = "rent"
+    buy = "buy"
+    plot = "plot"
+
+
 # ==================== CONTACT SCHEMAS ====================
 
 

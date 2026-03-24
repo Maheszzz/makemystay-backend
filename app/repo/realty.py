@@ -84,6 +84,26 @@ def delete_contact(db: Session, db_contact: Contact) -> None:
 # ==================== PROPERTY REPO ====================
 
 
+def _apply_property_category_tab(query, category: Optional[str]):
+    """Filter by UI tab (pg / rent / buy / plot) — matches PropertyResponse.derive_category logic."""
+    if not category:
+        return query
+    c = category.strip().lower()
+    if c == "pg":
+        return query.filter(func.lower(Property.property_type) == "pg")
+    if c == "plot":
+        return query.filter(func.lower(Property.property_type) == "plot")
+    if c == "rent":
+        return query.filter(Property.listing_type == "rent").filter(
+            ~func.lower(Property.property_type).in_(["pg", "plot"])
+        )
+    if c == "buy":
+        return query.filter(Property.listing_type == "buy").filter(
+            ~func.lower(Property.property_type).in_(["pg", "plot"])
+        )
+    return query
+
+
 def get_properties(
     db: Session,
     skip: int = 0,
@@ -93,9 +113,14 @@ def get_properties(
     is_available: Optional[bool] = None,
     search: Optional[str] = None,
     exclude_property_type: Optional[str] = None,
+    category: Optional[str] = None,
     include_deleted: bool = False,
 ) -> List[Property]:
-    """Retrieve properties with filters and eager-loaded images and reviews."""
+    """Retrieve properties with filters and eager-loaded images and reviews.
+
+    When ``category`` is set (pg|rent|buy|plot), it drives the filter and overrides
+    ``property_type`` / ``listing_type`` / ``exclude_property_type`` (callers should omit those).
+    """
     from sqlalchemy import or_
 
     # Subquery to calculate average rating per property
@@ -118,12 +143,15 @@ def get_properties(
     if not include_deleted:
         query = query.filter(func.coalesce(Property.is_deleted, False) == False)  # noqa: E712
 
-    if property_type:
-        query = query.filter(Property.property_type == property_type)
-    if exclude_property_type:
-        query = query.filter(Property.property_type != exclude_property_type)
-    if listing_type:
-        query = query.filter(Property.listing_type == listing_type)
+    if category:
+        query = _apply_property_category_tab(query, category)
+    else:
+        if property_type:
+            query = query.filter(Property.property_type == property_type)
+        if exclude_property_type:
+            query = query.filter(Property.property_type != exclude_property_type)
+        if listing_type:
+            query = query.filter(Property.listing_type == listing_type)
     if is_available is not None:
         query = query.filter(Property.is_available == is_available)
     if search:
@@ -183,14 +211,17 @@ def get_properties(
             .options(subqueryload(Property.images), subqueryload(Property.reviews))
             .order_by(desc(func.coalesce(avg_rating_subquery.c.avg_rating, 0)))
         )
-        if property_type:
-            fallback_query = fallback_query.filter(Property.property_type == property_type)
-        if exclude_property_type:
-            fallback_query = fallback_query.filter(
-                Property.property_type != exclude_property_type
-            )
-        if listing_type:
-            fallback_query = fallback_query.filter(Property.listing_type == listing_type)
+        if category:
+            fallback_query = _apply_property_category_tab(fallback_query, category)
+        else:
+            if property_type:
+                fallback_query = fallback_query.filter(Property.property_type == property_type)
+            if exclude_property_type:
+                fallback_query = fallback_query.filter(
+                    Property.property_type != exclude_property_type
+                )
+            if listing_type:
+                fallback_query = fallback_query.filter(Property.listing_type == listing_type)
         if is_available is not None:
             fallback_query = fallback_query.filter(Property.is_available == is_available)
         if search:
