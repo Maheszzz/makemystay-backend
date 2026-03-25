@@ -13,7 +13,7 @@ from app.configs.db_config import get_mysql_db
 from app.core import security
 from app.core.config import settings
 from app.core.rate_limit import limiter
-from app.core.redis import lead_queue, redis_conn
+from app.core.redis import HISTORICAL_HOUSING_SYNC_LOCK, lead_queue, redis_conn
 from app.models.lead import Lead
 from app.schemas.whatsapp import WhatsAppBulkSendRequest, WhatsAppBulkSendResponse
 from app.tasks.lead_tasks import sync_lead_to_zoho_task
@@ -86,15 +86,26 @@ async def trigger_historical_housing_sync(
     if not lead_queue or not redis_conn:
         raise HTTPException(status_code=503, detail="Redis queue not available")
 
-    lock_key = "lock:historical_sync_housing"
-    if redis_conn.get(lock_key):
+    # Single atomic SET NX — no separate GET (avoids TOCTOU race and double-queue).
+    try:
+        acquired = redis_conn.set(HISTORICAL_HOUSING_SYNC_LOCK, "1", ex=600, nx=True)
+    except Exception as e:
+        logger.error(f"Redis lock for historical housing sync: {e}")
+        raise HTTPException(status_code=503, detail="Redis unavailable") from e
+    if acquired is not True:
         raise HTTPException(status_code=409, detail="A historical sync is already running.")
-    redis_conn.set(lock_key, "1", ex=600, nx=True)
 
     from app.tasks.lead_tasks import sync_historical_housing_task
 
-    # Queue via Celery instead of legacy RQ to prevent pickling errors
-    task = sync_historical_housing_task.apply_async(kwargs={"days": 5})
+    try:
+        task = sync_historical_housing_task.apply_async(kwargs={"days": 5})
+    except Exception as e:
+        logger.error(f"Failed to queue historical housing Celery task: {e}")
+        try:
+            redis_conn.delete(HISTORICAL_HOUSING_SYNC_LOCK)
+        except Exception:
+            pass
+        raise HTTPException(status_code=503, detail="Could not queue historical sync task.") from e
 
     return {"message": "Historical recovery queued successfully via Celery.", "job_id": task.id}
 

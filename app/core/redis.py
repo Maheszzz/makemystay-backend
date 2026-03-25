@@ -8,6 +8,9 @@ from rq import Queue
 
 ADMIN_CHANNEL = "admin_events"
 
+# Redis lock key for Housing.com historical recovery (must match Celery task release).
+HISTORICAL_HOUSING_SYNC_LOCK = "lock:historical_sync_housing"
+
 try:
     redis_conn = redis.from_url(os.getenv("REDIS_URL", "redis://localhost:6379/0"))
     # Main lead processing queue

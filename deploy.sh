@@ -36,10 +36,10 @@ rsync -az --delete \
   --exclude='*.pyc' --exclude='*.egg-info' --exclude='.DS_Store' \
   --exclude='tests/' --exclude='logs/' \
   -e "ssh -i $PEM_KEY -o StrictHostKeyChecking=no" \
-  app alembic alembic.ini requirements.txt .env.production ecosystem.config.js \
+  app alembic scripts alembic.ini requirements.txt .env.production ecosystem.config.js \
   $EC2_USER@$EC2_HOST:$REMOTE_DIR/ 2>/dev/null || \
   scp -i "$PEM_KEY" -o StrictHostKeyChecking=no -r \
-    app alembic alembic.ini requirements.txt .env.production ecosystem.config.js \
+    app alembic scripts alembic.ini requirements.txt .env.production ecosystem.config.js \
     $EC2_USER@$EC2_HOST:$REMOTE_DIR/
 
 # ===== PM2 DEPLOY ON EC2 =====

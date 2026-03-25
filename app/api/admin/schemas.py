@@ -9,6 +9,13 @@ class BulkAssign(BaseModel):
     rm_id: int
 
 
+class BulkAssignToEmployeeRequest(BaseModel):
+    """POST /leads/assign/bulk — assign many leads to one CRM employee (`employees.id`)."""
+
+    lead_ids: List[int]
+    employee_id: int
+
+
 class ClearWhatsAppFlowSessionRequest(BaseModel):
     phone: str = Field(..., description="Phone number in E.164, e.g. +91XXXXXXXXXX")
     clear_meta_session: bool = Field(

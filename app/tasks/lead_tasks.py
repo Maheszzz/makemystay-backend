@@ -202,29 +202,30 @@ def process_contact_notifications_task(
 @celery_app.task(name="sync_historical_housing_task")
 def sync_historical_housing_task(days: int = 5) -> None:
     """Celery Task: Fetch historical housing leads over X days."""
+    from app.core.redis import HISTORICAL_HOUSING_SYNC_LOCK, redis_conn
+
     logger.info(f"Celery Task: Starting historical sync for last {days} days")
-    
+
     async def _run_sync():
         from datetime import datetime
         from app.configs.db_config import MySQLSessionLocal
         from app.services.housing_lead_service import housing_lead_service, BUILDER_API_URL, BROKER_API_URL
         from app.services.lead_processor import process_lead
         from app.schemas.lead import LeadCreate
-        from app.core.redis import redis_conn
-        
+
         db = MySQLSessionLocal()
         try:
             end_date = int(datetime.now().timestamp())
             start_date = end_date - (86400 * days)
-            
+
             logger.info(f"Background Recovery: Fetching missing Housing.com leads from {start_date} to {end_date}")
-            
+
             builder_leads, _ = await housing_lead_service.fetch_leads(str(start_date), str(end_date), api_url=BUILDER_API_URL)
-            broker_leads, _  = await housing_lead_service.fetch_leads(str(start_date), str(end_date), api_url=BROKER_API_URL)
-            
+            broker_leads, _ = await housing_lead_service.fetch_leads(str(start_date), str(end_date), api_url=BROKER_API_URL)
+
             all_raw = (builder_leads or []) + (broker_leads or [])
             logger.info(f"Background Recovery: Total leads fetched: {len(all_raw)}")
-            
+
             imported = 0
             skipped = 0
             for raw_lead in all_raw:
@@ -233,7 +234,7 @@ def sync_historical_housing_task(days: int = 5) -> None:
                 if len(phone) < 7:
                     skipped += 1
                     continue
-                    
+
                 try:
                     lead_data = LeadCreate(
                         name=mapped.get("name"),
@@ -255,23 +256,23 @@ def sync_historical_housing_task(days: int = 5) -> None:
                 except Exception as e:
                     logger.error(f"Lead process error: {e}")
                     skipped += 1
-                    
+
             logger.info(f"Historical Recovery Complete: Imported {imported}, Skipped {skipped}")
-            
+
         finally:
             db.close()
-            # Release lock
-            if redis_conn:
-                redis_conn.delete("lock:historical_sync_housing")
 
     try:
         asyncio.run(_run_sync())
     except Exception as e:
         logger.error(f"Historical Sync Task Failed: {e}")
-        from app.core.redis import redis_conn
-        if redis_conn:
-            redis_conn.delete("lock:historical_sync_housing")
         raise
+    finally:
+        if redis_conn:
+            try:
+                redis_conn.delete(HISTORICAL_HOUSING_SYNC_LOCK)
+            except Exception as ex:
+                logger.warning(f"Failed to release historical housing sync lock: {ex}")
 
 # ────────────────────────────────────────────────────────────────────
 #  AI Call Trigger Task

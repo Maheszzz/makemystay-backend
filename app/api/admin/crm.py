@@ -40,6 +40,7 @@ from app.api.admin.schemas import (
     AssignLeadToRmRequest,
     AutoAssignRequest,
     BulkAssign,
+    BulkAssignToEmployeeRequest,
     EmployeeCreate,
     EmployeeResponse,
     EmployeeUpdate,
@@ -353,6 +354,49 @@ def assign_lead_to_employee(
         "assigned_employee_id": emp.id,
         "assigned_employee": {"id": emp.id, "employee_id": emp.employee_id, "name": emp.name},
         "owner_id": lead.owner_id,
+    }
+
+
+@router.post("/leads/assign/bulk", summary="Bulk assign leads to one CRM employee")
+def bulk_assign_to_employee(
+    data: BulkAssignToEmployeeRequest,
+    db: Session = Depends(get_mysql_db),
+    user=Depends(security.get_current_user),
+):
+    if user.role != "admin":
+        raise HTTPException(status_code=403, detail="Only admins can bulk assign leads")
+
+    emp = (
+        db.query(Employee)
+        .filter(
+            Employee.id == data.employee_id,
+            Employee.status == "active",
+            Employee.role == "RM",
+        )
+        .first()
+    )
+    if not emp:
+        raise HTTPException(status_code=404, detail="Employee not found")
+
+    if not data.lead_ids:
+        raise HTTPException(status_code=400, detail="No lead_ids provided")
+
+    leads = db.query(Lead).filter(Lead.id.in_(data.lead_ids)).all()
+    label = f"{emp.name} ({emp.employee_id})"
+    for lead in leads:
+        lead.assigned_employee_id = emp.id
+        if emp.user_id is not None:
+            lead.owner_id = emp.user_id
+        _log_activity(db, lead.id, "ASSIGNED", f"Bulk assigned to employee {label}", user.id)
+
+    db.commit()
+
+    return {
+        "message": f"Assigned {len(leads)} lead(s) to {label}",
+        "assigned_count": len(leads),
+        "assigned_employee_id": emp.id,
+        "assigned_employee": {"id": emp.id, "employee_id": emp.employee_id, "name": emp.name},
+        "owner_id": emp.user_id,
     }
 
 
