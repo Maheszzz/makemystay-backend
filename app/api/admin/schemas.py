@@ -18,8 +18,17 @@ class ClearWhatsAppFlowSessionRequest(BaseModel):
     )
 
 
-class AssignLeadRequest(BaseModel):
+class AssignLeadToRmRequest(BaseModel):
+    """Legacy: assign lead to auth User (RM) via PUT /leads/{lead_id}/assign."""
+
     rm_id: int
+
+
+class AssignLeadRequest(BaseModel):
+    """POST /leads/assign — `employee_id` is the primary key of `employees` (not the EMP001 code)."""
+
+    lead_id: int
+    employee_id: int
 
 
 class UpdateLeadStatusRequest(BaseModel):

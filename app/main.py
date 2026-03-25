@@ -174,6 +174,10 @@ async def csrf_protect(request: Request, call_next):
         if any(path.startswith(p) for p in exempt_prefixes):
             return await call_next(request)
 
+        # Anonymous public writes (no login → no double-submit CSRF cookie), same as /realty/contacts.
+        if "/realty/properties/" in path and path.rstrip("/").endswith("/reviews"):
+            return await call_next(request)
+
         cookie_csrf = request.cookies.get("csrf_token")
         header_csrf = request.headers.get(
             "x-csrf-token", request.headers.get("X-CSRF-Token")

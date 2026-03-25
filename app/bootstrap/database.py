@@ -21,6 +21,7 @@ def import_mysql_models() -> None:
         assignment_batch,
         booking,
         demo,
+        employee,
         failed_job,
         lead,
         lead_activity,

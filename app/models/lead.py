@@ -71,6 +71,7 @@ class Lead(MySQLBase):
     
     # Ownership (Admin -> RM)
     owner_id = Column(Integer, ForeignKey("users.id"), nullable=True, index=True)
+    assigned_employee_id = Column(Integer, ForeignKey("employees.id"), nullable=True, index=True)
 
     # Follow-up scheduling
     follow_up_at = Column(DateTime(timezone=True), nullable=True, index=True)
@@ -78,6 +79,7 @@ class Lead(MySQLBase):
     # Relationships
     agent = relationship("Agent", back_populates="leads")
     owner = relationship("User", back_populates="leads")
+    assigned_employee = relationship("Employee", back_populates="leads")
     retell_calls = relationship("RetellCall", back_populates="lead")
     assignments = relationship("LeadAssignment", back_populates="lead", order_by="LeadAssignment.assigned_at.desc()")
     activities = relationship("LeadActivity", back_populates="lead", order_by="LeadActivity.created_at.desc()")

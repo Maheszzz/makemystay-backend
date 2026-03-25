@@ -9,6 +9,7 @@ from typing import Optional, Tuple
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from loguru import logger
 from sqlalchemy import case, func
+from sqlalchemy.inspection import inspect as sa_inspect
 from sqlalchemy.orm import Session, joinedload
 
 from app.configs.db_config import get_mysql_db
@@ -25,6 +26,7 @@ from app.core.lead_schema import (
     PRIORITY_LEVELS,
 )
 from app.models.assignment_batch import AssignmentBatch
+from app.models.employee import Employee
 from app.models.lead import Lead
 from app.models.realty import Property
 from app.models.lead_activity import LeadActivity
@@ -35,6 +37,7 @@ from app.models.user import User
 from app.api.admin.schemas import (
     AddNoteRequest,
     AssignLeadRequest,
+    AssignLeadToRmRequest,
     AutoAssignRequest,
     BulkAssign,
     SetFollowUpRequest,
@@ -43,6 +46,31 @@ from app.api.admin.schemas import (
 )
 
 router = APIRouter()
+
+
+def _lead_to_api_dict(lead: Lead) -> dict:
+    """Serialize Lead ORM row for JSON (includes nested assigned_employee when loaded)."""
+    out: dict = {}
+    for col in sa_inspect(lead).mapper.column_attrs:
+        v = getattr(lead, col.key)
+        if v is None:
+            out[col.key] = None
+        elif hasattr(v, "isoformat"):
+            out[col.key] = v.isoformat()
+        elif hasattr(v, "value"):  # Enum
+            out[col.key] = v.value
+        else:
+            out[col.key] = v
+    ae = lead.assigned_employee
+    if ae is not None:
+        out["assigned_employee"] = {
+            "id": ae.id,
+            "employee_id": ae.employee_id,
+            "name": ae.name,
+        }
+    else:
+        out["assigned_employee"] = None
+    return out
 
 
 def _month_datetime_bounds(d: date) -> Tuple[datetime, datetime]:
@@ -205,6 +233,76 @@ def get_rms(db: Session = Depends(get_mysql_db), user=Depends(security.get_curre
     return db.query(User).filter(User.role == "employee").all()
 
 
+@router.get("/employees", summary="List active CRM employees (RM role, EMP codes)")
+def list_employees(db: Session = Depends(get_mysql_db), user=Depends(security.get_current_user)):
+    if user.role not in ["admin", "employee"]:
+        raise HTTPException(status_code=403, detail="Not allowed")
+    rows = (
+        db.query(Employee)
+        .filter(Employee.status == "active", Employee.role == "RM")
+        .order_by(Employee.name.asc())
+        .all()
+    )
+    return [
+        {
+            "id": e.id,
+            "employee_id": e.employee_id,
+            "name": e.name,
+            "email": e.email,
+            "phone": e.phone,
+            "role": e.role,
+            "status": e.status,
+            "user_id": e.user_id,
+            "created_at": e.created_at.isoformat() if e.created_at else None,
+        }
+        for e in rows
+    ]
+
+
+@router.post("/leads/assign", summary="Manually assign a lead to a CRM employee")
+def assign_lead_to_employee(
+    data: AssignLeadRequest,
+    db: Session = Depends(get_mysql_db),
+    user=Depends(security.get_current_user),
+):
+    if user.role != "admin":
+        raise HTTPException(status_code=403, detail="Only admins can assign leads")
+
+    lead = db.query(Lead).filter(Lead.id == data.lead_id).first()
+    if not lead:
+        raise HTTPException(status_code=404, detail="Lead not found")
+
+    emp = (
+        db.query(Employee)
+        .filter(
+            Employee.id == data.employee_id,
+            Employee.status == "active",
+            Employee.role == "RM",
+        )
+        .first()
+    )
+    if not emp:
+        raise HTTPException(status_code=404, detail="Employee not found")
+
+    lead.assigned_employee_id = emp.id
+    if emp.user_id is not None:
+        lead.owner_id = emp.user_id
+
+    label = f"{emp.name} ({emp.employee_id})"
+    _log_activity(db, lead.id, "ASSIGNED", f"Assigned to employee {label}", user.id)
+
+    db.commit()
+    db.refresh(lead)
+
+    return {
+        "message": "Assigned successfully",
+        "lead_id": lead.id,
+        "assigned_employee_id": emp.id,
+        "assigned_employee": {"id": emp.id, "employee_id": emp.employee_id, "name": emp.name},
+        "owner_id": lead.owner_id,
+    }
+
+
 @router.get("/leads", summary="Get role-based leads with filters")
 def get_leads(
     status: Optional[str] = Query(None),
@@ -223,7 +321,7 @@ def get_leads(
     user=Depends(security.get_current_user),
 ):
     """Get leads with optional filters. Admins see all, RMs see only their assigned leads."""
-    query = db.query(Lead)
+    query = db.query(Lead).options(joinedload(Lead.assigned_employee))
 
     if user.role != "admin":
         query = query.filter(Lead.owner_id == user.id)
@@ -239,7 +337,8 @@ def get_leads(
     if date_to:
         query = query.filter(Lead.created_at <= date_to + " 23:59:59")
 
-    return query.order_by(Lead.created_at.desc()).offset(offset).limit(limit).all()
+    rows = query.order_by(Lead.created_at.desc()).offset(offset).limit(limit).all()
+    return [_lead_to_api_dict(lead) for lead in rows]
 
 
 def _log_activity(db: Session, lead_id: int, activity_type: str, message: str, user_id: Optional[int] = None):
@@ -248,7 +347,7 @@ def _log_activity(db: Session, lead_id: int, activity_type: str, message: str, u
 
 
 @router.put("/leads/{lead_id}/assign", summary="Assign single lead")
-def assign_lead(lead_id: int, req: AssignLeadRequest, db: Session = Depends(get_mysql_db), user=Depends(security.get_current_user)):
+def assign_lead(lead_id: int, req: AssignLeadToRmRequest, db: Session = Depends(get_mysql_db), user=Depends(security.get_current_user)):
     if user.role != "admin":
         raise HTTPException(status_code=403, detail="Only admins can assign leads")
 
@@ -310,7 +409,11 @@ def auto_assign_leads(
     if not rm_list:
         raise HTTPException(status_code=400, detail="No active RMs available for assignment")
 
-    lead_query = db.query(Lead).filter(Lead.owner_id == None).with_for_update()
+    lead_query = (
+        db.query(Lead)
+        .filter(Lead.owner_id.is_(None), Lead.assigned_employee_id.is_(None))
+        .with_for_update()
+    )
     if req.lead_ids:
         lead_query = lead_query.filter(Lead.id.in_(req.lead_ids))
 
