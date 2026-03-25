@@ -77,8 +77,8 @@ class EmployeeResponse(BaseModel):
     role: str
     status: str
     user_id: Optional[int] = None
-    created_at: datetime
-    updated_at: datetime
+    created_at: Optional[datetime] = None
+    updated_at: Optional[datetime] = None
 
     class Config:
         from_attributes = True

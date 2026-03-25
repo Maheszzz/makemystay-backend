@@ -20,7 +20,10 @@ class Employee(MySQLBase):
     user_id = Column(Integer, ForeignKey("users.id"), nullable=True, index=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     updated_at = Column(
-        DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
+        DateTime(timezone=True),
+        nullable=True,
+        server_default=func.now(),
+        onupdate=func.now(),
     )
 
     user = relationship("User", foreign_keys=[user_id])
