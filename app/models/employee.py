@@ -19,6 +19,9 @@ class Employee(MySQLBase):
     status = Column(String(32), nullable=False, server_default="active", index=True)
     user_id = Column(Integer, ForeignKey("users.id"), nullable=True, index=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
+    updated_at = Column(
+        DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
+    )
 
     user = relationship("User", foreign_keys=[user_id])
     leads = relationship("Lead", back_populates="assigned_employee")

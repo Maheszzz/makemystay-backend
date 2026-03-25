@@ -4,7 +4,7 @@ CRM / leads admin: metadata, RMs, lead CRUD, assignments, timeline, funnel, work
 
 import asyncio
 from datetime import date, datetime, timezone
-from typing import Optional, Tuple
+from typing import List, Optional, Tuple
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from loguru import logger
@@ -40,10 +40,14 @@ from app.api.admin.schemas import (
     AssignLeadToRmRequest,
     AutoAssignRequest,
     BulkAssign,
+    EmployeeCreate,
+    EmployeeResponse,
+    EmployeeUpdate,
     SetFollowUpRequest,
     UpdateLeadStatusRequest,
     UpdatePriorityRequest,
 )
+from app.utils.employee_utils import generate_next_employee_id
 
 router = APIRouter()
 
@@ -233,30 +237,79 @@ def get_rms(db: Session = Depends(get_mysql_db), user=Depends(security.get_curre
     return db.query(User).filter(User.role == "employee").all()
 
 
-@router.get("/employees", summary="List active CRM employees (RM role, EMP codes)")
-def list_employees(db: Session = Depends(get_mysql_db), user=Depends(security.get_current_user)):
+@router.post("/employees", response_model=EmployeeResponse, summary="Create a new CRM employee")
+def create_employee(
+    data: EmployeeCreate,
+    db: Session = Depends(get_mysql_db),
+    user=Depends(security.get_current_user),
+):
+    if user.role != "admin":
+        raise HTTPException(status_code=403, detail="Only admins can create employees")
+
+    # Check for duplicate email if provided
+    if data.email:
+        existing = db.query(Employee).filter(Employee.email == data.email).first()
+        if existing:
+            raise HTTPException(status_code=400, detail="Employee with this email already exists")
+
+    new_emp = Employee(
+        employee_id=generate_next_employee_id(db),
+        name=data.name,
+        email=data.email,
+        phone=data.phone,
+        role=data.role,
+        status="active",
+    )
+    db.add(new_emp)
+    db.commit()
+    db.refresh(new_emp)
+    return new_emp
+
+
+@router.get("/employees", response_model=List[EmployeeResponse], summary="List CRM employees")
+def list_employees(
+    for_hub: bool = Query(
+        False,
+        description="Admin only: return all employees (any status/role), newest first — for Employee Hub.",
+    ),
+    db: Session = Depends(get_mysql_db),
+    user=Depends(security.get_current_user),
+):
     if user.role not in ["admin", "employee"]:
         raise HTTPException(status_code=403, detail="Not allowed")
-    rows = (
+    if for_hub:
+        if user.role != "admin":
+            raise HTTPException(status_code=403, detail="Only admins can list all employees")
+        return db.query(Employee).order_by(Employee.id.desc()).all()
+    return (
         db.query(Employee)
         .filter(Employee.status == "active", Employee.role == "RM")
         .order_by(Employee.name.asc())
         .all()
     )
-    return [
-        {
-            "id": e.id,
-            "employee_id": e.employee_id,
-            "name": e.name,
-            "email": e.email,
-            "phone": e.phone,
-            "role": e.role,
-            "status": e.status,
-            "user_id": e.user_id,
-            "created_at": e.created_at.isoformat() if e.created_at else None,
-        }
-        for e in rows
-    ]
+
+
+@router.put("/employees/{emp_id}", response_model=EmployeeResponse, summary="Update an employee")
+def update_employee(
+    emp_id: int,
+    data: EmployeeUpdate,
+    db: Session = Depends(get_mysql_db),
+    user=Depends(security.get_current_user),
+):
+    if user.role != "admin":
+        raise HTTPException(status_code=403, detail="Only admins can update employees")
+    
+    emp = db.query(Employee).filter(Employee.id == emp_id).first()
+    if not emp:
+        raise HTTPException(status_code=404, detail="Employee not found")
+    
+    update_data = data.model_dump(exclude_unset=True)
+    for key, value in update_data.items():
+        setattr(emp, key, value)
+    
+    db.commit()
+    db.refresh(emp)
+    return emp
 
 
 @router.post("/leads/assign", summary="Manually assign a lead to a CRM employee")

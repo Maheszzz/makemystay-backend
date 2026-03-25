@@ -1,5 +1,4 @@
-"""Pydantic models shared by admin API routes."""
-
+from datetime import datetime
 from typing import List, Optional
 
 from pydantic import BaseModel, Field
@@ -51,3 +50,35 @@ class AutoAssignRequest(BaseModel):
     lead_ids: Optional[List[int]] = None  # None = all unassigned
     rm_ids: Optional[List[int]] = None  # None = all active RMs
     strategy: str = "load_balanced"  # load_balanced | round_robin
+
+
+class EmployeeCreate(BaseModel):
+    name: str
+    email: Optional[str] = None
+    phone: str
+    role: str = "RM"
+
+
+class EmployeeUpdate(BaseModel):
+    name: Optional[str] = None
+    email: Optional[str] = None
+    phone: Optional[str] = None
+    role: Optional[str] = None
+    status: Optional[str] = None
+    user_id: Optional[int] = None
+
+
+class EmployeeResponse(BaseModel):
+    id: int
+    employee_id: str
+    name: str
+    email: Optional[str] = None
+    phone: str
+    role: str
+    status: str
+    user_id: Optional[int] = None
+    created_at: datetime
+    updated_at: datetime
+
+    class Config:
+        from_attributes = True
