@@ -135,6 +135,28 @@ async def get_job_status(job_id: str, db: Session = Depends(get_mysql_db), _admi
             "ended_at": celery_job.completed_at.isoformat() if celery_job.completed_at else None,
         }
 
+    from app.core.celery_app import celery_app
+    from celery.result import AsyncResult
+
+    res = AsyncResult(job_id, app=celery_app)
+    if res.state != "PENDING" or res.ready():
+        status_map = {
+            "PENDING": "queued",
+            "STARTED": "started",
+            "RETRY": "started",
+            "SUCCESS": "finished",
+            "FAILURE": "failed",
+            "REVOKED": "failed",
+        }
+        return {
+            "id": job_id,
+            "status": status_map.get(res.state, res.state.lower()),
+            "result": str(res.result) if res.ready() else None,
+            "error": "Failed" if res.state == "FAILURE" else None,
+            "created_at": None,  # Celery doesn't store this by default in the backend without extra config
+            "ended_at": None,
+        }
+
     if not redis_conn:
         raise HTTPException(status_code=503, detail="Redis unavailable")
     from rq.job import Job

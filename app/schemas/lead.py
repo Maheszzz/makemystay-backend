@@ -24,7 +24,7 @@ class LeadCreate(BaseModel):
     """
 
     name: Optional[str] = Field(None, max_length=200)
-    email: Optional[EmailStr] = Field(None, max_length=200)
+    email: Optional[str] = Field(None, max_length=200)
     phone: str = Field(..., pattern=r"^[6-9]\d{9}$")
     project_name: Optional[str] = Field(None, max_length=300)
     city: Optional[str] = Field(None, max_length=100)
