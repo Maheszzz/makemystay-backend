@@ -94,6 +94,7 @@ class EmployeeResponse(BaseModel):
 class LeadCsvImportResponse(BaseModel):
     """POST /admin/leads/import-csv — counts from ``csv_lead_import.run_csv_import``."""
 
+    import_id: Optional[int] = None
     imported: int
     duplicates: int
     skipped_no_phone: int
@@ -101,3 +102,33 @@ class LeadCsvImportResponse(BaseModel):
     errors: int
     row_count: int
     error_samples: List[str] = Field(default_factory=list)
+    status: Optional[str] = "completed"
+
+
+class CsvImportResponse(BaseModel):
+    id: int
+    file_name: str
+    source: str
+    total_rows: int
+    imported: int
+    duplicates: int
+    failed: int
+    skipped_no_phone: int
+    status: str
+    created_at: datetime
+    created_by_name: Optional[str] = None
+    processing_started_at: Optional[datetime] = None
+    processing_completed_at: Optional[datetime] = None
+    duration_seconds: Optional[float] = None
+    rows_per_second: Optional[float] = None
+    failure_rate: Optional[float] = None
+    success_rate: Optional[float] = None
+    avg_row_latency_ms: Optional[float] = None
+
+    class Config:
+        from_attributes = True
+
+
+class CsvImportRetryQueuedResponse(BaseModel):
+    import_id: int
+    status: str = "queued"

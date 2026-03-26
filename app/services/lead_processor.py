@@ -31,6 +31,7 @@ async def process_lead(
     raw_payload: Optional[dict] = None,
     *,
     raise_on_failure: bool = False,
+    csv_import_stagger_index: Optional[int] = None,
 ) -> Optional[Lead]:
     """
     Process an incoming lead: Dedup → Store → Assign (transactional) → Enqueue CRM Sync.
@@ -45,6 +46,8 @@ async def process_lead(
         raw_payload: Original data from the source for debugging.
         raise_on_failure: If True, re-raise after logging when processing fails (duplicate
             paths still return ``None``). Webhooks and sync jobs keep the default ``False``.
+        csv_import_stagger_index: When set (CSV row index), Zoho sync is scheduled with a
+            Celery ``countdown`` to spread API load.
 
     Returns:
         The created Lead object, or None if it was a duplicate.
@@ -189,7 +192,7 @@ async def process_lead(
         )
 
         # ── 5. Enqueue Async Tasks ───────────────────────────────────
-        _enqueue_crm_sync(db, new_lead)
+        _enqueue_crm_sync(db, new_lead, csv_stagger_index=csv_import_stagger_index)
 
         return new_lead
 
@@ -228,13 +231,21 @@ async def process_lead(
         return None
 
 
-def _enqueue_crm_sync(db: Session, lead: Lead) -> None:
-    """Enqueue the lead for Zoho CRM synchronisation via Celery."""
+def _enqueue_crm_sync(db: Session, lead: Lead, *, csv_stagger_index: Optional[int] = None) -> None:
+    """Enqueue the lead for Zoho CRM synchronisation via Celery.
+
+    CSV bulk imports pass ``csv_stagger_index`` (1-based row index) so Zoho tasks are
+    spread with ``countdown`` — backpressure against API rate limits.
+    """
     try:
         from app.tasks.lead_tasks import sync_lead_to_zoho_task
 
-        sync_lead_to_zoho_task.delay(lead.id)
-        
+        if csv_stagger_index is not None:
+            countdown = min(float(csv_stagger_index) * 0.2, 600.0)
+            sync_lead_to_zoho_task.apply_async(args=[lead.id], countdown=countdown)
+        else:
+            sync_lead_to_zoho_task.delay(lead.id)
+
         lead.crm_status = "queued"
         db.commit()
         logger.info(f"Enqueued Zoho sync for lead {lead.id}")

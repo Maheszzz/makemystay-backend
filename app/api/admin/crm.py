@@ -8,7 +8,7 @@ from typing import List, Optional, Tuple
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from loguru import logger
-from sqlalchemy import case, func
+from sqlalchemy import case, func, or_
 from sqlalchemy.inspection import inspect as sa_inspect
 from sqlalchemy.orm import Session, joinedload
 
@@ -494,11 +494,20 @@ def get_leads(
     db: Session = Depends(get_mysql_db),
     user=Depends(security.get_current_user),
 ):
-    """Get leads with optional filters. Admins see all, RMs see only their assigned leads."""
+    """Get leads with optional filters. Admins see all. Others see leads they own (``owner_id``)
+    or leads assigned to their CRM ``employees`` row (``employees.user_id`` → ``assigned_employee_id``).
+    CSV imports often have no owner; assignment makes them visible to the right RM.
+    """
     query = db.query(Lead).options(joinedload(Lead.assigned_employee))
 
     if user.role != "admin":
-        query = query.filter(Lead.owner_id == user.id)
+        emp_ids = [e.id for e in db.query(Employee).filter(Employee.user_id == user.id).all()]
+        if emp_ids:
+            query = query.filter(
+                or_(Lead.owner_id == user.id, Lead.assigned_employee_id.in_(emp_ids))
+            )
+        else:
+            query = query.filter(Lead.owner_id == user.id)
 
     if status:
         query = query.filter(Lead.status == status.lower())

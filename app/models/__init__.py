@@ -2,6 +2,7 @@
 from app.models.agent import Agent
 from app.models.assignment_batch import AssignmentBatch
 from app.models.booking import Booking
+from app.models.csv_import import CsvImport
 from app.models.demo import DemoBooking
 from app.models.employee import Employee
 from app.models.failed_job import FailedJob

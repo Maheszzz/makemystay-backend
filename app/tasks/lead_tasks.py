@@ -354,3 +354,57 @@ def enqueue_call_task(self, contact_id: int, phone: str, name: str) -> None:
             session.commit()
             logger.error(f"Error triggering AI call for Contact #{contact_id}: {e}")
             raise self.retry(exc=e)
+@celery_app.task(name="process_csv_import_task", bind=True, max_retries=1)
+def process_csv_import_task(self, import_id: int, csv_text: str, source: str) -> None:
+    """Celery Task: Process a CSV lead import asynchronously."""
+    logger.info(f"Celery Task: Starting CSV Import #{import_id}...")
+
+    from app.services.csv_lead_import import run_csv_import
+    from app.models.csv_import import CsvImport
+
+    with MySQLSessionLocal() as session:
+        imp = session.query(CsvImport).filter(CsvImport.id == import_id).first()
+        if not imp:
+            logger.error(f"CsvImport #{import_id} not found.")
+            return
+
+        try:
+            asyncio.run(
+                run_csv_import(
+                    db=session,
+                    text=csv_text,
+                    source=source,
+                    import_id=import_id,
+                    dry_run=False,
+                )
+            )
+            logger.success(f"Celery Task: CSV Import #{import_id} finished processing.")
+        except Exception as e:
+            logger.error(f"Celery Task: CSV Import #{import_id} failed: {e}")
+            imp.status = "failed"
+            session.commit()
+            if self.request.retries < self.max_retries:
+                raise self.retry(exc=e)
+            raise
+
+
+@celery_app.task(name="retry_csv_import_failures_task", bind=True, max_retries=5, default_retry_delay=120)
+def retry_csv_import_failures_task(self, import_id: int) -> None:
+    """Re-process rows in ``csv_import_failures`` for an import (admin-triggered)."""
+    from app.services.csv_lead_import import retry_csv_import_failed_rows
+    from app.models.csv_import import CsvImport
+
+    logger.info(f"Celery Task: Retrying failed CSV rows for import #{import_id}...")
+    with MySQLSessionLocal() as session:
+        imp = session.query(CsvImport).filter(CsvImport.id == import_id).first()
+        if not imp:
+            logger.error(f"CsvImport #{import_id} not found.")
+            return
+        try:
+            asyncio.run(retry_csv_import_failed_rows(session, import_id))
+            logger.success(f"Celery Task: Retry finished for import #{import_id}.")
+        except Exception as e:
+            logger.error(f"Celery Task: Retry failed for import #{import_id}: {e}")
+            if self.request.retries < self.max_retries:
+                raise self.retry(exc=e)
+            raise
