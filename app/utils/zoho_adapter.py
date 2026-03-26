@@ -42,6 +42,12 @@ class CRMLeadAdapter:
         self.units = getattr(payload, "units", "")
         self.lead_source = _get_display_source(source)
 
+        # AI Tags & Assignment
+        self.interested = getattr(payload, "interested", getattr(payload, "summary_interested", None))
+        self.call_status = getattr(payload, "call_status", "")
+        self.summary_budget = getattr(payload, "summary_budget", "")
+        self.owner_zoho_id = getattr(payload, "owner_zoho_id", None)
+
         # Store raw payload for fallback
         self.raw_data = payload
 
@@ -73,7 +79,7 @@ class CRMLeadAdapter:
 
         description = " | ".join(description_parts) if description_parts else ""
 
-        return {
+        payload = {
             "First_Name": first_name,
             "Last_Name": last_name,
             "Email": self.email,
@@ -83,3 +89,23 @@ class CRMLeadAdapter:
             "Lead_Source": self.lead_source,
             "City": self.location,
         }
+
+        # AI Tags (using common API names, to be confirmed by user)
+        if self.interested is not None:
+            # Map boolean to Zoho's yes/no or checkbox if needed. 
+            # Zoho API usually accepts boolean for checkbox.
+            payload["AI_Interested"] = self.interested
+        
+        if self.call_status:
+            payload["AI_Call_Status"] = self.call_status
+            
+        # Prioritize summary_budget from AI call if present
+        effective_budget = self.summary_budget or getattr(self.raw_data, "budget", "")
+        if effective_budget:
+            payload["AI_Budget"] = effective_budget
+
+        # Owner sync
+        if self.owner_zoho_id:
+            payload["Owner"] = {"id": str(self.owner_zoho_id)}
+
+        return payload

@@ -318,6 +318,15 @@ async def retell_webhook(request: Request, db: Session = Depends(get_mysql_db)):
         test_row.summary_move_in = move_in
 
         db.commit()
+
+        # Trigger Zoho CRM sync for the contact to update AI tags
+        if test_row.contact_id:
+            try:
+                from app.tasks.lead_tasks import sync_contact_to_zoho_task
+                sync_contact_to_zoho_task.delay(test_row.contact_id)
+            except Exception as e:
+                logger.error(f"Failed to trigger Zoho sync after AI call: {e}")
+
         return {"status": "updated"}
 
     except Exception as e:

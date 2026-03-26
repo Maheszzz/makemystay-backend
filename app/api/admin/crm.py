@@ -206,8 +206,17 @@ async def analytics(request: Request, db: Session = Depends(get_mysql_db)):
             .all()
         ]
 
+        # Rows that received a Zoho Lead ID after sync (closest to “exists in Zoho org”).
+        # Zoho Home “My Leads” is owner-scoped and will usually differ from both totals.
+        leads_linked_zoho = (
+            db.query(Lead)
+            .filter(Lead.zoho_lead_id.isnot(None), Lead.zoho_lead_id != "")
+            .count()
+        )
+
         return {
             "total_leads": total_leads,
+            "leads_linked_zoho": leads_linked_zoho,
             "today_leads": today_leads,
             "failed": failed,
             "failed_lead_ids": failed_lead_ids,
@@ -348,6 +357,13 @@ def assign_lead_to_employee(
     db.commit()
     db.refresh(lead)
 
+    # Trigger Zoho CRM sync to update Owner
+    try:
+        from app.tasks.lead_tasks import sync_lead_to_zoho_task
+        sync_lead_to_zoho_task.delay(lead.id)
+    except Exception as e:
+        logger.error(f"Failed to trigger Zoho sync after assignment: {e}")
+
     return {
         "message": "Assigned successfully",
         "lead_id": lead.id,
@@ -390,6 +406,14 @@ def bulk_assign_to_employee(
         _log_activity(db, lead.id, "ASSIGNED", f"Bulk assigned to employee {label}", user.id)
 
     db.commit()
+
+    # Trigger Zoho CRM sync for each lead to update Owner
+    try:
+        from app.tasks.lead_tasks import sync_lead_to_zoho_task
+        for lead in leads:
+            sync_lead_to_zoho_task.delay(lead.id)
+    except Exception as e:
+        logger.error(f"Failed to trigger bulk Zoho sync: {e}")
 
     return {
         "message": f"Assigned {len(leads)} lead(s) to {label}",

@@ -43,12 +43,9 @@ def sync_lead_to_zoho_task(self, lead_id: int) -> None:
             return
 
         # ── 1. Idempotency check ──────────────────────────────────
-        if lead_obj.zoho_synced and lead_obj.zoho_lead_id:
-            logger.info(
-                f"Lead #{lead_id} already synced to Zoho "
-                f"({lead_obj.zoho_lead_id}). Skipping."
-            )
-            return
+        # Proceed even if already synced to allow for field updates (Owner, AI Tags, etc.)
+        action_type = "Updating" if lead_obj.zoho_synced else "Syncing"
+        logger.info(f"{action_type} Lead #{lead_id} to Zoho CRM...")
 
         # ── 2. Mark as processing ─────────────────────────────────
         lead_repo.update_lead(session, lead_obj, {"crm_status": "processing"})
@@ -57,6 +54,12 @@ def sync_lead_to_zoho_task(self, lead_id: int) -> None:
 
         try:
             # ── 3. Adapt and send ─────────────────────────────────
+            # Ensure assigned employee is loaded to get zoho_user_id
+            if lead_obj.assigned_employee and lead_obj.assigned_employee.zoho_user_id:
+                setattr(lead_obj, "owner_zoho_id", lead_obj.assigned_employee.zoho_user_id)
+            else:
+                setattr(lead_obj, "owner_zoho_id", None)
+
             adapter = CRMLeadAdapter(lead_obj, lead_obj.source)
 
             zoho_lead_id = asyncio.run(
@@ -134,6 +137,34 @@ def sync_lead_to_zoho_task(self, lead_id: int) -> None:
                 session.commit()
             except Exception as log_err:
                 logger.error(f"Failed to record DLQ entry: {log_err}")
+
+
+@celery_app.task(name="sync_contact_to_zoho_task", bind=True, max_retries=5, default_retry_delay=60)
+def sync_contact_to_zoho_task(self, contact_id: int) -> None:
+    """Celery Task: Sync a contact to Zoho CRM using only its ID."""
+    logger.info(f"Celery Task: Syncing Contact #{contact_id} to Zoho CRM...")
+
+    from app.repo import realty as realty_repo
+    with MySQLSessionLocal() as session:
+        contact_obj = realty_repo.get_contact_by_id(session, contact_id)
+        if not contact_obj:
+            logger.error(f"Contact #{contact_id} not found. Sync aborted.")
+            return
+
+        try:
+            adapter = CRMLeadAdapter(contact_obj, "website")
+            zoho_id = asyncio.run(
+                asyncio.wait_for(
+                    zoho_crm_service.create_or_update_lead(adapter),
+                    timeout=ZOHO_SYNC_TIMEOUT_SECONDS,
+                )
+            )
+            if zoho_id:
+                logger.info(f"Contact #{contact_id} successfully synced to Zoho: {zoho_id}")
+        except Exception as e:
+            logger.error(f"Contact sync failed: {e}")
+            if self.request.retries < self.max_retries:
+                raise self.retry(exc=e)
 
 
 # ────────────────────────────────────────────────────────────────────

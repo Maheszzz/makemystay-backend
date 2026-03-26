@@ -18,6 +18,7 @@ class Employee(MySQLBase):
     role = Column(String(80), nullable=False, server_default=text("'RM'"), index=True)
     status = Column(String(32), nullable=False, server_default="active", index=True)
     user_id = Column(Integer, ForeignKey("users.id"), nullable=True, index=True)
+    zoho_user_id = Column(String(100), nullable=True, index=True) # Map to Zoho CRM User ID
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     updated_at = Column(
         DateTime(timezone=True),
