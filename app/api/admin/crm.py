@@ -3,10 +3,13 @@ CRM / leads admin: metadata, RMs, lead CRUD, assignments, timeline, funnel, work
 """
 
 import asyncio
-from datetime import date, datetime, timezone
+import csv
+import io
+from datetime import date, datetime, timedelta, timezone
 from typing import List, Optional, Tuple
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
+from fastapi.responses import StreamingResponse
 from loguru import logger
 from sqlalchemy import case, func, or_
 from sqlalchemy.inspection import inspect as sa_inspect
@@ -17,6 +20,7 @@ from app.core import security
 from app.core.log_dedupe import should_log_once
 from app.core.rate_limit import limiter
 from app.core.redis import lead_queue
+from app.core.lead_pipeline import VALID_LEAD_STAGES
 from app.core.lead_schema import (
     VALID_LEAD_STATUSES,
     build_lead_metadata_payload,
@@ -26,6 +30,7 @@ from app.core.lead_schema import (
     PRIORITY_LEVELS,
 )
 from app.models.assignment_batch import AssignmentBatch
+from app.models.csv_import import CsvImport
 from app.models.employee import Employee
 from app.models.lead import Lead
 from app.models.realty import Property
@@ -45,6 +50,7 @@ from app.api.admin.schemas import (
     EmployeeResponse,
     EmployeeUpdate,
     SetFollowUpRequest,
+    UpdateLeadStageRequest,
     UpdateLeadStatusRequest,
     UpdatePriorityRequest,
 )
@@ -214,6 +220,36 @@ async def analytics(request: Request, db: Session = Depends(get_mysql_db)):
             .count()
         )
 
+        src_rows = db.query(Lead.source, func.count(Lead.id)).group_by(Lead.source).all()
+        leads_by_source = {str(s[0]): s[1] for s in src_rows}
+
+        st_rows = db.query(Lead.lead_stage, func.count(Lead.id)).group_by(Lead.lead_stage).all()
+        leads_by_stage = {str(s[0]): s[1] for s in st_rows}
+
+        crm_ok = db.query(Lead).filter(Lead.crm_status == "success").count()
+        crm_sync_success_rate = (crm_ok / total_leads) if total_leads else None
+
+        crm_bad = (
+            db.query(Lead)
+            .filter(Lead.crm_status.in_(["failed", "permanently_failed"]))
+            .count()
+        )
+        crm_sync_failed_rate = (crm_bad / total_leads) if total_leads else None
+
+        duplicate_reentry_leads = db.query(Lead).filter(Lead.reentry_count > 0).count()
+        duplicate_reentry_rate = (duplicate_reentry_leads / total_leads) if total_leads else None
+
+        reentry_events_total = int(
+            db.query(func.coalesce(func.sum(Lead.reentry_count), 0)).scalar() or 0
+        )
+
+        cutoff_30d = datetime.now(timezone.utc) - timedelta(days=30)
+        csv_avg = (
+            db.query(func.avg(CsvImport.success_rate))
+            .filter(CsvImport.created_at >= cutoff_30d, CsvImport.success_rate.isnot(None))
+            .scalar()
+        )
+
         return {
             "total_leads": total_leads,
             "leads_linked_zoho": leads_linked_zoho,
@@ -226,6 +262,14 @@ async def analytics(request: Request, db: Session = Depends(get_mysql_db)):
             "properties_added_last_month": properties_added_last_month,
             "leads_this_month": leads_this_month,
             "leads_last_month": leads_last_month,
+            "leads_by_source": leads_by_source,
+            "leads_by_stage": leads_by_stage,
+            "crm_sync_success_rate": crm_sync_success_rate,
+            "crm_sync_failed_rate": crm_sync_failed_rate,
+            "duplicate_reentry_leads": duplicate_reentry_leads,
+            "duplicate_reentry_rate": duplicate_reentry_rate,
+            "reentry_events_total": reentry_events_total,
+            "csv_import_avg_success_rate_30d": float(csv_avg) if csv_avg is not None else None,
         }
 
     try:
@@ -480,6 +524,10 @@ def bulk_assign_to_employee(
 @router.get("/leads", summary="Get role-based leads with filters")
 def get_leads(
     status: Optional[str] = Query(None),
+    lead_stage: Optional[str] = Query(
+        None,
+        description="CRM pipeline stage: new, contacted, interested, visit_scheduled, closed, lost",
+    ),
     owner_id: Optional[int] = Query(None),
     source: Optional[str] = Query(None),
     date_from: Optional[str] = Query(None, description="ISO date, e.g. 2026-01-01"),
@@ -511,6 +559,8 @@ def get_leads(
 
     if status:
         query = query.filter(Lead.status == status.lower())
+    if lead_stage:
+        query = query.filter(Lead.lead_stage == lead_stage.lower())
     if owner_id is not None:
         query = query.filter(Lead.owner_id == owner_id)
     if source:
@@ -522,6 +572,94 @@ def get_leads(
 
     rows = query.order_by(Lead.created_at.desc()).offset(offset).limit(limit).all()
     return [_lead_to_api_dict(lead) for lead in rows]
+
+
+@router.get("/admin/leads/export", summary="Export leads as CSV (filters)")
+def export_leads_csv(
+    source: Optional[str] = Query(None),
+    lead_stage: Optional[str] = Query(None),
+    status: Optional[str] = Query(None),
+    date_from: Optional[str] = Query(None),
+    date_to: Optional[str] = Query(None),
+    limit: int = Query(50_000, ge=1, le=100_000),
+    db: Session = Depends(get_mysql_db),
+    user=Depends(security.get_current_user),
+):
+    """Download UTF-8 CSV of leads with optional filters (same visibility rules as GET /leads)."""
+    query = db.query(Lead).options(joinedload(Lead.assigned_employee))
+
+    if user.role != "admin":
+        emp_ids = [e.id for e in db.query(Employee).filter(Employee.user_id == user.id).all()]
+        if emp_ids:
+            query = query.filter(
+                or_(Lead.owner_id == user.id, Lead.assigned_employee_id.in_(emp_ids))
+            )
+        else:
+            query = query.filter(Lead.owner_id == user.id)
+
+    if source:
+        query = query.filter(Lead.source == source)
+    if lead_stage:
+        query = query.filter(Lead.lead_stage == lead_stage.lower())
+    if status:
+        query = query.filter(Lead.status == status.lower())
+    if date_from:
+        query = query.filter(Lead.created_at >= date_from)
+    if date_to:
+        query = query.filter(Lead.created_at <= date_to + " 23:59:59")
+
+    rows = query.order_by(Lead.created_at.desc()).limit(limit).all()
+
+    buf = io.StringIO()
+    w = csv.writer(buf)
+    w.writerow(
+        [
+            "id",
+            "name",
+            "phone",
+            "email",
+            "source",
+            "city",
+            "location",
+            "project_name",
+            "budget",
+            "message",
+            "status",
+            "lead_stage",
+            "crm_status",
+            "reentry_count",
+            "assigned_employee_id",
+            "created_at",
+        ]
+    )
+    for lead in rows:
+        w.writerow(
+            [
+                lead.id,
+                lead.name,
+                lead.phone,
+                lead.email,
+                lead.source,
+                lead.city,
+                lead.location,
+                lead.project_name,
+                lead.budget,
+                (lead.message or "")[:2000],
+                getattr(lead.status, "value", lead.status),
+                getattr(lead, "lead_stage", None),
+                lead.crm_status,
+                getattr(lead, "reentry_count", 0),
+                lead.assigned_employee_id,
+                lead.created_at.isoformat() if lead.created_at else "",
+            ]
+        )
+
+    data = buf.getvalue()
+    return StreamingResponse(
+        iter([data]),
+        media_type="text/csv; charset=utf-8",
+        headers={"Content-Disposition": 'attachment; filename="leads_export.csv"'},
+    )
 
 
 def _log_activity(db: Session, lead_id: int, activity_type: str, message: str, user_id: Optional[int] = None):
@@ -701,6 +839,37 @@ def update_lead_status(lead_id: int, req: UpdateLeadStatusRequest, db: Session =
 
     db.commit()
     return {"message": "Status updated", "status": status}
+
+
+@router.put("/leads/{lead_id}/stage", summary="Update CRM pipeline stage")
+def update_lead_stage(
+    lead_id: int,
+    req: UpdateLeadStageRequest,
+    db: Session = Depends(get_mysql_db),
+    user=Depends(security.get_current_user),
+):
+    stage = req.lead_stage.strip().lower()
+    if stage not in VALID_LEAD_STAGES:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Invalid lead_stage. Allowed: {', '.join(sorted(VALID_LEAD_STAGES))}",
+        )
+
+    lead = db.query(Lead).filter(Lead.id == lead_id).first()
+    if not lead:
+        raise HTTPException(status_code=404, detail="Lead not found")
+
+    old = getattr(lead, "lead_stage", None) or "new"
+    lead.lead_stage = stage
+    _log_activity(
+        db,
+        lead.id,
+        "STAGE_CHANGED",
+        f"Pipeline stage changed from {old} to {stage}",
+        user.id,
+    )
+    db.commit()
+    return {"message": "Stage updated", "lead_stage": stage}
 
 
 @router.get("/leads/{lead_id}/timeline", summary="Full activity timeline for a lead")

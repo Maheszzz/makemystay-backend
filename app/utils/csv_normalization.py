@@ -7,9 +7,18 @@ from typing import Optional
 from app.utils.phone_normalize import normalize_to_indian_mobile_10
 
 
+import re
+
 def normalize_phone(raw: str) -> Optional[str]:
-    """Indian 10-digit mobile for leads; delegates to shared phone helper."""
-    return normalize_to_indian_mobile_10(raw)
+    """Indian 10-digit mobile for leads; handles 91- prefix and non-digits."""
+    if not raw:
+        return None
+    phone = re.sub(r"\D", "", str(raw))
+    if phone.startswith("91") and len(phone) == 12:
+        phone = phone[2:]
+    
+    # Still delegate to validation logic to ensure it's a valid 10-digit 6-9 number
+    return normalize_to_indian_mobile_10(phone)
 
 
 def normalize_name(raw: str, *, default: str = "User", max_len: int = 200) -> str:

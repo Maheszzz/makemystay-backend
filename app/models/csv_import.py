@@ -1,4 +1,4 @@
-from sqlalchemy import Column, DateTime, Float, ForeignKey, Integer, String, JSON
+from sqlalchemy import Column, DateTime, Float, ForeignKey, Integer, String, JSON, Boolean
 from sqlalchemy.orm import relationship
 from sqlalchemy.sql import func
 
@@ -19,6 +19,12 @@ class CsvImport(MySQLBase):
     duplicates = Column(Integer, default=0)
     failed = Column(Integer, default=0)
     skipped_no_phone = Column(Integer, default=0)
+    
+    # Automation Controls
+    sync_to_zoho = Column(Boolean, default=True)
+    send_whatsapp = Column(Boolean, default=True)
+    trigger_ai = Column(Boolean, default=True)
+
     status = Column(
         String(32), default="pending", index=True
     )  # pending, processing, completed, partial, failed, cancelled

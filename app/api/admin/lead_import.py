@@ -86,6 +86,9 @@ async def import_leads_csv(
         description="Stored on leads.source (e.g. csv, 99acres, housing)",
     ),
     dry_run: bool = Form(False, description="Process without committing if True"),
+    sync_to_zoho: bool = Form(True, description="Sync leads to Zoho CRM"),
+    send_whatsapp: bool = Form(True, description="Send WhatsApp automated intro"),
+    trigger_ai: bool = Form(True, description="Trigger Retell AI calling"),
     db: Session = Depends(get_mysql_db),
     current_user=Depends(security.get_current_user),
 ):
@@ -131,6 +134,9 @@ async def import_leads_csv(
             file_name=file.filename or "unknown.csv",
             source=src,
             status="pending",
+            sync_to_zoho=sync_to_zoho,
+            send_whatsapp=send_whatsapp,
+            trigger_ai=trigger_ai,
             created_by=current_user.id,
         )
         db.add(imp)

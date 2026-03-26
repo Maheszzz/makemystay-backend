@@ -23,15 +23,17 @@ COLUMN_ALIASES: Dict[str, List[str]] = {
         "mobile",
         "phone",
         "phone1",
+        "contactno",
         "contact number",
         "contactnumber",
         "tel",
         "mobile number",
+        "mobile no",
         "phonenumber",
         "phone number",
     ],
     "name": ["name", "customer name", "lead name", "full name", "fullname"],
-    "email": ["email", "e-mail", "mail id"],
+    "email": ["email", "e-mail", "mail id", "emailid", "email id"],
     "city": ["city"],
     "location": ["location", "area", "locality"],
     "budget": ["budget", "price range", "price"],
@@ -160,6 +162,7 @@ def _append_error_sample(samples: List[str], msg: str, limit: int = 15) -> None:
     samples.append(msg[:500])
 
 
+from app.models.lead import Lead
 from app.models.csv_import import CsvImport, CsvImportFailure
 
 
@@ -243,7 +246,7 @@ async def run_csv_import(
         if dry_run:
             from app.models.lead import Lead
 
-            existing = db.query(Lead).filter(Lead.phone == lc.phone, Lead.source == processed_source).first()
+            existing = db.query(Lead).filter(Lead.phone == lc.phone).first()
             if existing:
                 out.duplicates += 1
             else:
@@ -259,8 +262,13 @@ async def run_csv_import(
                 raw_payload=lc.model_dump(),
                 raise_on_failure=True,
                 csv_import_stagger_index=i,
+                sync_to_zoho=imp.sync_to_zoho if imp else True,
+                send_whatsapp=imp.send_whatsapp if imp else True,
+                trigger_ai=imp.trigger_ai if imp else True,
             )
             if result is None:
+                out.errors += 1
+            elif (result.reentry_count or 0) > 0:
                 out.duplicates += 1
             else:
                 out.imported += 1
@@ -296,9 +304,9 @@ async def run_csv_import(
             imp.failure_rate = out.errors / out.row_count
         else:
             imp.failure_rate = None
-        attempt_ok = out.imported + out.errors
+        attempt_ok = out.imported + out.duplicates + out.errors
         if attempt_ok > 0:
-            imp.success_rate = out.imported / attempt_ok
+            imp.success_rate = (out.imported + out.duplicates) / attempt_ok
         else:
             imp.success_rate = None
         if row_latencies_ms:
@@ -387,8 +395,13 @@ async def retry_csv_import_failed_rows(db: Session, import_id: int) -> CsvImport
                 raw_payload=lc.model_dump(),
                 raise_on_failure=True,
                 csv_import_stagger_index=j,
+                sync_to_zoho=imp.sync_to_zoho,
+                send_whatsapp=imp.send_whatsapp,
+                trigger_ai=imp.trigger_ai,
             )
             if result is None:
+                pass
+            elif (result.reentry_count or 0) > 0:
                 extra_dup += 1
                 db.delete(fail)
             else:

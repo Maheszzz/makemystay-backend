@@ -62,6 +62,10 @@ class Settings(BaseSettings):
     ZOHO_CRM_CLIENT_ID: str = ""
     ZOHO_CRM_CLIENT_SECRET: str = ""
     ZOHO_CRM_REFRESH_TOKEN: str = ""
+    # API field name in Zoho Leads module for budget (create custom field in Zoho if needed).
+    ZOHO_CRM_BUDGET_FIELD: str = "Budget"
+    # JSON map of city/area keyword → employees.id (PK) for auto RM assignment, e.g. {"BTM": 1, "HSR": 2}
+    CRM_CITY_EMPLOYEE_JSON: str = "{}"
 
     # Retell AI
     RETELL_API_KEY: str = ""

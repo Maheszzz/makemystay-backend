@@ -1,8 +1,6 @@
 """Centralized lead processing service.
 
-This module provides a unified pipeline for all incoming leads, ensuring
-deduplication, database storage, transactional agent assignment, and
-asynchronous CRM synchronization.
+Dedup (global phone) → merge re-entry or create → RM rules → agent assign → Zoho queue.
 """
 
 import traceback
@@ -11,17 +9,55 @@ from typing import Optional
 
 from loguru import logger
 from sqlalchemy.exc import IntegrityError
-from sqlalchemy import and_, func, or_
 from sqlalchemy.orm import Session
 
-from app.core.redis import lead_queue
 from app.events.event_service import publish_event
 from app.models.failed_job import FailedJob
 from app.models.lead import Lead
+from app.models.lead_activity import LeadActivity
 from app.repo import agent_repo
 from app.schemas.lead import LeadCreate
 from app.services.assignment_service import assign_lead
-from app.tasks.lead_tasks import sync_lead_to_zoho_task
+from app.services.crm_employee_assignment import try_assign_employee_by_city_rules
+
+
+def _merge_reentry_lead(
+    existing: Lead,
+    lead_data: LeadCreate,
+    source: str,
+    raw_payload: Optional[dict],
+) -> None:
+    """Update an existing lead when the same phone enquires again."""
+    existing.last_contacted_at = datetime.now(timezone.utc)
+    existing.reentry_count = (existing.reentry_count or 0) + 1
+    existing.source = source
+    if lead_data.name:
+        existing.name = lead_data.name
+    if lead_data.email:
+        existing.email = lead_data.email
+    if lead_data.city:
+        existing.city = lead_data.city
+    if lead_data.location:
+        existing.location = lead_data.location
+    if lead_data.project_name:
+        existing.project_name = lead_data.project_name
+    if lead_data.property_type:
+        existing.property_type = lead_data.property_type
+    if lead_data.budget:
+        existing.budget = lead_data.budget
+    if lead_data.external_id:
+        existing.external_id = lead_data.external_id
+    msg = lead_data.message or lead_data.requirement
+    if msg:
+        prev = (existing.message or "").strip()
+        block = f"{source}: {msg}"
+        if prev:
+            existing.message = f"{prev}\n--- Re-entry ---\n{block}"[:12000]
+        else:
+            existing.message = block[:8000]
+    if raw_payload is not None:
+        existing.raw_payload = raw_payload
+    existing.crm_status = "pending"
 
 
 async def process_lead(
@@ -32,73 +68,55 @@ async def process_lead(
     *,
     raise_on_failure: bool = False,
     csv_import_stagger_index: Optional[int] = None,
+    sync_to_zoho: bool = True,
+    send_whatsapp: bool = True,
+    trigger_ai: bool = True,
 ) -> Optional[Lead]:
     """
-    Process an incoming lead: Dedup → Store → Assign (transactional) → Enqueue CRM Sync.
+    Process an incoming lead.
 
-    Uses SELECT FOR UPDATE on the agents table to prevent concurrent workers
-    from double-assigning the same agent.
-
-    Args:
-        db: Database session.
-        lead_data: Mapped lead data in standard format.
-        source: Source of the lead (housing, 99acres, website, etc.).
-        raw_payload: Original data from the source for debugging.
-        raise_on_failure: If True, re-raise after logging when processing fails (duplicate
-            paths still return ``None``). Webhooks and sync jobs keep the default ``False``.
-        csv_import_stagger_index: When set (CSV row index), Zoho sync is scheduled with a
-            Celery ``countdown`` to spread API load.
-
-    Returns:
-        The created Lead object, or None if it was a duplicate.
+    If the phone already exists, the existing row is **updated** (re-entry), an activity is
+    logged, CRM sync is re-queued when ``sync_to_zoho`` is True, and that lead is returned
+    (``reentry_count`` > 0). ``None`` is returned only on integrity races or hard failures.
     """
     try:
-        # ── 1. Deduplication ────────────────────────────────────────────
-        # Canonical dedup key: phone + property identity + lead day.
-        # This allows repeat enquiries for different properties and/or different days.
-        property_candidates = []
-        for raw_value in [lead_data.property_id, lead_data.external_id, lead_data.project_name]:
-            value = str(raw_value).strip() if raw_value else ""
-            if value and value not in property_candidates:
-                property_candidates.append(value)
+        existing = db.query(Lead).filter(Lead.phone == lead_data.phone).first()
+
+        if existing:
+            logger.info(
+                "Duplicate phone — merging re-entry for lead_id={} phone={}",
+                existing.id,
+                lead_data.phone,
+            )
+            _merge_reentry_lead(existing, lead_data, source, raw_payload)
+            db.add(
+                LeadActivity(
+                    lead_id=existing.id,
+                    type="DUPLICATE_REENTRY",
+                    message=f"Re-enquired from {source}",
+                )
+            )
+            try_assign_employee_by_city_rules(db, existing)
+
+            db.commit()
+            db.refresh(existing)
+
+            publish_event(
+                existing.id,
+                "LEAD_REENTRY",
+                f"Duplicate inbound merged from {source}",
+                payload={"source": source, "reentry_count": existing.reentry_count},
+            )
+
+            if sync_to_zoho:
+                _enqueue_crm_sync(db, existing, csv_stagger_index=csv_import_stagger_index)
+            return existing
 
         if lead_data.lead_date:
             lead_ts = int(lead_data.lead_date)
         else:
             lead_ts = int(datetime.now(timezone.utc).timestamp())
 
-        lead_day_start = lead_ts - (lead_ts % 86400)
-        lead_day_end = lead_day_start + 86400
-        lead_day_date = datetime.fromtimestamp(lead_day_start, tz=timezone.utc).date()
-
-        existing_query = db.query(Lead).filter(
-            Lead.phone == lead_data.phone,
-            Lead.source == source,
-        )
-
-        if property_candidates:
-            property_filters = []
-            for candidate in property_candidates:
-                property_filters.append(Lead.property_id == candidate)
-                property_filters.append(Lead.external_id == candidate)
-                property_filters.append(Lead.project_name == candidate)
-            existing_query = existing_query.filter(or_(*property_filters))
-
-        day_filter = or_(
-            and_(
-                Lead.lead_date.isnot(None),
-                Lead.lead_date >= lead_day_start,
-                Lead.lead_date < lead_day_end,
-            ),
-            and_(Lead.lead_date.is_(None), func.date(Lead.created_at) == lead_day_date),
-        )
-        existing = existing_query.filter(day_filter).first()
-
-        if existing:
-            logger.debug("Duplicate lead skipped: {} from {}", lead_data.phone, source)
-            return None
-
-        # ── 2. Store Lead ─────────────────────────────────────────────
         new_lead = Lead(
             name=lead_data.name,
             phone=lead_data.phone,
@@ -117,15 +135,24 @@ async def process_lead(
             property_id=lead_data.property_id,
             raw_payload=raw_payload,
             status="new",
+            lead_stage="new",
+            reentry_count=0,
             crm_status="pending",
         )
 
         db.add(new_lead)
-        db.flush()  # Get an ID without committing
+        db.flush()
 
-        # ── 3. Transactional Agent Assignment ─────────────────────────
-        #   - SELECT FOR UPDATE locks agent rows to prevent race conditions
-        #   - Uses a savepoint so assignment failure doesn't lose the lead
+        db.add(
+            LeadActivity(
+                lead_id=new_lead.id,
+                type="CREATED",
+                message=f"Lead ingested from {source}",
+            )
+        )
+
+        try_assign_employee_by_city_rules(db, new_lead)
+
         try:
             agents = agent_repo.get_available_agents_for_update(
                 db, location=new_lead.location
@@ -134,7 +161,6 @@ async def process_lead(
 
             if assigned_agent:
                 new_lead.assigned_to = assigned_agent.id
-                # Atomic increment inside the same transaction
                 assigned_agent.current_load = assigned_agent.current_load + 1
                 logger.info(
                     f"Lead {new_lead.id} assigned to Agent {assigned_agent.id} "
@@ -161,9 +187,7 @@ async def process_lead(
             logger.error(
                 f"Error during lead assignment for Lead {new_lead.id}: {assign_err}"
             )
-            # Assignment failure should NOT prevent lead creation
 
-        # ── 4. Commit the transaction ─────────────────────────────────
         db.commit()
         db.refresh(new_lead)
 
@@ -191,14 +215,13 @@ async def process_lead(
             session=db,
         )
 
-        # ── 5. Enqueue Async Tasks ───────────────────────────────────
-        _enqueue_crm_sync(db, new_lead, csv_stagger_index=csv_import_stagger_index)
+        if sync_to_zoho:
+            _enqueue_crm_sync(db, new_lead, csv_stagger_index=csv_import_stagger_index)
 
         return new_lead
 
     except IntegrityError as ie:
         db.rollback()
-        # A unique-constraint violation means the lead already exists — treat as dedup.
         logger.info(
             f"Duplicate lead (IntegrityError) from {source}, "
             f"phone={lead_data.phone}: {ie.orig}"
@@ -210,7 +233,6 @@ async def process_lead(
         error_msg = f"Failed to process lead from {source}: {str(e)}"
         logger.error(error_msg)
 
-        # Log to failed_jobs table for observability
         try:
             failed = FailedJob(
                 job_name=f"process_lead_{source}",
@@ -232,11 +254,7 @@ async def process_lead(
 
 
 def _enqueue_crm_sync(db: Session, lead: Lead, *, csv_stagger_index: Optional[int] = None) -> None:
-    """Enqueue the lead for Zoho CRM synchronisation via Celery.
-
-    CSV bulk imports pass ``csv_stagger_index`` (1-based row index) so Zoho tasks are
-    spread with ``countdown`` — backpressure against API rate limits.
-    """
+    """Enqueue Zoho CRM sync (Celery)."""
     try:
         from app.tasks.lead_tasks import sync_lead_to_zoho_task
 

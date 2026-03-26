@@ -41,6 +41,15 @@ class UpdateLeadStatusRequest(BaseModel):
     status: str
 
 
+class UpdateLeadStageRequest(BaseModel):
+    """CRM pipeline stage (distinct from legacy ``status`` enum)."""
+
+    lead_stage: str = Field(
+        ...,
+        description="new | contacted | interested | visit_scheduled | closed | lost",
+    )
+
+
 class SetFollowUpRequest(BaseModel):
     follow_up_at: str  # ISO 8601 datetime
 
@@ -114,6 +123,9 @@ class CsvImportResponse(BaseModel):
     duplicates: int
     failed: int
     skipped_no_phone: int
+    sync_to_zoho: bool = True
+    send_whatsapp: bool = True
+    trigger_ai: bool = True
     status: str
     created_at: datetime
     created_by_name: Optional[str] = None
