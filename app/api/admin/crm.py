@@ -239,6 +239,60 @@ async def analytics(request: Request, db: Session = Depends(get_mysql_db)):
         raise HTTPException(status_code=500, detail="Failed to fetch analytics")
 
 
+@router.get("/admin/analytics/growth", summary="Monthly properties and leads growth for charts")
+@limiter.limit("20/minute")
+async def analytics_growth(request: Request, db: Session = Depends(get_mysql_db)):
+    """Returns month-by-month totals for properties added and leads created — last 12 months."""
+    from calendar import month_abbr
+
+    def _fetch():
+        today_d = date.today()
+        months = []
+        for i in range(11, -1, -1):
+            # walk back i full months from current
+            month_offset = today_d.month - 1 - i
+            year_offset = today_d.year + (month_offset // 12)
+            mo = (month_offset % 12) + 1
+            start, end = _month_datetime_bounds(date(year_offset, mo, 1))
+
+            props = (
+                db.query(Property)
+                .filter(
+                    Property.is_deleted == False,  # noqa: E712
+                    Property.created_at.isnot(None),
+                    Property.created_at >= start,
+                    Property.created_at < end,
+                )
+                .count()
+            )
+            leads = (
+                db.query(Lead)
+                .filter(
+                    Lead.created_at.isnot(None),
+                    Lead.created_at >= start,
+                    Lead.created_at < end,
+                )
+                .count()
+            )
+            months.append({
+                "name": f"{month_abbr[mo]} '{str(year_offset)[2:]}",
+                "month": mo,
+                "year": year_offset,
+                "properties": props,
+                "leads": leads,
+            })
+        return months
+
+    try:
+        data = await asyncio.wait_for(asyncio.to_thread(_fetch), timeout=5.0)
+        return data
+    except asyncio.TimeoutError:
+        raise HTTPException(status_code=504, detail="Query timeout")
+    except Exception as e:
+        logger.error(f"analytics/growth error: {e}")
+        raise HTTPException(status_code=500, detail="Failed to fetch growth data")
+
+
 @router.get("/users/rms", summary="Get all active Relationship Managers")
 def get_rms(db: Session = Depends(get_mysql_db), user=Depends(security.get_current_user)):
     """Fetch active users with the RM or employee role for the assignment dropdown."""
