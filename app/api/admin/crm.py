@@ -291,9 +291,10 @@ def list_employees(
         if user.role != "admin":
             raise HTTPException(status_code=403, detail="Only admins can list all employees")
         return db.query(Employee).order_by(Employee.id.desc()).all()
+    # Lead-assignment dropdown: any active employee (role is free text — e.g. "Senior RM", not exact "RM").
     return (
         db.query(Employee)
-        .filter(Employee.status == "active", Employee.role == "RM")
+        .filter(Employee.status == "active")
         .order_by(Employee.name.asc())
         .all()
     )
@@ -340,12 +341,11 @@ def assign_lead_to_employee(
         .filter(
             Employee.id == data.employee_id,
             Employee.status == "active",
-            Employee.role == "RM",
         )
         .first()
     )
     if not emp:
-        raise HTTPException(status_code=404, detail="Employee not found")
+        raise HTTPException(status_code=404, detail="Active employee not found")
 
     lead.assigned_employee_id = emp.id
     if emp.user_id is not None:
@@ -387,12 +387,11 @@ def bulk_assign_to_employee(
         .filter(
             Employee.id == data.employee_id,
             Employee.status == "active",
-            Employee.role == "RM",
         )
         .first()
     )
     if not emp:
-        raise HTTPException(status_code=404, detail="Employee not found")
+        raise HTTPException(status_code=404, detail="Active employee not found")
 
     if not data.lead_ids:
         raise HTTPException(status_code=400, detail="No lead_ids provided")
