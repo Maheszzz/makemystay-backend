@@ -268,7 +268,7 @@ async def run_csv_import(
             )
             if result is None:
                 out.errors += 1
-            elif (result.reentry_count or 0) > 0:
+            elif result and (result.reentry_count or 0) > 0:
                 out.duplicates += 1
             else:
                 out.imported += 1
@@ -401,7 +401,7 @@ async def retry_csv_import_failed_rows(db: Session, import_id: int) -> CsvImport
             )
             if result is None:
                 pass
-            elif (result.reentry_count or 0) > 0:
+            elif result and (result.reentry_count or 0) > 0:
                 extra_dup += 1
                 db.delete(fail)
             else:
