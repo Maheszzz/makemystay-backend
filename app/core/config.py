@@ -89,6 +89,10 @@ class Settings(BaseSettings):
     # Webhook
     HOUSING_WEBHOOK_API_KEY: str = ""
     ENABLE_AI_CALLING_FOR_LEADS: bool = True
+    # Log first N bytes of raw 99acres POST body (debugging; avoid huge logs in prod).
+    WEBHOOK_LOG_BODY_MAX: int = 50_000
+    # If True, return HTTP 500 when any <Qry> in a batch fails (may trigger full batch retry from provider).
+    WEBHOOK_99ACRES_HTTP_500_ON_ANY_QRY_FAILURE: bool = False
 
     # Housing API
     HOUSING_API_KEY: str = ""

@@ -89,3 +89,15 @@ class EmployeeResponse(BaseModel):
 
     class Config:
         from_attributes = True
+
+
+class LeadCsvImportResponse(BaseModel):
+    """POST /admin/leads/import-csv — counts from ``csv_lead_import.run_csv_import``."""
+
+    imported: int
+    duplicates: int
+    skipped_no_phone: int
+    skipped_empty: int = 0
+    errors: int
+    row_count: int
+    error_samples: List[str] = Field(default_factory=list)

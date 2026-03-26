@@ -29,6 +29,8 @@ async def process_lead(
     lead_data: LeadCreate,
     source: str,
     raw_payload: Optional[dict] = None,
+    *,
+    raise_on_failure: bool = False,
 ) -> Optional[Lead]:
     """
     Process an incoming lead: Dedup → Store → Assign (transactional) → Enqueue CRM Sync.
@@ -41,6 +43,8 @@ async def process_lead(
         lead_data: Mapped lead data in standard format.
         source: Source of the lead (housing, 99acres, website, etc.).
         raw_payload: Original data from the source for debugging.
+        raise_on_failure: If True, re-raise after logging when processing fails (duplicate
+            paths still return ``None``). Webhooks and sync jobs keep the default ``False``.
 
     Returns:
         The created Lead object, or None if it was a duplicate.
@@ -219,6 +223,8 @@ async def process_lead(
         except Exception as log_err:
             logger.error(f"Failed to record failed job: {log_err}")
 
+        if raise_on_failure:
+            raise
         return None
 
 

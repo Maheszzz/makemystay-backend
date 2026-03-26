@@ -23,6 +23,7 @@ from app.adapters.acers_adapter import AcersAdapter
 from app.configs.db_config import get_mysql_db
 from app.core.config import settings
 from app.repo import lead as lead_repo
+from app.repo.failed_webhook_lead_repo import record_failed_webhook_lead
 from app.schemas.lead import LeadCreate, LeadResponse, LeadStatus, LeadWebhookResponse
 from app.services.lead_processor import process_lead
 from app.core import security
@@ -151,6 +152,7 @@ async def test_99acres_webhook(
 )
 async def receive_99acres_xml(
     request: Request,
+    db: Session = Depends(get_mysql_db),
     x_api_key: Optional[str] = Header(None, alias="X-API-Key"),
     api_key: Optional[str] = Query(None, description="API Key via query param"),
 ):
@@ -158,56 +160,116 @@ async def receive_99acres_xml(
     Receives an XML payload of multiple leads from 99acres and returns an
     XML response. Expects API Key via ``api_key`` query parameter or
     ``X-API-Key`` header.
+
+    Per-``Qry`` failures are stored in ``failed_webhook_leads`` and return
+    ``status`` **N** (not Y) so the portal does not treat them as accepted.
+    Set ``WEBHOOK_99ACRES_HTTP_500_ON_ANY_QRY_FAILURE=true`` to also fail the
+    HTTP response so the provider may retry the batch.
     """
     _verify_api_key(x_api_key, api_key)
 
     body = await request.body()
+    max_log = getattr(settings, "WEBHOOK_LOG_BODY_MAX", 50_000) or 0
+    if max_log > 0:
+        preview = body[:max_log].decode("utf-8", errors="replace")
+        logger.info(
+            "99acres webhook: raw_bytes={} preview={}",
+            len(body),
+            preview,
+        )
     try:
         root = ET.fromstring(body)
     except ET.ParseError as e:
-        logger.error(f"Failed to parse 99acres XML: {e}")
+        logger.error("Failed to parse 99acres XML: {}", e)
         return Response(
             content="<xml><error>Invalid XML</error></xml>",
             media_type="application/xml",
             status_code=400,
         )
 
-    # Build response XML
-    resp_root = ET.Element("xml")
+    qry_nodes = root.findall("Qry")
+    if not qry_nodes:
+        logger.warning("99acres webhook: parsed XML but no <Qry> elements")
+        return Response(
+            content="<xml><error>No Qry elements</error></xml>",
+            media_type="application/xml",
+            status_code=400,
+        )
 
-    for qry in root.findall("Qry"):
+    resp_root = ET.Element("xml")
+    any_qry_failed = False
+
+    for qry in qry_nodes:
         qry_id_elem = qry.find("QryId")
-        qry_id = qry_id_elem.text if qry_id_elem is not None and qry_id_elem.text else ""
+        qry_id = qry_id_elem.text.strip() if qry_id_elem is not None and qry_id_elem.text else ""
         if not qry_id:
+            any_qry_failed = True
+            logger.error("99acres webhook: <Qry> missing QryId — stored as failed row")
+            try:
+                record_failed_webhook_lead(
+                    db,
+                    source="99acres",
+                    external_ref=None,
+                    payload=AcersAdapter.qry_xml_string(qry),
+                    error="missing QryId",
+                )
+            except Exception as ex:
+                logger.error("failed_webhook_leads insert (no QryId): {}", ex)
+            resp_qry = ET.SubElement(resp_root, "QryResp")
+            ET.SubElement(resp_qry, "QryId").text = "UNKNOWN"
+            ET.SubElement(resp_qry, "status").text = "N"
             continue
 
-        # Use the adapter to convert XML → LeadCreate
         lead_data = AcersAdapter.to_lead_create(qry)
 
         if not lead_data:
-            logger.warning(f"99acres lead {qry_id} has no phone number, skipping.")
+            any_qry_failed = True
+            err = "missing_or_invalid_phone_after_field_mapping"
+            logger.error("99acres QryId={} — {}, dead-letter stored", qry_id, err)
+            try:
+                record_failed_webhook_lead(
+                    db,
+                    source="99acres",
+                    external_ref=qry_id,
+                    payload=AcersAdapter.qry_xml_string(qry),
+                    error=err,
+                )
+            except Exception as ex:
+                logger.error("failed_webhook_leads insert: {}", ex)
             resp_qry = ET.SubElement(resp_root, "QryResp")
             ET.SubElement(resp_qry, "QryId").text = qry_id
-            ET.SubElement(resp_qry, "status").text = "Y"
+            ET.SubElement(resp_qry, "status").text = "N"
             continue
 
         try:
             from app.tasks.webhook_tasks import process_webhook_lead_task
+
             process_webhook_lead_task.delay("99acres", lead_data.model_dump())
-            
+
             resp_qry = ET.SubElement(resp_root, "QryResp")
             ET.SubElement(resp_qry, "QryId").text = qry_id
             ET.SubElement(resp_qry, "status").text = "Y"
         except Exception as e:
-            logger.error(f"Failed to enqueue 99acres lead {qry_id}: {e}")
+            any_qry_failed = True
+            logger.error("Failed to enqueue 99acres lead {}: {}", qry_id, e)
+            try:
+                record_failed_webhook_lead(
+                    db,
+                    source="99acres",
+                    external_ref=qry_id,
+                    payload=AcersAdapter.qry_xml_string(qry),
+                    error=f"enqueue_failed: {e}",
+                )
+            except Exception as ex:
+                logger.error("failed_webhook_leads insert: {}", ex)
             resp_qry = ET.SubElement(resp_root, "QryResp")
             ET.SubElement(resp_qry, "QryId").text = qry_id
             ET.SubElement(resp_qry, "status").text = "N"
 
-    return Response(
-        content=ET.tostring(resp_root, encoding="utf-8", xml_declaration=False),
-        media_type="application/xml",
-    )
+    xml_out = ET.tostring(resp_root, encoding="utf-8", xml_declaration=False)
+    if any_qry_failed and getattr(settings, "WEBHOOK_99ACRES_HTTP_500_ON_ANY_QRY_FAILURE", False):
+        return Response(content=xml_out, media_type="application/xml", status_code=500)
+    return Response(content=xml_out, media_type="application/xml")
 
 
 # ================================================================== #

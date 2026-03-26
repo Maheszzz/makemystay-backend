@@ -391,14 +391,24 @@ def process_webhook_async(
                 db.rollback()
                 logger.error(f"Failed to persist async webhook audit: {log_error}")
 
+        # Some Razorpay event types (e.g. settlement.processed, test.restored, account.*)  
+        # operate at the account level and never carry order_id / payment_id.  
+        # These are purely informational — log them as 'acknowledged' (not risky).
+        ACCOUNT_LEVEL_EVENT_PREFIXES = ("settlement.", "test.", "account.", "route.")
+        is_account_level = event and any(event.startswith(p) for p in ACCOUNT_LEVEL_EVENT_PREFIXES)
+
         payment = None
         if order_id:
             payment = db.query(Payment).filter(Payment.order_id == order_id).first()
         elif payment_id:
             payment = db.query(Payment).filter(Payment.payment_id == payment_id).first()
         else:
-            logger.warning(f"Razorpay webhook missing identifiers for event={event}")
-            async_log_webhook_event(status="ignored", reason="identifiers_missing")
+            if is_account_level:
+                logger.debug(f"Razorpay account-level event={event} — no payment identifiers expected, acknowledging.")
+                async_log_webhook_event(status="acknowledged", reason="account_level_event")
+            else:
+                logger.warning(f"Razorpay webhook missing identifiers for event={event}")
+                async_log_webhook_event(status="ignored", reason="identifiers_missing")
             return
 
         if not payment:
@@ -431,9 +441,10 @@ def process_webhook_async(
                 async_log_webhook_event(status="ignored", reason="payment_creation_failed")
                 return
 
-        success_events = {"payment.captured", "order.paid", "payment_link.paid"}
-        failed_events  = {"payment.failed", "payment_link.expired", "payment_link.cancelled"}
-        pending_events = {"payment.authorized"}
+        success_events  = {"payment.captured", "order.paid", "payment_link.paid"}
+        failed_events   = {"payment.failed", "payment_link.expired", "payment_link.cancelled"}
+        pending_events  = {"payment.authorized"}
+        refund_events   = {"refund.created", "refund.processed", "refund.failed", "refund.speed_changed"}
 
         # IDEMPOTENCY CHECKS
         cur_status = str(payment.status).lower() if payment.status else ""
@@ -467,6 +478,15 @@ def process_webhook_async(
         elif event in failed_events:
             payment.status = "failed"
             _cancel_booking(db, payment=payment)
+
+        elif event in refund_events:
+            # Refund events: update the payment status to refunded.
+            # refund.failed / refund.speed_changed don't change the captured status.
+            if event in {"refund.created", "refund.processed"} and cur_status != "refunded":
+                payment.status = "refunded"
+                logger.info(f"Payment {payment_id} marked refunded via {event}.")
+            else:
+                logger.info(f"Refund event {event} for {payment_id} noted (no status change needed).")
 
         else:
             async_log_webhook_event(status="ignored", reason="event_not_mapped")

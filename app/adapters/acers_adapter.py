@@ -7,11 +7,21 @@ into the standard LeadCreate format used by the lead processing pipeline.
 import xml.etree.ElementTree as ET
 from typing import Optional
 
+from pydantic import ValidationError
+
+from app.adapters.webhook_field_mapping import extract_phone_from_99acres_qry
 from app.schemas.lead import LeadCreate
+from app.utils.phone_normalize import normalize_to_indian_mobile_10
 
 
 class AcersAdapter:
     """Maps a 99acres XML ``<Qry>`` element to a ``LeadCreate`` instance."""
+
+    @staticmethod
+    def qry_xml_string(qry: ET.Element) -> str:
+        """Serialize one ``<Qry>`` block for dead-letter storage."""
+        raw = ET.tostring(qry, encoding="unicode")
+        return raw if isinstance(raw, str) else raw.decode("utf-8", errors="replace")
 
     @staticmethod
     def to_lead_create(qry: ET.Element) -> Optional[LeadCreate]:
@@ -22,14 +32,15 @@ class AcersAdapter:
                  ``<Qry>`` block from the 99acres push webhook.
 
         Returns:
-            A ``LeadCreate`` instance, or ``None`` if phone is missing.
+            A ``LeadCreate`` instance, or ``None`` if phone is missing or invalid.
         """
 
         def _text(tag: str) -> str:
             elem = qry.find(tag)
             return elem.text if elem is not None and elem.text else ""
 
-        phone = _text("Phone")
+        phone_raw = extract_phone_from_99acres_qry(qry)
+        phone = normalize_to_indian_mobile_10(phone_raw) if phone_raw else None
         if not phone:
             return None
 
@@ -50,10 +61,15 @@ class AcersAdapter:
         if cmpct_val:
             project_parts.append(f"[{cmpct_val}]")
 
-        return LeadCreate(
-            name=_text("Name") or "User",
-            email=_text("Email") or None,
-            phone=phone,
-            message=_text("QryInfo") or None,
-            project_name=" | ".join(project_parts) if project_parts else None,
-        )
+        qry_id = _text("QryId")
+        try:
+            return LeadCreate(
+                name=_text("Name") or "User",
+                email=_text("Email") or None,
+                phone=phone,
+                message=_text("QryInfo") or _text("Message") or None,
+                project_name=" | ".join(project_parts) if project_parts else None,
+                external_id=qry_id or None,
+            )
+        except ValidationError:
+            return None

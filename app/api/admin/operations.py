@@ -323,12 +323,20 @@ async def get_payment_analytics(
         "payment_creation_failed",
         "event_not_mapped",
     }
+    # These event types have no payment identifiers by design (account/settlement level)
+    # or are now handled natively (refunds). Exclude from the operational alert.
+    benign_event_prefixes = ("settlement.", "test.", "account.", "route.", "refund.")
     ignored_webhooks = (
         db.query(func.count(PaymentWebhookEvent.id))
         .filter(
             PaymentWebhookEvent.status == "ignored",
             PaymentWebhookEvent.reason.in_(risky_ignored_reasons),
             PaymentWebhookEvent.created_at >= alert_window_start,
+            ~PaymentWebhookEvent.event.like("settlement.%"),
+            ~PaymentWebhookEvent.event.like("test.%"),
+            ~PaymentWebhookEvent.event.like("account.%"),
+            ~PaymentWebhookEvent.event.like("route.%"),
+            ~PaymentWebhookEvent.event.like("refund.%"),
         )
         .scalar()
         or 0
