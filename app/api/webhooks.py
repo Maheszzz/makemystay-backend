@@ -4,6 +4,7 @@ Supports: Housing.com, 99acres, MagicBricks, Meta Ads, Website, Brokers, etc.
 All sources hit one parameterized endpoint: POST /webhooks/leads/{source}
 """
 
+import time
 import xml.etree.ElementTree as ET
 from typing import List, Optional
 
@@ -202,42 +203,30 @@ async def receive_99acres_xml(
     for qry in qry_nodes:
         qry_id_elem = qry.find("QryId")
         qry_id = qry_id_elem.text.strip() if qry_id_elem is not None and qry_id_elem.text else ""
-        if not qry_id:
-            any_qry_failed = True
-            logger.error("99acres webhook: <Qry> missing QryId — stored as failed row")
-            try:
-                record_failed_webhook_lead(
-                    db,
-                    source="99acres",
-                    external_ref=None,
-                    payload=AcersAdapter.qry_xml_string(qry),
-                    error="missing QryId",
-                )
-            except Exception as ex:
-                logger.error("failed_webhook_leads insert (no QryId): {}", ex)
-            resp_qry = ET.SubElement(resp_root, "QryResp")
-            ET.SubElement(resp_qry, "QryId").text = "UNKNOWN"
-            ET.SubElement(resp_qry, "status").text = "N"
-            continue
-
+        
+        # 99acres often sends empty <QryId />. We should still process the lead.
+        effective_qry_id = qry_id or f"99-{int(time.time())}"
+        
         lead_data = AcersAdapter.to_lead_create(qry)
+        if lead_data and not lead_data.external_id:
+            lead_data.external_id = effective_qry_id
 
         if not lead_data:
             any_qry_failed = True
             err = "missing_or_invalid_phone_after_field_mapping"
-            logger.error("99acres QryId={} — {}, dead-letter stored", qry_id, err)
+            logger.error("99acres QryId={} — {}, dead-letter stored", effective_qry_id, err)
             try:
                 record_failed_webhook_lead(
                     db,
                     source="99acres",
-                    external_ref=qry_id,
+                    external_ref=effective_qry_id,
                     payload=AcersAdapter.qry_xml_string(qry),
                     error=err,
                 )
             except Exception as ex:
                 logger.error("failed_webhook_leads insert: {}", ex)
             resp_qry = ET.SubElement(resp_root, "QryResp")
-            ET.SubElement(resp_qry, "QryId").text = qry_id
+            ET.SubElement(resp_qry, "QryId").text = qry_id or "UNKNOWN"
             ET.SubElement(resp_qry, "status").text = "N"
             continue
 
@@ -247,23 +236,23 @@ async def receive_99acres_xml(
             process_webhook_lead_task.delay("99acres", lead_data.model_dump())
 
             resp_qry = ET.SubElement(resp_root, "QryResp")
-            ET.SubElement(resp_qry, "QryId").text = qry_id
+            ET.SubElement(resp_qry, "QryId").text = qry_id or "UNKNOWN"
             ET.SubElement(resp_qry, "status").text = "Y"
         except Exception as e:
             any_qry_failed = True
-            logger.error("Failed to enqueue 99acres lead {}: {}", qry_id, e)
+            logger.error("Failed to enqueue 99acres lead {}: {}", effective_qry_id, e)
             try:
                 record_failed_webhook_lead(
                     db,
                     source="99acres",
-                    external_ref=qry_id,
+                    external_ref=effective_qry_id,
                     payload=AcersAdapter.qry_xml_string(qry),
                     error=f"enqueue_failed: {e}",
                 )
             except Exception as ex:
                 logger.error("failed_webhook_leads insert: {}", ex)
             resp_qry = ET.SubElement(resp_root, "QryResp")
-            ET.SubElement(resp_qry, "QryId").text = qry_id
+            ET.SubElement(resp_qry, "QryId").text = qry_id or "UNKNOWN"
             ET.SubElement(resp_qry, "status").text = "N"
 
     xml_out = ET.tostring(resp_root, encoding="utf-8", xml_declaration=False)

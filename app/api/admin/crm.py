@@ -59,19 +59,19 @@ from app.utils.employee_utils import generate_next_employee_id
 router = APIRouter()
 
 
-def _lead_to_api_dict(lead: Lead) -> dict:
+def _lead_to_api_dict(lead: Lead, columns) -> dict:
     """Serialize Lead ORM row for JSON (includes nested assigned_employee when loaded)."""
     out: dict = {}
-    for col in sa_inspect(lead).mapper.column_attrs:
-        v = getattr(lead, col.key)
+    for col in columns:
+        v = getattr(lead, col)
         if v is None:
-            out[col.key] = None
+            out[col] = None
         elif hasattr(v, "isoformat"):
-            out[col.key] = v.isoformat()
+            out[col] = v.isoformat()
         elif hasattr(v, "value"):  # Enum
-            out[col.key] = v.value
+            out[col] = v.value
         else:
-            out[col.key] = v
+            out[col] = v
     ae = lead.assigned_employee
     if ae is not None:
         out["assigned_employee"] = {
@@ -571,7 +571,10 @@ def get_leads(
         query = query.filter(Lead.created_at <= date_to + " 23:59:59")
 
     rows = query.order_by(Lead.created_at.desc()).offset(offset).limit(limit).all()
-    return [_lead_to_api_dict(lead) for lead in rows]
+    
+    # Cache column names so we don't inspect per row (fixes timeout for limit=10000)
+    columns = [col.key for col in sa_inspect(Lead).mapper.column_attrs]
+    return [_lead_to_api_dict(lead, columns) for lead in rows]
 
 
 @router.get("/admin/leads/export", summary="Export leads as CSV (filters)")

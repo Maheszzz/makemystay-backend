@@ -21,6 +21,18 @@ from app.services.assignment_service import assign_lead
 from app.services.crm_employee_assignment import try_assign_employee_by_city_rules
 
 
+def normalize_phone(phone: str) -> str:
+    """Normalize phone number to purely digits without country prefix zeros or +91."""
+    if not phone:
+        return ""
+    phone = str(phone).replace(" ", "").replace("-", "")
+    if phone.startswith("+91"):
+        phone = phone[3:]
+    if phone.startswith("0"):
+        phone = phone[1:]
+    return phone
+
+
 def _merge_reentry_lead(
     existing: Lead,
     lead_data: LeadCreate,
@@ -31,6 +43,10 @@ def _merge_reentry_lead(
     existing.last_contacted_at = datetime.now(timezone.utc)
     existing.reentry_count = (existing.reentry_count or 0) + 1
     existing.source = source
+    if existing.status != "new":
+        existing.status = "new"
+        existing.lead_stage = "new"
+        existing.follow_up_at = None
     if lead_data.name:
         existing.name = lead_data.name
     if lead_data.email:
@@ -79,8 +95,9 @@ async def process_lead(
     logged, CRM sync is re-queued when ``sync_to_zoho`` is True, and that lead is returned
     (``reentry_count`` > 0). ``None`` is returned only on integrity races or hard failures.
     """
+    lead_data.phone = normalize_phone(lead_data.phone)
     try:
-        existing = db.query(Lead).filter(Lead.phone == lead_data.phone).first()
+        existing = db.query(Lead).filter(Lead.phone == lead_data.phone).with_for_update().first()
 
         if existing:
             logger.info(
@@ -218,14 +235,43 @@ async def process_lead(
         if sync_to_zoho:
             _enqueue_crm_sync(db, new_lead, csv_stagger_index=csv_import_stagger_index)
 
+        if send_whatsapp:
+            _enqueue_whatsapp(db, new_lead, csv_stagger_index=csv_import_stagger_index)
+
+#        if trigger_ai:
+#            _enqueue_ai_call(db, new_lead, csv_stagger_index=csv_import_stagger_index)
+
         return new_lead
 
     except IntegrityError as ie:
         db.rollback()
-        logger.info(
+        logger.warning(
             f"Duplicate lead (IntegrityError) from {source}, "
-            f"phone={lead_data.phone}: {ie.orig}"
+            f"phone={lead_data.phone}. Potential race condition. Engaging merge logic: {ie.orig}"
         )
+        existing = db.query(Lead).filter(Lead.phone == lead_data.phone).first()
+        if existing:
+            logger.info("Recovered from race condition — merging re-entry.")
+            _merge_reentry_lead(existing, lead_data, source, raw_payload)
+            db.add(
+                LeadActivity(
+                    lead_id=existing.id,
+                    type="DUPLICATE_REENTRY",
+                    message=f"Re-enquired from {source} (Race Condition Recovered)",
+                )
+            )
+            try_assign_employee_by_city_rules(db, existing)
+            db.commit()
+            db.refresh(existing)
+            publish_event(
+                existing.id,
+                "LEAD_REENTRY",
+                f"Duplicate inbound merged from {source}",
+                payload={"source": source, "reentry_count": existing.reentry_count},
+            )
+            if sync_to_zoho:
+                _enqueue_crm_sync(db, existing, csv_stagger_index=csv_import_stagger_index)
+            return existing
         return None
 
     except Exception as e:
@@ -271,3 +317,37 @@ def _enqueue_crm_sync(db: Session, lead: Lead, *, csv_stagger_index: Optional[in
         logger.error(f"Failed to enqueue lead {lead.id}: {enqueue_err}")
         lead.crm_status = "failed"
         db.commit()
+
+
+def _enqueue_whatsapp(db: Session, lead: Lead, *, csv_stagger_index: Optional[int] = None) -> None:
+    """Enqueue WhatsApp notification (Celery)."""
+    try:
+        from app.tasks.lead_tasks import send_lead_whatsapp_task
+
+        if csv_stagger_index is not None:
+            # Staggered: 0.2s, 0.4s, ... max 10 mins. Stagger differently from Zoho to spread load.
+            countdown = min(float(csv_stagger_index) * 0.3, 600.0)
+            send_lead_whatsapp_task.apply_async(args=[lead.id], countdown=countdown)
+        else:
+            send_lead_whatsapp_task.delay(lead.id)
+
+        logger.info(f"Enqueued WhatsApp for lead {lead.id}")
+    except Exception as e:
+        logger.error(f"Failed to enqueue WhatsApp for lead {lead.id}: {e}")
+
+
+def _enqueue_ai_call(db: Session, lead: Lead, *, csv_stagger_index: Optional[int] = None) -> None:
+    """Enqueue AI call (Celery)."""
+    try:
+        from app.tasks.lead_tasks import trigger_lead_ai_call_task
+
+        if csv_stagger_index is not None:
+            # Staggered: 0.5s, 1.0s, ... max 15 mins. AI calls are heavier, stagger more.
+            countdown = min(float(csv_stagger_index) * 0.5, 900.0)
+            trigger_lead_ai_call_task.apply_async(args=[lead.id], countdown=countdown)
+        else:
+            trigger_lead_ai_call_task.delay(lead.id)
+
+        logger.info(f"Enqueued AI call for lead {lead.id}")
+    except Exception as e:
+        logger.error(f"Failed to enqueue AI call for lead {lead.id}: {e}")

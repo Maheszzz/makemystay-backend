@@ -6,6 +6,7 @@ FastAPI request cycle. Each task opens its own DB session.
 
 import asyncio
 import traceback
+from typing import Optional, Union, Sequence
 
 from loguru import logger
 
@@ -408,3 +409,112 @@ def retry_csv_import_failures_task(self, import_id: int) -> None:
             if self.request.retries < self.max_retries:
                 raise self.retry(exc=e)
             raise
+
+
+# ────────────────────────────────────────────────────────────────────
+#  WhatsApp Notification Task
+# ────────────────────────────────────────────────────────────────────
+@celery_app.task(name="send_lead_whatsapp_task", bind=True, max_retries=3, default_retry_delay=60)
+def send_lead_whatsapp_task(self, lead_id: int, template_sid: Optional[str] = None) -> None:
+    """Celery Task: Send a WhatsApp message to a lead."""
+    from app.services.whatsapp_service import send_template_whatsapp
+    from app.core.config import settings
+
+    logger.info(f"Celery Task: Sending WhatsApp to Lead #{lead_id}...")
+    with MySQLSessionLocal() as session:
+        lead_obj = lead_repo.get_lead_by_id(session, lead_id)
+        if not lead_obj or not lead_obj.phone:
+            logger.error(f"Lead #{lead_id} not found or has no phone. WhatsApp aborted.")
+            return
+
+        sid = template_sid or settings.TWILIO_WHATSAPP_LEAD_TEMPLATE
+        if not sid:
+            logger.error("No WhatsApp template SID configured.")
+            return
+
+        try:
+            # Prepare template variables
+            variables = {
+                "1": lead_obj.name or "User",
+                "2": lead_obj.project_name or "our project",
+            }
+            
+            result = send_template_whatsapp(
+                to=lead_obj.phone,
+                content_sid=sid,
+                content_variables=variables
+            )
+            
+            if result.ok:
+                logger.success(f"WhatsApp sent successfully to Lead #{lead_id} (SID: {result.sid})")
+                publish_event(lead_id, "WHATSAPP_SENT", f"WhatsApp sent via {sid}")
+            else:
+                raise ValueError(result.error)
+
+        except Exception as e:
+            logger.error(f"WhatsApp failed for Lead #{lead_id}: {e}")
+            if self.request.retries < self.max_retries:
+                raise self.retry(exc=e)
+
+
+# ────────────────────────────────────────────────────────────────────
+#  AI Call Task for Leads
+# ────────────────────────────────────────────────────────────────────
+@celery_app.task(name="trigger_lead_ai_call_task", bind=True, max_retries=2, default_retry_delay=120)
+def trigger_lead_ai_call_task(self, lead_id: int) -> None:
+    """Celery Task: Trigger an outbound AI call for a lead."""
+    from app.api.retell import trigger_outbound_call
+    from app.models.retell_call import RetellCall
+
+    logger.info(f"Celery Task: Triggering AI call for Lead #{lead_id}...")
+    with MySQLSessionLocal() as session:
+        lead_obj = lead_repo.get_lead_by_id(session, lead_id)
+        if not lead_obj or not lead_obj.phone:
+            return
+
+        # Check if already called or has a pending call
+        existing_call = session.query(RetellCall).filter(
+            RetellCall.lead_id == lead_id,
+            RetellCall.status.in_(["queued", "calling", "completed"])
+        ).first()
+        
+        if existing_call:
+            logger.info(f"Lead #{lead_id} already has a call record (status: {existing_call.status}). Skipping.")
+            return
+
+        call_log = RetellCall(
+            lead_id=lead_id,
+            to_phone=lead_obj.phone,
+            status="queued"
+        )
+        session.add(call_log)
+        session.commit()
+        session.refresh(call_log)
+
+        try:
+            data = asyncio.run(trigger_outbound_call(
+                name=lead_obj.name or "User",
+                phone=lead_obj.phone,
+                location=lead_obj.location or "",
+                project=lead_obj.project_name or "",
+                lead_id=lead_id,
+                test_id=call_log.id
+            ))
+            
+            if data and (data.get("call_id") or data.get("id")):
+                call_id = data.get("call_id") or data.get("id")
+                call_log.retell_call_id = call_id
+                call_log.status = "calling"
+                session.commit()
+                publish_event(lead_id, "AI_CALL_TRIGGERED", f"AI call triggered (ID: {call_id})")
+            else:
+                call_log.status = "failed"
+                session.commit()
+                logger.error(f"Failed to trigger AI call for Lead #{lead_id}: No ID from provider")
+
+        except Exception as e:
+            call_log.status = "failed"
+            session.commit()
+            logger.error(f"Error triggering AI call for Lead #{lead_id}: {e}")
+            if self.request.retries < self.max_retries:
+                raise self.retry(exc=e)

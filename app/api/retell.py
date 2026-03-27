@@ -103,6 +103,8 @@ async def trigger_outbound_call(
     message: str = "",
     test_id: Optional[int] = None,
     contact_id: Optional[int] = None,
+    lead_id: Optional[int] = None,
+    project: Optional[str] = None,
 ):
     """
     Trigger outbound AI call using Retell.
@@ -126,13 +128,15 @@ async def trigger_outbound_call(
         "metadata": {
             "test_id": test_id,
             "contact_id": contact_id,
+            "lead_id": lead_id,
         },
         "retell_llm_dynamic_variables": {
             "name": name,
             "location": location,
-            "property_type": property_type,
+            "property_type": property_type or project or "",
             "requirement": message or "interested in property options",
             "test_id": str(test_id) if test_id is not None else "",
+            "lead_id": str(lead_id) if lead_id is not None else "",
         },
     }
 
@@ -279,6 +283,19 @@ async def retell_webhook(request: Request, db: Session = Depends(get_mysql_db)):
                     contact.budget = budget
                 if location:
                     contact.location = location
+
+        if test_row.lead_id:
+            from app.models.lead import Lead
+            lead = db.query(Lead).filter(Lead.id == test_row.lead_id).first()
+            if lead:
+                lead.is_ai_called = True
+                if interested is True:
+                    lead.lead_stage = "interested"
+                elif interested is False:
+                    lead.lead_stage = "not_interested"
+                
+                if location:
+                    lead.location = location
         # SUMMARY: interested=<true|false>, location=<...>, budget=<...>, move_in=<...>
         interested: Optional[bool] = None
         location: Optional[str] = None
@@ -320,12 +337,12 @@ async def retell_webhook(request: Request, db: Session = Depends(get_mysql_db)):
         db.commit()
 
         # Trigger Zoho CRM sync for the contact to update AI tags
-        if test_row.contact_id:
+        if test_row.lead_id:
             try:
-                from app.tasks.lead_tasks import sync_contact_to_zoho_task
-                sync_contact_to_zoho_task.delay(test_row.contact_id)
+                from app.tasks.lead_tasks import sync_lead_to_zoho_task
+                sync_lead_to_zoho_task.delay(test_row.lead_id)
             except Exception as e:
-                logger.error(f"Failed to trigger Zoho sync after AI call: {e}")
+                logger.error(f"Failed to trigger Zoho sync for lead after AI call: {e}")
 
         return {"status": "updated"}
 

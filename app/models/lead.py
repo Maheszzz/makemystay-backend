@@ -62,6 +62,7 @@ class Lead(MySQLBase):
     zoho_lead_id = Column(String(100), nullable=True)
     zoho_synced = Column(Boolean, default=False)
     is_ai_called = Column(Boolean, default=False)
+    whatsapp_sent = Column(Boolean, default=False)
     lead_date = Column(Integer, nullable=True, index=True)
     external_id = Column(String(100), nullable=True, index=True)
     raw_payload = Column(JSON, nullable=True)  # Store original payload for debugging

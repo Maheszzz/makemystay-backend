@@ -4,7 +4,7 @@ from datetime import datetime
 from enum import Enum
 from typing import Optional
 
-from pydantic import BaseModel, EmailStr, Field
+from pydantic import BaseModel, EmailStr, Field, field_validator
 
 
 class LeadStatus(str, Enum):
@@ -26,6 +26,18 @@ class LeadCreate(BaseModel):
     name: Optional[str] = Field(None, max_length=200)
     email: Optional[str] = Field(None, max_length=200)
     phone: str = Field(..., pattern=r"^[6-9]\d{9}$")
+
+    @field_validator("phone", mode="before")
+    @classmethod
+    def normalize_phone_input(cls, v: str) -> str:
+        if not v:
+            return ""
+        phone = str(v).replace(" ", "").replace("-", "")
+        if phone.startswith("+91"):
+            phone = phone[3:]
+        if phone.startswith("0"):
+            phone = phone[1:]
+        return phone
     project_name: Optional[str] = Field(None, max_length=300)
     city: Optional[str] = Field(None, max_length=100)
     location: Optional[str] = Field(None, max_length=200)

@@ -148,6 +148,8 @@ class ZohoCRMService:
                     )
                 elif method.upper() in ("GET", "SEARCH"):
                     response = await client.get(url, headers=headers, params=params)
+                elif method.upper() == "DELETE":
+                    response = await client.delete(url, headers=headers, params=params)
                 else:
                     return None
 
@@ -181,6 +183,15 @@ class ZohoCRMService:
             return result["data"][0]["id"]
         return None
 
+    async def search_lead_by_phone(self, phone: str) -> Optional[str]:
+        """Searches for a Lead by phone and returns the Lead ID if found."""
+        params = {"criteria": f"(Phone:equals:{phone})"}
+        result = await self._make_request("GET", "Leads/search", params=params)
+
+        if result and "data" in result and len(result["data"]) > 0:
+            return result["data"][0]["id"]
+        return None
+
     async def create_or_update_lead(self, contact_data: Any) -> Optional[str]:
         """Creates a new Lead or updates an existing one in Zoho CRM."""
         # Use adapter for mapping if it's not already a dict
@@ -195,24 +206,40 @@ class ZohoCRMService:
             payload_data = adapter.to_zoho_payload()
 
         email = payload_data.get("Email")
-        if not email:
-            logger.error("No email found in contact data for Zoho CRM sync.")
+        phone = payload_data.get("Phone")
+        
+        if not email and not phone:
+            logger.error("Neither email nor phone found in contact data for Zoho CRM sync.")
             return None
 
-        lead_id = await self.search_lead_by_email(email)
+        lead_id = None
+        if phone:
+            lead_id = await self.search_lead_by_phone(phone)
+            
+        if not lead_id and email:
+            lead_id = await self.search_lead_by_email(email)
 
         payload = {
             "data": [payload_data],
             "trigger": ["workflow"],
         }
 
+        import asyncio
+        result = None
+        action = "updated" if lead_id else "created"
         if lead_id:
             payload["data"][0]["id"] = lead_id
-            result = await self._make_request("PUT", "Leads", data=payload)
-            action = "updated"
-        else:
-            result = await self._make_request("POST", "Leads", data=payload)
-            action = "created"
+
+        for i in range(3):
+            try:
+                method = "PUT" if lead_id else "POST"
+                result = await self._make_request(method, "Leads", data=payload)
+                if result:
+                    break
+            except Exception as e:
+                logger.warning(f"Zoho CRM Sync attempt {i+1} failed: {e}")
+                if i < 2:
+                    await asyncio.sleep(2)
 
         if result and "data" in result and result["data"][0].get("status") == "success":
             new_id = result["data"][0]["details"]["id"]

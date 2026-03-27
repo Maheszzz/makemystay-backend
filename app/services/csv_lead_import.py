@@ -215,6 +215,26 @@ async def run_csv_import(
     row_latencies_ms: List[float] = []
     cancelled_break = False
 
+    # Optimization: Pre-fetch existing phones for dry run or small imports
+    # to avoid thousands of per-row DB queries.
+    existing_phones_set: set[str] = set()
+    if dry_run or len(rows) > 100:
+        logger.info("Optimizing check for existing phones (batch size: {})", len(rows))
+        # Extract all potential phones from the rows
+        all_potential_phones = []
+        for row in rows:
+            raw_phone = _get_phone_raw(row, header_map)
+            if raw_phone:
+                p = normalize_phone(raw_phone)
+                if p:
+                    all_potential_phones.append(p)
+        
+        if all_potential_phones:
+            # Batch query for existing phones
+            res = db.query(Lead.phone).filter(Lead.phone.in_(all_potential_phones)).all()
+            existing_phones_set = {r[0] for r in res}
+            logger.info("Batch check complete: found {} existing phones", len(existing_phones_set))
+
     for i, row in enumerate(rows, start=1):
         if import_id and not dry_run:
             st = db.query(CsvImport.status).filter(CsvImport.id == import_id).scalar()
@@ -244,10 +264,7 @@ async def run_csv_import(
             continue
 
         if dry_run:
-            from app.models.lead import Lead
-
-            existing = db.query(Lead).filter(Lead.phone == lc.phone).first()
-            if existing:
+            if lc.phone in existing_phones_set:
                 out.duplicates += 1
             else:
                 out.imported += 1
