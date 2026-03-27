@@ -33,6 +33,8 @@ from app.models.assignment_batch import AssignmentBatch
 from app.models.csv_import import CsvImport
 from app.models.employee import Employee
 from app.models.lead import Lead
+from app.models.lead_event import LeadEvent
+from app.models.retell_call import RetellCall
 from app.models.realty import Property
 from app.models.lead_activity import LeadActivity
 from app.models.lead_assignment import LeadAssignment
@@ -50,6 +52,7 @@ from app.api.admin.schemas import (
     EmployeeResponse,
     EmployeeUpdate,
     SetFollowUpRequest,
+    UpdateLeadMessageRequest,
     UpdateLeadStageRequest,
     UpdateLeadStatusRequest,
     UpdatePriorityRequest,
@@ -100,7 +103,10 @@ def _first_day_prev_month(d: date) -> date:
     return date(d.year, d.month - 1, 1)
 
 
-@router.get("/admin/lead-metadata", summary="Lead statuses, priorities (single source for admin UI)")
+@router.get(
+    "/admin/lead-metadata",
+    summary="Lead statuses, priorities, pipeline stages, contact statuses (single source for admin UI)",
+)
 def get_lead_metadata(user=Depends(security.get_current_user)):
     """Returns labels and options derived from the Lead model / DB enum — no hardcoding in the frontend."""
     if user.role not in ["admin", "RM", "employee"]:
@@ -571,10 +577,32 @@ def get_leads(
         query = query.filter(Lead.created_at <= date_to + " 23:59:59")
 
     rows = query.order_by(Lead.created_at.desc()).offset(offset).limit(limit).all()
-    
+
     # Cache column names so we don't inspect per row (fixes timeout for limit=10000)
     columns = [col.key for col in sa_inspect(Lead).mapper.column_attrs]
     return [_lead_to_api_dict(lead, columns) for lead in rows]
+
+
+def _crm_leads_visible_query(db: Session, user: User):
+    """Same visibility rules as GET /leads (admin CRM list)."""
+    q = db.query(Lead).options(joinedload(Lead.assigned_employee))
+    if user.role != "admin":
+        emp_ids = [e.id for e in db.query(Employee).filter(Employee.user_id == user.id).all()]
+        if emp_ids:
+            q = q.filter(or_(Lead.owner_id == user.id, Lead.assigned_employee_id.in_(emp_ids)))
+        else:
+            q = q.filter(Lead.owner_id == user.id)
+    return q
+
+
+@router.get("/admin/leads/{lead_id}", summary="Get single lead (full CRM payload)")
+def get_lead_full(lead_id: int, db: Session = Depends(get_mysql_db), user=Depends(security.get_current_user)):
+    """Full lead row for admin detail (includes pipeline, Zoho, assigned employee). Prefer over GET /leads/{id}."""
+    lead = _crm_leads_visible_query(db, user).filter(Lead.id == lead_id).first()
+    if not lead:
+        raise HTTPException(status_code=404, detail="Lead not found")
+    columns = [col.key for col in sa_inspect(Lead).mapper.column_attrs]
+    return _lead_to_api_dict(lead, columns)
 
 
 @router.get("/admin/leads/export", summary="Export leads as CSV (filters)")
@@ -941,6 +969,42 @@ def update_priority(lead_id: int, req: UpdatePriorityRequest, db: Session = Depe
     _log_activity(db, lead.id, "STATUS_CHANGED", f"Priority changed from {old_label} to {new_label}", user.id)
     db.commit()
     return {"message": "Priority updated", "priority": req.priority}
+
+
+@router.put("/leads/{lead_id}/message", summary="Update lead enquiry message")
+def update_lead_message(
+    lead_id: int,
+    req: UpdateLeadMessageRequest,
+    db: Session = Depends(get_mysql_db),
+    user=Depends(security.get_current_user),
+):
+    lead = _crm_leads_visible_query(db, user).filter(Lead.id == lead_id).first()
+    if not lead:
+        raise HTTPException(status_code=404, detail="Lead not found")
+    if req.message is None:
+        lead.message = None
+    else:
+        m = req.message.strip()
+        lead.message = m[:2000] if m else None
+    _log_activity(db, lead.id, "NOTE", "Enquiry message updated", user.id)
+    db.commit()
+    lead = _crm_leads_visible_query(db, user).filter(Lead.id == lead_id).first()
+    columns = [col.key for col in sa_inspect(Lead).mapper.column_attrs]
+    return _lead_to_api_dict(lead, columns)
+
+
+@router.delete("/leads/{lead_id}", summary="Delete a lead")
+def delete_lead(lead_id: int, db: Session = Depends(get_mysql_db), user=Depends(security.get_current_user)):
+    lead = _crm_leads_visible_query(db, user).filter(Lead.id == lead_id).first()
+    if not lead:
+        raise HTTPException(status_code=404, detail="Lead not found")
+    db.query(LeadEvent).filter(LeadEvent.lead_id == lead_id).delete(synchronize_session=False)
+    db.query(LeadActivity).filter(LeadActivity.lead_id == lead_id).delete(synchronize_session=False)
+    db.query(LeadAssignment).filter(LeadAssignment.lead_id == lead_id).delete(synchronize_session=False)
+    db.query(RetellCall).filter(RetellCall.lead_id == lead_id).update({RetellCall.lead_id: None}, synchronize_session=False)
+    db.delete(lead)
+    db.commit()
+    return {"message": "Lead deleted"}
 
 
 @router.get("/admin/assignment-batches", summary="Assignment batch history")

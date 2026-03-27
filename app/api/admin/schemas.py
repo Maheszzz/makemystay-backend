@@ -62,6 +62,12 @@ class UpdatePriorityRequest(BaseModel):
     priority: int = Field(..., ge=1, le=3, description="1=Low, 2=Medium, 3=High")
 
 
+class UpdateLeadMessageRequest(BaseModel):
+    """PUT /leads/{id}/message — update enquiry text on the lead row."""
+
+    message: Optional[str] = Field(None, max_length=2000)
+
+
 class AutoAssignRequest(BaseModel):
     lead_ids: Optional[List[int]] = None  # None = all unassigned
     rm_ids: Optional[List[int]] = None  # None = all active RMs
