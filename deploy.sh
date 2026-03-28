@@ -55,8 +55,42 @@ fi
 source venv/bin/activate
 pip install -r requirements.txt
 
-# Load environment variables for Alembic migrations
-set -a; source .env.production; set +a
+# Load environment variables for Alembic (same file PM2 uses via env_file)
+if [ ! -f .env.production ]; then
+  echo "❌ Missing .env.production in $REMOTE_DIR — create it on the server or rsync it with deploy."
+  exit 1
+fi
+set -a
+# shellcheck source=/dev/null
+. ./.env.production
+set +a
+export ENV="${ENV:-production}"
+
+# Fail fast with a clear message (common on EC2: MySQL not running, or DB_HOST still 127.0.0.1:3310 from a laptop template while nothing listens there — use RDS endpoint or start Docker MySQL on that port)
+if [ "${SKIP_DB_CHECK:-0}" != "1" ]; then
+  python3 << 'PY'
+import os, socket, sys
+
+host = os.environ.get("DB_HOST", "127.0.0.1")
+try:
+    port = int(os.environ.get("DB_PORT", "3306"))
+except ValueError:
+    print("ERROR: DB_PORT must be an integer.", file=sys.stderr)
+    sys.exit(1)
+
+try:
+    socket.create_connection((host, port), timeout=8).close()
+except OSError as e:
+    print(f"ERROR: Cannot reach MySQL at {host}:{port} ({e}).", file=sys.stderr)
+    print(
+        "Fix: Start MySQL on the server (e.g. Docker publishing this port), or set DB_HOST/DB_PORT "
+        "in .env.production to your RDS/Aurora hostname and 3306.",
+        file=sys.stderr,
+    )
+    sys.exit(1)
+PY
+fi
+
 alembic upgrade head
 
 echo "🔄 Reloading PM2 workers..."

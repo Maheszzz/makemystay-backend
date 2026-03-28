@@ -16,7 +16,7 @@ from app.events.event_service import publish_event
 from app.models.failed_job import FailedJob
 from app.repo import lead as lead_repo
 from app.utils.zoho_adapter import CRMLeadAdapter
-from app.utils.zoho_crm_service import zoho_crm_service
+from app.utils.zoho_crm_service import ZohoCRMError, ZohoRateLimitError, zoho_crm_service
 
 # ────────────────────────────────────────────────────────────────────
 #  Constants
@@ -105,7 +105,13 @@ def sync_lead_to_zoho_task(self, lead_id: int) -> None:
                     f"Sync failed, retrying (attempt {retry_num})",
                     payload=str(e),
                 )
-                raise self.retry(exc=e)
+                
+                countdown = 60
+                if isinstance(e, ZohoRateLimitError):
+                    countdown = 300  # 5 minutes for rate limits
+                    logger.warning(f"Rate Limit hit for Lead #{lead_id}. Waiting 5 mins.")
+                
+                raise self.retry(exc=e, countdown=countdown)
 
             # ── Dead Letter Queue: permanently failed ─────────────────
             logger.error(

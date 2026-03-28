@@ -147,6 +147,39 @@ async def get_stats(db: Session = Depends(get_mysql_db)):
         raise HTTPException(status_code=500, detail="Failed to fetch stats")
 
 
+@router.get("/admin/crm/sync-status", summary="Get Zoho CRM synchronization progress")
+async def get_crm_sync_status(
+    db: Session = Depends(get_mysql_db),
+    user=Depends(security.get_current_user)
+):
+    """Provides real-time visibility into the Zoho CRM synchronization progress."""
+    if user.role != "admin":
+        raise HTTPException(status_code=403, detail="Not allowed")
+
+    try:
+        total = db.query(Lead).filter(Lead.is_deleted.is_(False)).count()
+        synced = db.query(Lead).filter(Lead.is_deleted.is_(False), Lead.zoho_synced.is_(True)).count()
+        remaining = total - synced
+        
+        # Calculate percentage
+        percent = (synced / total * 100) if total > 0 else 100
+        
+        # Also check failures
+        failed = db.query(Lead).filter(Lead.crm_status == "failed").count()
+
+        return {
+            "total_leads": total,
+            "synced_leads": synced,
+            "remaining": remaining,
+            "failed_leads": failed,
+            "sync_percentage": round(percent, 2),
+            "status": "in_progress" if remaining > 0 else "complete"
+        }
+    except Exception as e:
+        logger.error(f"Failed to fetch CRM sync status: {e}")
+        raise HTTPException(status_code=500, detail="Failed to fetch sync status")
+
+
 @router.get("/admin/analytics", summary="Get simple analytics metrics")
 @limiter.limit("10/minute")
 async def analytics(request: Request, db: Session = Depends(get_mysql_db)):

@@ -40,6 +40,10 @@ class ZohoCRMError(RuntimeError):
     """Zoho Leads API returned an error, empty body, or a row with status != success."""
 
 
+class ZohoRateLimitError(ZohoCRMError):
+    """Zoho CRM API returned a 429 Too Many Requests status."""
+
+
 def _extract_zoho_lead_id_or_raise(result: Optional[Dict[str, Any]], action: str) -> str:
     """Hard-fail on any outcome that is not a successful single-record Leads upsert."""
     if result is None:
@@ -190,7 +194,7 @@ class ZohoCRMService:
                     return {}
                 elif response.status_code == 429: # Rate limit
                     logger.error(f"Zoho CRM Rate Limit Exceeded: {response.text}")
-                    raise httpx.RequestError("Zoho CRM Rate Limit Exceeded")
+                    raise ZohoRateLimitError("Zoho CRM Rate Limit Exceeded")
                 else:
                     logger.error(
                         f"Zoho CRM API Error ({response.status_code}) [{endpoint}]: {response.text}"
@@ -200,8 +204,8 @@ class ZohoCRMService:
             logger.error(
                 f"Exception during Zoho CRM API request [{endpoint}]: {str(e)}"
             )
-            # Re-raise for retry decorator if it's a timeout/error
-            if isinstance(e, (httpx.TimeoutException, httpx.RequestError)):
+            # Re-raise for retry decorator if it's a timeout/error or rate limit
+            if isinstance(e, (httpx.TimeoutException, httpx.RequestError, ZohoRateLimitError)):
                 raise e
             return None
 
@@ -281,6 +285,9 @@ class ZohoCRMService:
                 result = await self._make_request(method, "Leads", data=payload)
                 if result is not None:
                     break
+            except ZohoRateLimitError:
+                # Propagate rate limit immediately - no point in retrying 3 times rapidly
+                raise
             except Exception as e:
                 last_error = e
                 logger.warning(f"Zoho CRM Sync attempt {i+1} failed: {e}")
@@ -288,6 +295,8 @@ class ZohoCRMService:
                     await asyncio.sleep(2)
 
         if result is None:
+            if isinstance(last_error, ZohoRateLimitError):
+                raise last_error
             if last_error:
                 raise ZohoCRMError(
                     f"Zoho CRM {action}: request failed after retries: {last_error}"
