@@ -27,12 +27,22 @@ def _get_display_source(source: str) -> str:
     return SOURCE_DISPLAY_NAMES.get(source.lower(), source.title())
 
 
-def _infer_lead_type(property_type: str) -> str:
-    """Default Zoho Lead_Type when no explicit value (common values: Rental, Sale)."""
-    pt = (property_type or "").lower()
-    if any(x in pt for x in ("sale", "buy", "purchase", "resale")):
-        return "Sale"
-    return "Rental"
+def _infer_lead_type(stage: str, status: str) -> str:
+    """
+    Default Zoho Lead_Type based on user-defined taxonomy:
+    - New leads -> Cold Lead
+    - Engaged -> Warm Lead
+    - High intent -> Hot Lead
+    """
+    s = (stage or "new").lower()
+    st = (status or "new").lower()
+
+    if s in ("interested", "qualified", "visit_scheduled") or st in ("interested", "qualified"):
+        return "Hot Lead"
+    if s in ("contacted", "engaged") or st in ("contacted", "engaged"):
+        return "Warm Lead"
+    
+    return "Cold Lead"
 
 
 def _coerce_zoho_picklist_and_numeric(
@@ -177,7 +187,7 @@ class CRMLeadAdapter:
         lead_type_field = (getattr(settings, "ZOHO_CRM_LEAD_TYPE_FIELD", None) or "Lead_Type").strip()
         inquiry_field = (getattr(settings, "ZOHO_CRM_INQUIRY_COUNT_FIELD", None) or "Inquiry_Count").strip()
 
-        lead_type_val = (self.lead_type or "").strip() or _infer_lead_type(self.property_type)
+        lead_type_val = (self.lead_type or "").strip() or _infer_lead_type(self.lead_stage, getattr(self.raw_data, "status", "new"))
 
         payload: dict[str, Any] = {
             "First_Name": first_name[:40],
