@@ -62,13 +62,29 @@ class AcersAdapter:
             project_parts.append(f"[{cmpct_val}]")
 
         qry_id = _text("QryId")
+        city = _text("City")
+        area = _text("Area") or _text("Locality")
+        budget = _text("Budget") or _text("Price")
+        
+        # Build property type info
+        prop_type = _text("PropertyType") or _text("ProdType")
+        requirement = _text("Requirement") or _text("QryType")
+        
+        full_property_type = prop_type
+        if requirement and requirement != prop_type:
+            full_property_type = f"{prop_type} ({requirement})"
+
         try:
             return LeadCreate(
                 name=_text("Name") or "User",
                 email=_text("Email") or None,
                 phone=phone,
+                city=city or None,
+                location=area or None,
+                budget=budget or None,
                 message=_text("QryInfo") or _text("Message") or None,
                 project_name=" | ".join(project_parts) if project_parts else None,
+                property_type=full_property_type or None,
                 external_id=qry_id or None,
             )
         except ValidationError:

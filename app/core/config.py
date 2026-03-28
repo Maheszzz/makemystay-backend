@@ -64,6 +64,10 @@ class Settings(BaseSettings):
     ZOHO_CRM_REFRESH_TOKEN: str = ""
     # API field name in Zoho Leads module for budget (create custom field in Zoho if needed).
     ZOHO_CRM_BUDGET_FIELD: str = "Budget"
+    # Use exact API names from Zoho → Setup → Modules → Leads → Fields. Override if your org uses __c custom fields.
+    ZOHO_CRM_PREFERRED_LOCATION_FIELD: str = "Preferred_Location"
+    ZOHO_CRM_LEAD_TYPE_FIELD: str = "Lead_Type"
+    ZOHO_CRM_INQUIRY_COUNT_FIELD: str = "Inquiry_Count"
     # JSON map of city/area keyword → employees.id (PK) for auto RM assignment, e.g. {"BTM": 1, "HSR": 2}
     CRM_CITY_EMPLOYEE_JSON: str = "{}"
 

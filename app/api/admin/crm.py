@@ -576,7 +576,26 @@ def get_leads(
     if date_to:
         query = query.filter(Lead.created_at <= date_to + " 23:59:59")
 
-    rows = query.order_by(Lead.created_at.desc()).offset(offset).limit(limit).all()
+    # 🔥 Always sort UI by STAGE_PRIORITY
+    stage_priority = case(
+        {
+            "New Lead / Prospect": 1,
+            "Engaged": 2,
+            "Follow Up": 3,
+            "Visit Scheduled": 4,
+            "Reserved": 5,
+            "Dead": 6,
+        },
+        value=Lead.lead_stage,
+        else_=99,
+    )
+
+    rows = (
+        query.order_by(stage_priority.asc(), Lead.created_at.desc())
+        .offset(offset)
+        .limit(limit)
+        .all()
+    )
 
     # Cache column names so we don't inspect per row (fixes timeout for limit=10000)
     columns = [col.key for col in sa_inspect(Lead).mapper.column_attrs]

@@ -15,8 +15,10 @@ from app.events.event_service import publish_event
 from app.models.failed_job import FailedJob
 from app.models.lead import Lead
 from app.models.lead_activity import LeadActivity
+from app.models.lead_event import LeadEvent
 from app.repo import agent_repo
 from app.schemas.lead import LeadCreate
+import json
 from app.services.assignment_service import assign_lead
 from app.services.crm_employee_assignment import try_assign_employee_by_city_rules
 
@@ -40,13 +42,32 @@ def _merge_reentry_lead(
     raw_payload: Optional[dict],
 ) -> None:
     """Update an existing lead when the same phone enquires again."""
-    existing.last_contacted_at = datetime.now(timezone.utc)
-    existing.reentry_count = (existing.reentry_count or 0) + 1
+    now = datetime.now(timezone.utc)
+    
+    # 🔴 Elite Improvement: 5-minute Cooldown Logic
+    # If the lead re-enters within 5 mins, we don't increment inquiry_count (prevents bot spam)
+    should_increment = True
+    if existing.last_reentry_at:
+        diff = (now - existing.last_reentry_at.replace(tzinfo=timezone.utc)).total_seconds()
+        if diff < 300: # 5 minutes
+            should_increment = False
+            logger.info(f"Re-entry cooldown active for lead {existing.id} (diff: {diff:.1f}s). Skipping inquiry_count increment.")
+
+    if should_increment:
+        existing.inquiry_count = (existing.inquiry_count or 0) + 1
+        existing.reentry_count = (existing.reentry_count or 0) + 1
+        existing.last_reentry_at = now
+
+    existing.last_contacted_at = now
+    existing.last_activity_at = now
     existing.source = source
-    if existing.status != "new":
-        existing.status = "new"
-        existing.lead_stage = "new"
-        existing.follow_up_at = None
+    
+    # 🔥 RESET STATUS (Requirement: 1 Phone = 1 Lead Forever)
+    existing.status = "new"
+    existing.lead_stage = "New Lead / Prospect"
+    existing.sub_status = None
+    existing.follow_up_at = None
+    
     if lead_data.name:
         existing.name = lead_data.name
     if lead_data.email:
@@ -95,40 +116,55 @@ async def process_lead(
     logged, CRM sync is re-queued when ``sync_to_zoho`` is True, and that lead is returned
     (``reentry_count`` > 0). ``None`` is returned only on integrity races or hard failures.
     """
-    lead_data.phone = normalize_phone(lead_data.phone)
+    # Normalize phone for identity lock
+    norm_phone = normalize_phone(lead_data.phone)
+    
     try:
-        existing = db.query(Lead).filter(Lead.phone == lead_data.phone).with_for_update().first()
+        # Identity-level lookup (unbreakable)
+        lead = db.query(Lead).filter(
+            Lead.normalized_phone == norm_phone,
+            Lead.is_deleted == False
+        ).with_for_update().first()
 
-        if existing:
-            logger.info(
-                "Duplicate phone — merging re-entry for lead_id={} phone={}",
-                existing.id,
-                lead_data.phone,
+        if lead:
+            # 🔥 EXISTING USER → UPDATE (UPSERT)
+            logger.info(f"Re-entry detected for phone {norm_phone} (Lead ID: {lead.id})")
+            _merge_reentry_lead(lead, lead_data, source, raw_payload)
+            
+            # ELITE: Log Re-entry Event
+            event = LeadEvent(
+                lead_id=lead.id,
+                event_type="LEAD_REENTERED",
+                message=f"Lead re-entered via {source}",
+                payload=json.dumps(raw_payload) if raw_payload else None
             )
-            _merge_reentry_lead(existing, lead_data, source, raw_payload)
+            db.add(event)
             db.add(
                 LeadActivity(
-                    lead_id=existing.id,
+                    lead_id=lead.id,
                     type="DUPLICATE_REENTRY",
                     message=f"Re-enquired from {source}",
                 )
             )
-            try_assign_employee_by_city_rules(db, existing)
-
+            try_assign_employee_by_city_rules(db, lead)
             db.commit()
-            db.refresh(existing)
+            db.refresh(lead)
 
             publish_event(
-                existing.id,
+                lead.id,
                 "LEAD_REENTRY",
                 f"Duplicate inbound merged from {source}",
-                payload={"source": source, "reentry_count": existing.reentry_count},
+                payload={"source": source, "reentry_count": lead.reentry_count},
+                session=db,
             )
 
             if sync_to_zoho:
-                _enqueue_crm_sync(db, existing, csv_stagger_index=csv_import_stagger_index)
-            return existing
+                _enqueue_crm_sync(db, lead, csv_stagger_index=csv_import_stagger_index)
+            return lead
 
+        # ✨ NEW USER → CREATE
+        logger.info(f"New lead detected for phone {norm_phone}")
+        
         if lead_data.lead_date:
             lead_ts = int(lead_data.lead_date)
         else:
@@ -136,7 +172,8 @@ async def process_lead(
 
         new_lead = Lead(
             name=lead_data.name,
-            phone=lead_data.phone,
+            phone=lead_data.phone, # Store raw
+            normalized_phone=norm_phone, # Store normalized for UNIQUE constraint
             email=lead_data.email,
             source=source,
             city=lead_data.city,
@@ -152,14 +189,24 @@ async def process_lead(
             property_id=lead_data.property_id,
             raw_payload=raw_payload,
             status="new",
-            lead_stage="new",
+            lead_stage="New Lead / Prospect",
+            inquiry_count=1,
             reentry_count=0,
-            crm_status="pending",
+            last_activity_at=datetime.now(timezone.utc),
+            last_reentry_at=datetime.now(timezone.utc),
+            crm_status="pending"
         )
-
         db.add(new_lead)
-        db.flush()
-
+        db.flush() # Get ID
+        
+        # ELITE: Log Creation Event
+        event = LeadEvent(
+            lead_id=new_lead.id,
+            event_type="LEAD_CREATED",
+            message=f"Lead created via {source}",
+            payload=json.dumps(raw_payload) if raw_payload else None
+        )
+        db.add(event)
         db.add(
             LeadActivity(
                 lead_id=new_lead.id,
@@ -238,9 +285,6 @@ async def process_lead(
         if send_whatsapp:
             _enqueue_whatsapp(db, new_lead, csv_stagger_index=csv_import_stagger_index)
 
-#        if trigger_ai:
-#            _enqueue_ai_call(db, new_lead, csv_stagger_index=csv_import_stagger_index)
-
         return new_lead
 
     except IntegrityError as ie:
@@ -249,10 +293,25 @@ async def process_lead(
             f"Duplicate lead (IntegrityError) from {source}, "
             f"phone={lead_data.phone}. Potential race condition. Engaging merge logic: {ie.orig}"
         )
-        existing = db.query(Lead).filter(Lead.phone == lead_data.phone).first()
+        # Use normalized phone for recovery lookup
+        norm_phone = normalize_phone(lead_data.phone)
+        existing = db.query(Lead).filter(
+            Lead.normalized_phone == norm_phone,
+            Lead.is_deleted == False
+        ).first()
+        
         if existing:
             logger.info("Recovered from race condition — merging re-entry.")
             _merge_reentry_lead(existing, lead_data, source, raw_payload)
+            
+            # ELITE: Log Re-entry Event
+            event = LeadEvent(
+                lead_id=existing.id,
+                event_type="LEAD_REENTERED",
+                message=f"Lead re-entered via {source} (Race Condition Recovered)",
+                payload=json.dumps(raw_payload) if raw_payload else None
+            )
+            db.add(event)
             db.add(
                 LeadActivity(
                     lead_id=existing.id,
@@ -268,6 +327,7 @@ async def process_lead(
                 "LEAD_REENTRY",
                 f"Duplicate inbound merged from {source}",
                 payload={"source": source, "reentry_count": existing.reentry_count},
+                session=db,
             )
             if sync_to_zoho:
                 _enqueue_crm_sync(db, existing, csv_stagger_index=csv_import_stagger_index)

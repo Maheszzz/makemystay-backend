@@ -1,85 +1,99 @@
+"""
+Bulk Zoho CRM sync for leads.
+
+  # Pending only (never successfully linked)
+  python scripts/sync_pending_to_zoho.py
+
+  # Re-PUT every lead that already has zoho_lead_id (backfill empty Lead Status / Substatus / etc.)
+  python scripts/sync_pending_to_zoho.py --backfill
+
+Uses CRMLeadAdapter + create_or_update_lead (PUT when zoho_lead_id is set).
+"""
+
+import argparse
+import asyncio
 import os
 import sys
-import asyncio
-from sqlalchemy.orm import Session
-from loguru import logger
 
-# Add project root to path
 sys.path.append(os.getcwd())
 
-# Force load dotenv
 from dotenv import load_dotenv
+
 load_dotenv()
 
 from app.configs.db_config import MySQLSessionLocal
 from app.models.lead import Lead
-from app.repo import lead as lead_repo
-from app.schemas.lead import LeadCreate
-from app.utils.zoho_crm_service import zoho_crm_service
-from app.api.webhooks import _CRMLeadAdapter
+from app.utils.zoho_adapter import CRMLeadAdapter
+from app.utils.zoho_crm_service import ZohoCRMError, zoho_crm_service
 
-async def sync_all_pending():
-    print("--- Starting Zoho CRM Bulk Recovery Sync ---")
+
+async def run(*, backfill: bool) -> None:
+    print("--- Zoho CRM bulk sync ---")
     db = MySQLSessionLocal()
-    
+
     try:
-        # Fetch all leads that haven't been synced to Zoho
-        pending_leads = db.query(Lead).filter(Lead.zoho_synced == False).all()
-        print(f"Found {len(pending_leads)} pending leads across all sources.")
-        
+        if backfill:
+            query = (
+                db.query(Lead)
+                .filter(Lead.zoho_lead_id.isnot(None), Lead.zoho_lead_id != "")
+                .filter(Lead.is_deleted.is_(False))
+            )
+            count = query.count()
+            print(f"Backfill mode: {count} leads found. Fetching all...")
+            leads = query.all()
+            print(f"Fetch complete. Starting sync for {len(leads)} leads.")
+        else:
+            query = (
+                db.query(Lead)
+                .filter(Lead.zoho_synced.is_(False))
+                .filter(Lead.is_deleted.is_(False))
+            )
+            count = query.count()
+            print(f"Pending mode: {count} leads found. Fetching all...")
+            leads = query.all()
+            print(f"Fetch complete. Starting sync for {len(leads)} leads.")
+
         synced_count = 0
         error_count = 0
-        
-        for lead in pending_leads:
-            print(f"Syncing Lead #{lead.id}: {lead.name} ({lead.phone})...", end="", flush=True)
-            
-            # Map DB model back to LeadCreate schema for the adapter
+
+        for lead in leads:
+            print(f"Lead #{lead.id} ({lead.phone})...", end=" ", flush=True)
             try:
-                payload = LeadCreate(
-                    name=lead.name,
-                    phone=lead.phone,
-                    email=lead.email,
-                    project_name=lead.project_name,
-                    location=lead.location,
-                    property_type=lead.property_type,
-                    budget=lead.budget,
-                    message=lead.message,
-                    lead_date=lead.lead_date,
-                    external_id=lead.external_id
-                )
-                
-                adapter = _CRMLeadAdapter(payload, lead.source)
-                
+                adapter = CRMLeadAdapter(lead, lead.source)
                 zoho_id = await zoho_crm_service.create_or_update_lead(adapter)
-                
-                if zoho_id:
-                    lead.zoho_lead_id = zoho_id
-                    lead.zoho_synced = True
-                    db.add(lead)
-                    db.commit()
-                    synced_count += 1
-                    print(" SUCCESS")
-                else:
-                    error_count += 1
-                    print(" FAILED (No ID returned)")
-                    
+                lead.zoho_lead_id = zoho_id
+                lead.zoho_synced = True
+                lead.crm_status = "success"
+                db.add(lead)
+                db.commit()
+                synced_count += 1
+                print("OK")
+            except (ZohoCRMError, ValueError) as e:
+                error_count += 1
+                print(f"ZOHO: {e}")
+                db.rollback()
             except Exception as e:
                 error_count += 1
-                print(f" ERROR: {str(e)}")
+                print(f"ERROR: {e}")
                 db.rollback()
-            
-            # Small delay to respect Zoho API limits if they exist
-            await asyncio.sleep(0.1)
-            
-        print(f"\n--- Sync Recovery Complete ---")
-        print(f"Total Processed: {len(pending_leads)}")
-        print(f"Successfully Synced: {synced_count}")
-        print(f"Failed: {error_count}")
-        
-    except Exception as e:
-        print(f"FATAL ERROR: {e}")
+
+            await asyncio.sleep(0.5)
+
+        print(f"\nDone. OK={synced_count} errors={error_count}")
     finally:
         db.close()
 
+
+def main() -> None:
+    p = argparse.ArgumentParser(description="Sync leads to Zoho CRM")
+    p.add_argument(
+        "--backfill",
+        action="store_true",
+        help="Re-sync all leads that already have zoho_lead_id (forces PUT with full payload).",
+    )
+    args = p.parse_args()
+    asyncio.run(run(backfill=args.backfill))
+
+
 if __name__ == "__main__":
-    asyncio.run(sync_all_pending())
+    main()

@@ -10,23 +10,23 @@ from app.utils.zoho_adapter import CRMLeadAdapter
 def test_payload_generation():
     print("Testing Zoho CRM Payload Generation...")
     
-    # Mock lead with AI tags and owner ID
-    mock_lead = MagicMock()
-    mock_lead.name_ = "John Doe"
-    mock_lead.phone = "9876543210"
-    mock_lead.email = "john.doe@example.com"
-    mock_lead.message = "Interested in 3BHK"
-    mock_lead.location = "Bangalore"
-    mock_lead.property_type = "Villa"
-    mock_lead.units = "2"
-    
-    # AI Tags
-    mock_lead.interested = True
-    mock_lead.call_status = "completed"
-    mock_lead.summary_budget = "5Cr"
-    
-    # Owner mapping
-    mock_lead.owner_zoho_id = "1234567890"
+    class MockLead:
+        def __init__(self):
+            self.name_ = "John Doe"
+            self.phone = "9876543210"
+            self.email = "john.doe@example.com"
+            self.message = "Interested in 3BHK"
+            self.location = "Bangalore"
+            self.property_type = "Villa"
+            self.units = "2"
+            self.interested = True
+            self.call_status = "completed"
+            self.summary_budget = "5Cr"
+            self.owner_zoho_id = "1234567890"
+            self.lead_stage = "new"
+            self.source = "housing"
+
+    mock_lead = MockLead()
 
     adapter = CRMLeadAdapter(mock_lead, "housing")
     payload = adapter.to_zoho_payload()

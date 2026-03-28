@@ -1,6 +1,13 @@
+import json
 from typing import Any
 
 from app.core.config import settings
+from app.core.zoho_lead_status_mapping import (
+    default_zoho_substatus_for_parent,
+    zoho_lead_status_from_pipeline_stage,
+)
+
+# Lead Status / Substatus picklist dependency: see ``app.core.zoho_lead_status_mapping``.
 
 # ------------------------------------------------------------------ #
 #  Human-friendly source names for Zoho CRM Lead_Source
@@ -18,6 +25,49 @@ SOURCE_DISPLAY_NAMES = {
 def _get_display_source(source: str) -> str:
     """Return a display-friendly source name for CRM."""
     return SOURCE_DISPLAY_NAMES.get(source.lower(), source.title())
+
+
+def _infer_lead_type(property_type: str) -> str:
+    """Default Zoho Lead_Type when no explicit value (common values: Rental, Sale)."""
+    pt = (property_type or "").lower()
+    if any(x in pt for x in ("sale", "buy", "purchase", "resale")):
+        return "Sale"
+    return "Rental"
+
+
+def _coerce_zoho_picklist_and_numeric(
+    payload: dict[str, Any],
+    *,
+    preferred_field: str,
+    lead_type_field: str,
+    inquiry_field: str,
+) -> None:
+    """Zoho expects strict types — strings for picklists, int for Inquiry_Count."""
+    payload["Lead_Status"] = str(payload["Lead_Status"])
+    payload["Lead_Substatus"] = str(payload["Lead_Substatus"])
+    if preferred_field in payload:
+        payload[preferred_field] = str(payload[preferred_field])[:500]
+    payload[lead_type_field] = str(payload[lead_type_field])[:120]
+    raw_inq = payload.get(inquiry_field, 1)
+    try:
+        payload[inquiry_field] = int(max(1, int(raw_inq or 1)))
+    except (TypeError, ValueError):
+        payload[inquiry_field] = 1
+
+
+def _omit_none(d: dict[str, Any]) -> dict[str, Any]:
+    """Zoho ignores or errors on nulls — drop keys whose value is None."""
+    out: dict[str, Any] = {}
+    for k, v in d.items():
+        if v is None:
+            continue
+        if isinstance(v, dict):
+            nested = _omit_none(v)
+            if nested:
+                out[k] = nested
+        else:
+            out[k] = v
+    return out
 
 
 class CRMLeadAdapter:
@@ -57,10 +107,33 @@ class CRMLeadAdapter:
         self.summary_budget = getattr(payload, "summary_budget", "")
         self.owner_zoho_id = getattr(payload, "owner_zoho_id", None)
 
+        # Internal CRM pipeline (new, contacted, …) — not Zoho UI labels
+        self.lead_stage = getattr(payload, "lead_stage", None) or "new"
+        self.sub_status = getattr(payload, "sub_status", None)
+        self.inquiry_count = int(getattr(payload, "inquiry_count", 1) or 1)
+        self.lead_type = getattr(payload, "lead_type", None)
+        self.preferred_location = getattr(payload, "preferred_location", None)
+        # Existing Zoho record id — used first for PUT so all fields refresh (not only phone/email match).
+        self.zoho_lead_id = getattr(payload, "zoho_lead_id", None)
+
         self.raw_data = payload
 
-    def to_zoho_payload(self) -> dict:
-        """Map internal fields to Zoho CRM Lead field names (Last Name, Phone, Email, City, etc.)."""
+    def _preferred_location_line(self) -> str:
+        pl = self.preferred_location
+        if pl is not None and str(pl).strip():
+            return str(pl).strip()[:500]
+        city = self.city.strip()
+        loc = self.location.strip()
+        if city and loc and city.upper() != loc.upper():
+            return f"{city}, {loc}"[:500]
+        if loc:
+            return loc[:500]
+        if city:
+            return city[:500]
+        return ""
+
+    def to_zoho_payload(self) -> dict[str, Any]:
+        """Map internal fields to Zoho CRM Lead field API names (must match Setup → Leads → Fields)."""
         first_name = ""
         last_name = "User"
 
@@ -96,7 +169,17 @@ class CRMLeadAdapter:
 
         description = " | ".join(description_parts) if description_parts else ""
 
-        payload = {
+        lead_status = zoho_lead_status_from_pipeline_stage(self.lead_stage)
+        sub_raw = (self.sub_status or "").strip()
+        lead_substatus = sub_raw if sub_raw else default_zoho_substatus_for_parent(lead_status)
+
+        preferred_field = (getattr(settings, "ZOHO_CRM_PREFERRED_LOCATION_FIELD", None) or "Preferred_Location").strip()
+        lead_type_field = (getattr(settings, "ZOHO_CRM_LEAD_TYPE_FIELD", None) or "Lead_Type").strip()
+        inquiry_field = (getattr(settings, "ZOHO_CRM_INQUIRY_COUNT_FIELD", None) or "Inquiry_Count").strip()
+
+        lead_type_val = (self.lead_type or "").strip() or _infer_lead_type(self.property_type)
+
+        payload: dict[str, Any] = {
             "First_Name": first_name[:40],
             "Last_Name": last_name[:80],
             "Email": (self.email or "")[:100],
@@ -105,7 +188,17 @@ class CRMLeadAdapter:
             "Description": description[:32000],
             "Lead_Source": lead_source_line,
             "City": city_val[:255],
+            # Exact API names (Zoho Leads module)
+            "Lead_Status": lead_status,
+            "Lead_Substatus": lead_substatus,
         }
+
+        pref = self._preferred_location_line()
+        if pref:
+            payload[preferred_field] = pref
+
+        payload[lead_type_field] = lead_type_val[:120]
+        payload[inquiry_field] = max(1, self.inquiry_count)
 
         budget_field = (getattr(settings, "ZOHO_CRM_BUDGET_FIELD", None) or "Budget").strip()
         effective_budget = (self.summary_budget or getattr(self.raw_data, "budget", None) or "") or ""
@@ -124,4 +217,27 @@ class CRMLeadAdapter:
         if self.owner_zoho_id:
             payload["Owner"] = {"id": str(self.owner_zoho_id)}
 
-        return payload
+        if not payload.get("Lead_Status"):
+            raise ValueError("Zoho sync: missing Lead_Status after mapping (check lead_stage / Zoho mapping).")
+
+        _coerce_zoho_picklist_and_numeric(
+            payload,
+            preferred_field=preferred_field,
+            lead_type_field=lead_type_field,
+            inquiry_field=inquiry_field,
+        )
+
+        # Final cleanup and logging
+        for k in ["Lead_Status", "Lead_Substatus"]:
+            if k in payload and isinstance(payload[k], str):
+                payload[k] = payload[k].strip()
+
+        return _omit_none(payload)
+
+    def to_zoho_payload_json_for_debug(self) -> str:
+        """Pretty JSON for logs (safe for Celery / support)."""
+        try:
+            return json.dumps(self.to_zoho_payload(), default=str, indent=2)
+        except Exception as e:
+            return json.dumps({"error": str(e)})
+

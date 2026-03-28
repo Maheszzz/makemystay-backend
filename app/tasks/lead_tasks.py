@@ -70,11 +70,6 @@ def sync_lead_to_zoho_task(self, lead_id: int) -> None:
                 )
             )
 
-            if not zoho_lead_id:
-                raise ValueError(
-                    "Zoho CRM returned no lead ID (possible validation error)"
-                )
-
             # ── 4. Success ────────────────────────────────────────
             logger.info(
                 f"Lead #{lead_id} successfully synced to Zoho CRM: {zoho_lead_id}"
@@ -160,8 +155,7 @@ def sync_contact_to_zoho_task(self, contact_id: int) -> None:
                     timeout=ZOHO_SYNC_TIMEOUT_SECONDS,
                 )
             )
-            if zoho_id:
-                logger.info(f"Contact #{contact_id} successfully synced to Zoho: {zoho_id}")
+            logger.info(f"Contact #{contact_id} successfully synced to Zoho: {zoho_id}")
         except Exception as e:
             logger.error(f"Contact sync failed: {e}")
             if self.request.retries < self.max_retries:
@@ -211,7 +205,15 @@ def process_contact_notifications_task(
             )
             tasks.append(zoho_crm_service.log_call(contact_obj))
 
-        await asyncio.gather(*tasks, return_exceptions=True)
+        results = await asyncio.gather(*tasks, return_exceptions=True)
+        for i, res in enumerate(results):
+            if isinstance(res, Exception):
+                task_name = "Unknown"
+                if i == 0: task_name = "Email Notification"
+                elif i == 1: task_name = "Zoho CRM Sync"
+                elif i == 2: task_name = "Retell AI Call Trigger"
+                elif i == 3: task_name = "Zoho Call Logging"
+                logger.error(f"Post-creation task '{task_name}' failed for Contact #{contact_id}: {res}")
 
         # Update DB state
         with MySQLSessionLocal() as session:

@@ -8,6 +8,7 @@ from __future__ import annotations
 from typing import Any
 
 from app.core.lead_pipeline import VALID_LEAD_STAGES
+from app.core.zoho_lead_status_mapping import build_zoho_lead_status_metadata
 
 # Display order for filters / dropdowns (subset of DB enum order doesn't matter for SQL)
 LEAD_STATUS_ORDER: tuple[str, ...] = (
@@ -55,21 +56,23 @@ PRIORITY_LEVELS: tuple[dict[str, Any], ...] = (
 
 # CRM pipeline (PUT /leads/{id}/stage) — must match app.core.lead_pipeline.VALID_LEAD_STAGES
 LEAD_STAGE_ORDER: tuple[str, ...] = (
-    "new",
-    "contacted",
-    "interested",
-    "visit_scheduled",
-    "closed",
-    "lost",
+    "New Lead / Prospect",
+    "Engaged",
+    "Follow Up",
+    "Visit Scheduled",
+    "Reserved",
+    "Dead",
 )
 
 LEAD_STAGE_LABELS: dict[str, str] = {
+    "New Lead / Prospect": "New Lead / Prospect",
+    "Engaged": "Engaged",
+    "Follow Up": "Follow Up",
+    "Visit Scheduled": "Visit Scheduled",
+    "Reserved": "Reserved",
+    "Dead": "Dead",
     "new": "New",
     "contacted": "Contacted",
-    "interested": "Interested",
-    "visit_scheduled": "Visit scheduled",
-    "closed": "Closed",
-    "lost": "Lost",
 }
 
 LEAD_STAGE_TONES: dict[str, str] = {
@@ -181,4 +184,5 @@ def build_lead_metadata_payload() -> dict[str, Any]:
         "priorities": [dict(p) for p in PRIORITY_LEVELS],
         "stages": stages,
         "contact_statuses": contact_statuses,
+        "zoho_lead_status": build_zoho_lead_status_metadata(),
     }

@@ -49,9 +49,13 @@ class Lead(MySQLBase):
         String(20), default="pending", nullable=False, index=True
     )  # pending, queued, success, failed, retrying, permanently_failed (Zoho sync lifecycle)
 
-    # Sales pipeline (CRM): new → contacted → interested → visit_scheduled → closed
+    # Pipeline stages (CRM): new → contacted → interested → visit_scheduled → closed
     lead_stage = Column(String(50), default="new", nullable=False, index=True)
+    sub_status = Column(String(100), nullable=True, index=True)
     last_contacted_at = Column(DateTime(timezone=True), nullable=True)
+    last_activity_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), index=True)
+    
+    inquiry_count = Column(Integer, default=1, nullable=False)
     reentry_count = Column(Integer, default=0, nullable=False)
 
     # Marketing Analytics
@@ -89,9 +93,15 @@ class Lead(MySQLBase):
     retell_calls = relationship("RetellCall", back_populates="lead")
     assignments = relationship("LeadAssignment", back_populates="lead", order_by="LeadAssignment.assigned_at.desc()")
     activities = relationship("LeadActivity", back_populates="lead", order_by="LeadActivity.created_at.desc()")
+    # Elite Improvements (FINAL 1%)
+    normalized_phone = Column(String(20), unique=True, index=True)
+    last_reentry_at = Column(DateTime, nullable=True)
+    is_deleted = Column(Boolean, default=False, index=True)
+    deleted_at = Column(DateTime, nullable=True)
 
     __table_args__ = (
-        Index("ix_leads_phone_unique", "phone", unique=True),
+        Index("unique_normalized_phone", "normalized_phone", unique=True),
+        Index("idx_phone_stage", "normalized_phone", "lead_stage"),
         # Dedup: same inquiry = same phone + same lead timestamp + same external reference.
         UniqueConstraint(
             "phone", "lead_date", "external_id", name="uq_lead_phone_date_ext"

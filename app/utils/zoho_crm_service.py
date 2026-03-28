@@ -1,3 +1,4 @@
+import json
 from datetime import datetime, timedelta
 from typing import Any, Dict, Optional
 
@@ -33,6 +34,36 @@ SOURCE_DISPLAY_NAMES = {
 
 from app.core.redis import redis_conn
 from app.utils.zoho_adapter import CRMLeadAdapter
+
+
+class ZohoCRMError(RuntimeError):
+    """Zoho Leads API returned an error, empty body, or a row with status != success."""
+
+
+def _extract_zoho_lead_id_or_raise(result: Optional[Dict[str, Any]], action: str) -> str:
+    """Hard-fail on any outcome that is not a successful single-record Leads upsert."""
+    if result is None:
+        raise ZohoCRMError(
+            f"Zoho CRM {action}: no JSON response (auth failure, HTTP error, or network). See logs above."
+        )
+    rows = result.get("data")
+    if not isinstance(rows, list) or len(rows) == 0:
+        raise ZohoCRMError(
+            f"Zoho CRM {action}: unexpected response (no data[]): {json.dumps(result, default=str)[:4000]}"
+        )
+    row = rows[0]
+    if row.get("status") == "success":
+        details = row.get("details") or {}
+        rid = details.get("id")
+        if rid:
+            return str(rid)
+        raise ZohoCRMError(
+            f"Zoho CRM {action}: status=success but missing details.id: {json.dumps(row, default=str)[:4000]}"
+        )
+    raise ZohoCRMError(
+        f"Zoho CRM {action}: record not accepted (picklist/API mismatch or invalid data): "
+        f"{json.dumps(row, default=str)[:4000]}"
+    )
 
 
 class ZohoCRMService:
@@ -192,8 +223,8 @@ class ZohoCRMService:
             return result["data"][0]["id"]
         return None
 
-    async def create_or_update_lead(self, contact_data: Any) -> Optional[str]:
-        """Creates a new Lead or updates an existing one in Zoho CRM."""
+    async def create_or_update_lead(self, contact_data: Any) -> str:
+        """Creates or updates a Zoho Lead. Raises on API error or non-success row (no silent None)."""
         # Use adapter for mapping if it's not already a dict
         if isinstance(contact_data, CRMLeadAdapter):
             payload_data = contact_data.to_zoho_payload()
@@ -207,15 +238,20 @@ class ZohoCRMService:
 
         email = payload_data.get("Email")
         phone = payload_data.get("Phone")
-        
-        if not email and not phone:
-            logger.error("Neither email nor phone found in contact data for Zoho CRM sync.")
-            return None
 
-        lead_id = None
-        if phone:
+        if not email and not phone:
+            raise ValueError("Zoho CRM sync: neither email nor phone on payload (cannot upsert Lead).")
+
+        # 1) Prefer stored Zoho id so existing rows get a full PUT refresh (all mapped fields).
+        lead_id: Optional[str] = None
+        existing = getattr(contact_data, "zoho_lead_id", None)
+        if existing is not None and str(existing).strip():
+            lead_id = str(existing).strip()
+
+        # 2) Else resolve by phone, then email (create path).
+        if not lead_id and phone:
             lead_id = await self.search_lead_by_phone(phone)
-            
+
         if not lead_id and email:
             lead_id = await self.search_lead_by_email(email)
 
@@ -225,39 +261,50 @@ class ZohoCRMService:
         }
 
         import asyncio
+
         result = None
         action = "updated" if lead_id else "created"
         if lead_id:
             payload["data"][0]["id"] = lead_id
 
+        logger.debug(
+            "Zoho CRM {} payload:\n{}",
+            action,
+            json.dumps(payload, default=str, indent=2),
+        )
+
+        last_error: Optional[Exception] = None
         for i in range(3):
             try:
+                # Existing id → always PUT so Zoho applies every sent field (POST alone does not backfill blanks).
                 method = "PUT" if lead_id else "POST"
                 result = await self._make_request(method, "Leads", data=payload)
-                if result:
+                if result is not None:
                     break
             except Exception as e:
+                last_error = e
                 logger.warning(f"Zoho CRM Sync attempt {i+1} failed: {e}")
                 if i < 2:
                     await asyncio.sleep(2)
 
-        if result and "data" in result and result["data"][0].get("status") == "success":
-            new_id = result["data"][0]["details"]["id"]
-            logger.info(f"Zoho CRM Lead {action} successfully: {new_id}")
-            return new_id
+        if result is None:
+            if last_error:
+                raise ZohoCRMError(
+                    f"Zoho CRM {action}: request failed after retries: {last_error}"
+                ) from last_error
+            raise ZohoCRMError(
+                f"Zoho CRM {action}: empty response for email={email} phone={phone}. "
+                "Check HTTP error logs (token, 400/401, INVALID_DATA)."
+            )
 
-        logger.error(
-            f"Failed to {action} Zoho CRM Lead for {email}. Response: {result}"
-        )
-        return None
+        new_id = _extract_zoho_lead_id_or_raise(result, action)
+        logger.info(f"Zoho CRM Lead {action} successfully: {new_id}")
+        return new_id
 
     async def create_demo_event(self, booking_data: Any) -> Optional[str]:
         """Creates a Meeting (Event) in Zoho CRM linked to the Lead via Participants."""
         # 1. Ensure Lead exists
         lead_id = await self.create_or_update_lead(booking_data)
-        if not lead_id:
-            logger.error("Cannot create event: Lead creation/lookup failed.")
-            return None
 
         # 2. Format times for Zoho CRM (ISO 8601)
         start_time = booking_data.selected_slot
