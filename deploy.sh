@@ -20,13 +20,33 @@ echo "💾 Checking server disk space..."
 DISK_PCT=$($SSH "df / --output=pcent | tail -1 | tr -d ' %'")
 echo "   Disk usage: ${DISK_PCT}%"
 
-if [ "$DISK_PCT" -ge 85 ]; then
-  echo "⚠️  Disk ≥ 85% — running auto-cleanup before deploy..."
+# When disk is tight, free space before rsync/pip (100% full → pip: "No usable temporary directory")
+if [ "${DISK_PCT:-0}" -ge 70 ]; then
+  echo "⚠️  Disk ≥ 70% — running auto-cleanup on server before deploy..."
   $SSH "bash -s" << 'CLEANUP'
-    find /home/ubuntu/app/logs  -name "*.log" -mtime +7  -delete 2>/dev/null || true
-    find /home/ubuntu/app       -type d -name "__pycache__" -exec rm -rf {} + 2>/dev/null || true
-    sudo apt-get clean -y 2>/dev/null || true
+set +e
+find /home/ubuntu/app/logs -name "*.log" -mtime +3 -delete 2>/dev/null || true
+find /home/ubuntu/app -type d -name "__pycache__" -exec rm -rf {} + 2>/dev/null || true
+find /home/ubuntu/app -type f -name "*.log" -size +20M 2>/dev/null | while read -r f; do : > "$f" || true; done
+sudo apt-get clean -y 2>/dev/null || true
+sudo apt-get autoclean -y 2>/dev/null || true
+sudo rm -rf /var/cache/apt/archives/*.deb 2>/dev/null || true
+sudo journalctl --vacuum-size=80M 2>/dev/null || true
+rm -rf /home/ubuntu/.cache/pip /home/ubuntu/.npm/_cacache 2>/dev/null || true
+command -v pip >/dev/null 2>&1 && pip cache purge 2>/dev/null || true
+command -v docker >/dev/null 2>&1 && docker system prune -af 2>/dev/null || true
+sudo find /var/tmp -type f -atime +2 -delete 2>/dev/null || true
+sudo mysql -e "PURGE BINARY LOGS BEFORE NOW() - INTERVAL 1 HOUR;" 2>/dev/null || true
 CLEANUP
+  DISK_PCT=$($SSH "df / --output=pcent | tail -1 | tr -d ' %'")
+  echo "   Disk after cleanup: ${DISK_PCT}%"
+fi
+
+if [ "${DISK_PCT:-0}" -ge 95 ]; then
+  echo "❌ Root filesystem is still ≥95% full after cleanup. pip cannot create temp files."
+  echo "   SSH in and free space, e.g.: sudo du -xh / --max-depth=2 | sort -h | tail -30"
+  echo "   Or resize the EBS volume / remove large files under /var/log, Docker data, or old backups."
+  exit 1
 fi
 
 # ===== UPLOAD SOURCE =====
@@ -48,12 +68,26 @@ $SSH "bash -s" << ENDSSH
 set -e
 cd $REMOTE_DIR
 
+# Ensure pip can use temp dirs (minimal cleanup every deploy; cheap on healthy disks)
+DISK_NOW=\$(df / --output=pcent | tail -1 | tr -d ' %')
+if [ "\${DISK_NOW:-0}" -ge 85 ]; then
+  echo "⚠️  Disk \${DISK_NOW}% — pruning caches before pip..."
+  find /home/ubuntu/app -type d -name "__pycache__" -exec rm -rf {} + 2>/dev/null || true
+  find /home/ubuntu/app -type f -name "*.log" -size +50M 2>/dev/null | while read -r f; do : > "\$f" || true; done
+  rm -rf "\$HOME/.cache/pip" 2>/dev/null || true
+  sudo journalctl --vacuum-size=50M 2>/dev/null || true
+  sudo mysql -e "PURGE BINARY LOGS BEFORE NOW() - INTERVAL 1 HOUR;" 2>/dev/null || true
+fi
+
+export TMPDIR=/tmp
+export PIP_NO_CACHE_DIR=1
+
 if [ ! -f "venv/bin/activate" ]; then
     echo "📦 Creating virtual environment..."
     python3 -m venv venv
 fi
 source venv/bin/activate
-pip install -r requirements.txt
+pip install --no-cache-dir -r requirements.txt
 
 # Load environment variables for Alembic (same file PM2 uses via env_file)
 if [ ! -f .env.production ]; then

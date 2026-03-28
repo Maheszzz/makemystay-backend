@@ -62,11 +62,18 @@ def _merge_reentry_lead(
     existing.last_activity_at = now
     existing.source = source
     
-    # 🔥 RESET STATUS (Requirement: 1 Phone = 1 Lead Forever)
-    existing.status = "new"
-    existing.lead_stage = "New Lead / Prospect"
-    existing.sub_status = None
-    existing.follow_up_at = None
+    # 🔥 RESET STATUS (Guard: Don't downgrade high-quality leads)
+    high_quality_statuses = {"contacted", "interested", "hot", "site_visit", "converted"}
+    current_status = (existing.status or "").lower()
+    
+    # Only reset to 'new' if they aren't already progressed
+    if not any(hq in current_status for hq in high_quality_statuses):
+        existing.status = "new"
+        existing.lead_stage = "New Lead / Prospect"
+        existing.sub_status = None
+        existing.follow_up_at = None
+    else:
+        logger.info(f"Consistency Guard: Skipping status reset for progressed lead {existing.id} (Status: {existing.status})")
     
     if lead_data.name:
         existing.name = lead_data.name

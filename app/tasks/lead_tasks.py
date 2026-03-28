@@ -129,6 +129,13 @@ def sync_lead_to_zoho_task(self, lead_id: int) -> None:
 
             # Log to FailedJobs for visibility
             try:
+                from app.utils.alerting import notify_admin_critical_failure
+                notify_admin_critical_failure(
+                    subject=f"Zoho Sync Permanent Failure: Lead #{lead_id}",
+                    message=f"Sync failed after {self.max_retries} retries due to: {e}",
+                    context={"lead_id": lead_id, "error": str(e)}
+                )
+                
                 failed = FailedJob(
                     job_name=f"sync_zoho_{lead_id}",
                     payload={"lead_id": lead_id},

@@ -291,8 +291,10 @@ async def retell_webhook(request: Request, db: Session = Depends(get_mysql_db)):
                 lead.is_ai_called = True
                 if interested is True:
                     lead.lead_stage = "interested"
+                    lead.status = "Interested (Call Success)"
                 elif interested is False:
                     lead.lead_stage = "not_interested"
+                    lead.status = "Not Interested (Call)"
                 
                 if location:
                     lead.location = location

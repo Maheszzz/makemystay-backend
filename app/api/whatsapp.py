@@ -185,6 +185,13 @@ def _update_lead_by_id(db: Session, lead_id: int, updates: Dict[str, Any]) -> No
     if not obj:
         return
     lead_repo.update_lead(db, obj, updates)
+    
+    # Elite Tier: Event-driven Zoho sync on any detailed update
+    try:
+        from app.tasks.lead_tasks import sync_lead_to_zoho_task
+        sync_lead_to_zoho_task.delay(lead_id)
+    except Exception as e:
+        logger.error(f"Failed to trigger sync after lead update: {e}")
 
 
 def _merge_raw_payload(existing: Optional[dict], patch: Dict[str, Any]) -> Dict[str, Any]:
@@ -467,6 +474,7 @@ async def twilio_whatsapp_inbound(request: Request, db: Session = Depends(get_my
             return PlainTextResponse("ok")
 
         # Interested
+        _update_lead_by_id(db, lead_id, {"status": "Connected / Interested (WhatsApp)"})
         publish_event(lead_id, "WA_INTERESTED", "User interested")
         session["data"]["interest"] = "yes"
         session["step"] = "property_type"
