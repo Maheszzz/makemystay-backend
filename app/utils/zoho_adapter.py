@@ -27,23 +27,43 @@ def _get_display_source(source: str) -> str:
     return SOURCE_DISPLAY_NAMES.get(source.lower(), source.title())
 
 
-def _infer_lead_type(stage: str, status: str) -> str:
+def classify_lead(lead: Any) -> str:
     """
-    Default Zoho Lead_Type based on user-defined taxonomy:
-    - New leads -> Cold Lead
-    - Engaged -> Warm Lead
-    - High intent -> Hot Lead
+    Automated Lead Scoring for Zoho Classification.
+    Ensures 100% automation of Lead_Type based on explicit attributes.
     """
-    s = (stage or "new").lower()
-    st = (status or "new").lower()
+    score = 0
 
-    if s in ("interested", "qualified", "visit_scheduled") or st in ("interested", "qualified"):
+    phone = getattr(lead, "phone", None)
+    email = getattr(lead, "email", None)
+    source = getattr(lead, "source", None)
+    intent = getattr(lead, "intent", None)
+    # Check fallback for intent if not explicitly stored under 'intent'
+    if not intent:
+        status = getattr(lead, "status", None)
+        stage = getattr(lead, "lead_stage", None)
+        if status in ("interested", "qualified") or stage in ("interested", "qualified"):
+            intent = "High"
+
+    city = getattr(lead, "city", None)
+
+    if phone:
+        score += 20
+    if email:
+        score += 20
+    if source and str(source).title() == "Website":
+        score += 20
+    if intent and str(intent).title() == "High":
+        score += 30
+    if city and str(city).title() in ["Bangalore", "Bengaluru"]:
+        score += 10
+
+    if score >= 60:
         return "Hot Lead"
-    if s in ("contacted", "engaged") or st in ("contacted", "engaged"):
+    elif score >= 30:
         return "Warm Lead"
-    
-    return "Cold Lead"
-
+    else:
+        return "Cold Lead"
 
 def _coerce_zoho_picklist_and_numeric(
     payload: dict[str, Any],
@@ -187,7 +207,7 @@ class CRMLeadAdapter:
         lead_type_field = (getattr(settings, "ZOHO_CRM_LEAD_TYPE_FIELD", None) or "Lead_Type").strip()
         inquiry_field = (getattr(settings, "ZOHO_CRM_INQUIRY_COUNT_FIELD", None) or "Inquiry_Count").strip()
 
-        lead_type_val = (self.lead_type or "").strip() or _infer_lead_type(self.lead_stage, getattr(self.raw_data, "status", "new"))
+        lead_type_val = (self.lead_type or "").strip() or classify_lead(self.raw_data)
 
         payload: dict[str, Any] = {
             "First_Name": first_name[:40],
