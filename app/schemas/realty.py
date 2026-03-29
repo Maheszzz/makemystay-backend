@@ -255,6 +255,59 @@ class PropertyUpdate(BaseModel):
         return v
 
 
+class PropertyListItem(BaseModel):
+    """Slim public list payload: card fields + one hero image, no description or review bodies."""
+
+    id: int
+    property_name: str
+    location: str
+    phone: Optional[str] = None
+    map_link: Optional[str] = None
+    property_type: str
+    furnishing: Optional[str] = None
+    private_price: Optional[float] = None
+    single_price: Optional[float] = None
+    double_price: Optional[float] = None
+    triple_price: Optional[float] = None
+    starting_price: Optional[float] = None
+    listing_type: str
+    is_available: Optional[bool] = None
+    slug: Optional[str] = None
+    created_at: datetime
+    updated_at: datetime
+    images: List[PropertyImageResponse] = []
+    average_rating: Optional[float] = 0.0
+    review_count: Optional[int] = 0
+    category: Optional[str] = None
+    features: Optional[List[str]] = None
+
+    model_config = {"from_attributes": True}
+
+    @model_validator(mode="after")
+    def derive_category(self):
+        """Compute the 4-tab category (pg/rent/buy/plot) from property_type + listing_type."""
+        if self.category is None:
+            pt = (self.property_type or "").lower()
+            if pt == "pg":
+                self.category = "pg"
+            elif pt == "plot":
+                self.category = "plot"
+            else:
+                lt = (self.listing_type or "").lower()
+                self.category = "buy" if lt in ("buy", "sale") else "rent"
+        return self
+
+    @field_validator("average_rating", mode="before")
+    @classmethod
+    def calculate_average_rating(cls, v, info):
+        return v or 0.0
+
+    @field_validator("review_count", mode="before")
+    @classmethod
+    def calculate_review_count(cls, v, info):
+        return v or 0
+
+
 class PropertyResponse(BaseModel):
     """Schema for property response with ID, timestamps, and images."""
 

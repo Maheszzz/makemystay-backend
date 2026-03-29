@@ -11,12 +11,42 @@ from sqlalchemy.orm import Session, attributes, joinedload, selectinload
 from app.models.realty import Contact, Property, PropertyImage, Review
 
 
-def _attach_property_images_bulk(db: Session, properties: List[Property]) -> None:
+def refresh_property_review_stats(db: Session, property_id: int) -> None:
+    """Recompute materialized avg_rating / review_count from the reviews table."""
+    r = (
+        db.query(func.avg(Review.rating), func.count(Review.id))
+        .filter(Review.property_id == property_id)
+        .first()
+    )
+    avg_v, cnt_v = (r[0], r[1]) if r else (None, 0)
+    cnt = int(cnt_v or 0)
+    avg_float = float(avg_v) if cnt and avg_v is not None else None
+    try:
+        db.query(Property).filter(Property.id == property_id).update(
+            {
+                Property.average_rating: avg_float,
+                Property.review_count: cnt,
+            },
+            synchronize_session=False,
+        )
+        db.commit()
+    except SQLAlchemyError:
+        db.rollback()
+        raise
+
+
+def _attach_property_images_bulk(
+    db: Session,
+    properties: List[Property],
+    max_per_property: Optional[int] = None,
+) -> None:
     """Load images for many properties in one query.
 
     ``selectinload``/``subqueryload`` on list queries has been unreliable in production
     (list returned ``images: []`` while ``get_property_by_id`` had full galleries).
     Attaching rows explicitly matches detail behaviour and avoids N+1 queries.
+
+    ``max_per_property`` (e.g. 1 for public list) caps payload size; order prefers primary then sort_order.
     """
     if not properties:
         return
@@ -24,14 +54,23 @@ def _attach_property_images_bulk(db: Session, properties: List[Property]) -> Non
     rows = (
         db.query(PropertyImage)
         .filter(PropertyImage.property_id.in_(pids))
-        .order_by(PropertyImage.property_id, PropertyImage.sort_order)
+        .filter(func.coalesce(PropertyImage.is_deleted, False) == False)  # noqa: E712
+        .order_by(
+            PropertyImage.property_id,
+            PropertyImage.is_primary.desc(),
+            PropertyImage.sort_order,
+            PropertyImage.id,
+        )
         .all()
     )
     by_pid: Dict[int, List[PropertyImage]] = defaultdict(list)
     for img in rows:
         by_pid[img.property_id].append(img)
     for p in properties:
-        attributes.set_committed_value(p, "images", by_pid.get(p.id, []))
+        imgs = by_pid.get(p.id, [])
+        if max_per_property is not None and len(imgs) > max_per_property:
+            imgs = imgs[:max_per_property]
+        attributes.set_committed_value(p, "images", imgs)
 
 def _is_missing_soft_delete_column_error(exc: Exception) -> bool:
     """Detect MySQL errors caused by missing legacy soft-delete columns."""
@@ -139,29 +178,21 @@ def get_properties(
     exclude_property_type: Optional[str] = None,
     category: Optional[str] = None,
     include_deleted: bool = False,
+    list_mode: bool = True,
 ) -> List[Property]:
     """Retrieve properties with filters and eager-loaded images and reviews.
 
     When ``category`` is set (pg|rent|buy|plot), it drives the filter and overrides
     ``property_type`` / ``listing_type`` / ``exclude_property_type`` (callers should omit those).
+
+    ``list_mode=True`` (default): one image per row, no review rows loaded; ratings from materialized columns.
     """
     from sqlalchemy import or_
 
-    # Subquery to calculate average rating per property
-    avg_rating_subquery = (
-        db.query(Review.property_id, func.avg(Review.rating).label("avg_rating"))
-        .group_by(Review.property_id)
-        .subquery()
-    )
-
-    query = (
-        db.query(Property)
-        .outerjoin(
-            avg_rating_subquery, Property.id == avg_rating_subquery.c.property_id
-        )
-        .options(selectinload(Property.reviews))
-        .order_by(desc(func.coalesce(avg_rating_subquery.c.avg_rating, 0)))
-    )
+    query = db.query(Property)
+    if not list_mode:
+        query = query.options(selectinload(Property.reviews))
+    query = query.order_by(desc(func.coalesce(Property.average_rating, 0)))
 
     # Treat NULL as not deleted for legacy rows
     if not include_deleted:
@@ -227,13 +258,11 @@ def get_properties(
             raise
 
         # Fallback for environments where migrations are not yet applied.
-        fallback_query = (
-            db.query(Property)
-            .outerjoin(
-                avg_rating_subquery, Property.id == avg_rating_subquery.c.property_id
-            )
-            .options(selectinload(Property.reviews))
-            .order_by(desc(func.coalesce(avg_rating_subquery.c.avg_rating, 0)))
+        fallback_query = db.query(Property)
+        if not list_mode:
+            fallback_query = fallback_query.options(selectinload(Property.reviews))
+        fallback_query = fallback_query.order_by(
+            desc(func.coalesce(Property.average_rating, 0))
         )
         if category:
             fallback_query = _apply_property_category_tab(fallback_query, category)
@@ -287,16 +316,23 @@ def get_properties(
 
         properties = fallback_query.offset(skip).limit(limit).all()
 
-    _attach_property_images_bulk(db, properties)
-
-    # Calculate stats for each property
-    for p in properties:
-        p.review_count = len(p.reviews)
-        p.average_rating = (
-            sum(r.rating for r in p.reviews) / p.review_count
-            if p.review_count > 0
-            else 0.0
-        )
+    if list_mode:
+        _attach_property_images_bulk(db, properties, max_per_property=1)
+        for p in properties:
+            if p.average_rating is not None:
+                p.average_rating = float(p.average_rating)
+            if p.review_count is None:
+                p.review_count = 0
+            attributes.set_committed_value(p, "reviews", [])
+    else:
+        _attach_property_images_bulk(db, properties)
+        for p in properties:
+            p.review_count = len(p.reviews)
+            p.average_rating = (
+                sum(r.rating for r in p.reviews) / p.review_count
+                if p.review_count > 0
+                else 0.0
+            )
 
     return properties
 
@@ -629,6 +665,7 @@ def create_review(db: Session, review_data: dict, property_id: int) -> Review:
         db.add(db_review)
         db.commit()
         db.refresh(db_review)
+        refresh_property_review_stats(db, property_id)
         return db_review
     except SQLAlchemyError:
         db.rollback()

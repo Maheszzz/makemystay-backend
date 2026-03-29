@@ -3,6 +3,7 @@
 from typing import List, Optional
 
 from fastapi import APIRouter, Depends, Query
+from fastapi.responses import JSONResponse
 from loguru import logger
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
@@ -11,6 +12,12 @@ from app.configs.db_config import get_mysql_db
 from app.core import security
 from app.core.exceptions import DatabaseError, NotFoundException
 from app.repo import realty as realty_repo
+from app.services.property_list_cache import (
+    bump_properties_list_cache,
+    get_cached_properties_list,
+    properties_list_cache_key,
+    set_cached_properties_list,
+)
 from app.schemas.realty import (
     ContactCreate,
     ContactResponse,
@@ -22,6 +29,7 @@ from app.schemas.realty import (
     PropertyImageCreate,
     PropertyImageResponse,
     PropertyImageUpdate,
+    PropertyListItem,
     PropertyResponse,
     PropertyType,
     PropertyUpdate,
@@ -151,11 +159,11 @@ def delete_contact(contact_id: int, db: Session = Depends(get_mysql_db), current
 # ==================== PROPERTY ENDPOINTS ====================
 
 
-@realty_router.get("/realty/properties", response_model=List[PropertyResponse])
+@realty_router.get("/realty/properties", response_model=List[PropertyListItem])
 def list_properties(
     skip: int = Query(0, ge=0, description="Number of records to skip"),
     limit: int = Query(
-        100, ge=1, le=100, description="Maximum number of records to return"
+        24, ge=1, le=100, description="Maximum number of records to return (default 24 for listing pages)"
     ),
     category: Optional[PropertyCategoryTab] = Query(
         None,
@@ -179,8 +187,10 @@ def list_properties(
     """
     List all properties with pagination and filters.
 
+    Returns a slim payload (no full description or review bodies; one hero image per row).
+
     - **skip**: Number of records to skip (default: 0)
-    - **limit**: Maximum records to return (default: 100, max: 100)
+    - **limit**: Maximum records to return (default: 24, max: 100)
     - **category**: Tab filter — PG (property_type PG), PLOT (Plot), RENT (rent listings excluding PG/Plot), BUY (buy listings excluding PG/Plot)
     - **property_type**: Filter by type (PG, 1RK, 1BHK, 2BHK) — ignored if **category** is set
     - **listing_type**: Filter by listing (buy, rent) — ignored if **category** is set
@@ -196,6 +206,21 @@ def list_properties(
         lt = None
         ex = None
 
+    cache_payload = {
+        "skip": skip,
+        "limit": limit,
+        "category": category.value if category else None,
+        "property_type": pt,
+        "listing_type": lt,
+        "is_available": is_available,
+        "search": search,
+        "exclude_property_type": ex,
+    }
+    cache_key = properties_list_cache_key(cache_payload)
+    cached = get_cached_properties_list(cache_key)
+    if cached is not None:
+        return JSONResponse(content=cached)
+
     properties = realty_repo.get_properties(
         db,
         skip=skip,
@@ -206,8 +231,13 @@ def list_properties(
         search=search,
         exclude_property_type=ex,
         category=category.value if category else None,
+        list_mode=True,
     )
-    return properties
+    payload = [
+        PropertyListItem.model_validate(p).model_dump(mode="json") for p in properties
+    ]
+    set_cached_properties_list(cache_key, payload)
+    return JSONResponse(content=payload)
 
 
 @realty_router.get("/realty/properties/suggestions", response_model=List[str])
@@ -271,7 +301,9 @@ def create_property(
     - **listing_type**: Listing type (buy, rent - defaults to rent)
     """
     try:
-        return realty_repo.create_property(db, property_data.model_dump())
+        out = realty_repo.create_property(db, property_data.model_dump())
+        bump_properties_list_cache()
+        return out
     except SQLAlchemyError as e:
         raise DatabaseError(f"Failed to create property: {str(e)}")
 
@@ -294,9 +326,11 @@ def update_property(
         raise NotFoundException("Property", property_id)
 
     try:
-        return realty_repo.update_property(
+        out = realty_repo.update_property(
             db, db_property, property_data.model_dump(exclude_unset=True)
         )
+        bump_properties_list_cache()
+        return out
     except SQLAlchemyError as e:
         raise DatabaseError(f"Failed to update property: {str(e)}")
 
@@ -318,6 +352,7 @@ def delete_property(
 
     try:
         realty_repo.delete_property(db, db_property)
+        bump_properties_list_cache()
     except SQLAlchemyError as e:
         raise DatabaseError(f"Failed to delete property: {str(e)}")
     return None
@@ -339,7 +374,9 @@ def restore_property(
         raise NotFoundException("Property", property_id)
 
     try:
-        return realty_repo.restore_property(db, db_property)
+        out = realty_repo.restore_property(db, db_property)
+        bump_properties_list_cache()
+        return out
     except SQLAlchemyError as e:
         raise DatabaseError(f"Failed to restore property: {str(e)}")
 
@@ -390,7 +427,9 @@ def add_property_image(
         raise NotFoundException("Property", property_id)
 
     try:
-        return realty_repo.create_property_image(db, image.model_dump(), property_id)
+        out = realty_repo.create_property_image(db, image.model_dump(), property_id)
+        bump_properties_list_cache()
+        return out
     except SQLAlchemyError as e:
         raise DatabaseError(f"Failed to add property image: {str(e)}")
 
@@ -413,9 +452,11 @@ def update_property_image(
         raise NotFoundException("Image", image_id)
 
     try:
-        return realty_repo.update_property_image(
+        out = realty_repo.update_property_image(
             db, db_image, image.model_dump(exclude_unset=True)
         )
+        bump_properties_list_cache()
+        return out
     except SQLAlchemyError as e:
         raise DatabaseError(f"Failed to update property image: {str(e)}")
 
@@ -437,6 +478,7 @@ def delete_property_image(
 
     try:
         realty_repo.delete_property_image(db, db_image)
+        bump_properties_list_cache()
     except SQLAlchemyError as e:
         raise DatabaseError(f"Failed to delete property image: {str(e)}")
     return None
@@ -484,6 +526,8 @@ def add_property_review(
         raise NotFoundException("Property", property_id)
 
     try:
-        return realty_repo.create_review(db, review.model_dump(), property_id)
+        out = realty_repo.create_review(db, review.model_dump(), property_id)
+        bump_properties_list_cache()
+        return out
     except SQLAlchemyError as e:
         raise DatabaseError(f"Failed to add review: {str(e)}")

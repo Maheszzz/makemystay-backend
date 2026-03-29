@@ -73,6 +73,9 @@ class Property(MySQLBase):
     is_available = Column(Boolean, default=True, nullable=True)
     slug = Column(String(200), unique=True, index=True, nullable=True)
     is_deleted = Column(Boolean, default=False, nullable=False)
+    # Denormalized from reviews — updated on review write; used for list sort + slim list payload.
+    average_rating = Column("avg_rating", DECIMAL(4, 2), nullable=True)
+    review_count = Column(Integer, nullable=False, server_default="0", default=0)
     created_at = Column(DateTime, server_default=func.now(), nullable=True)
     updated_at = Column(
         DateTime, server_default=func.now(), onupdate=func.now(), nullable=True
