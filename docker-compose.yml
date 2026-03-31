@@ -1,27 +1,14 @@
-# Local MySQL for Option A — matches DB_HOST/DB_PORT in .env.example (127.0.0.1:3310).
-# Usage: docker compose up -d
-# Then copy .env.example → .env.local and align DB_USER / DB_PASSWORD with MYSQL_* below.
+version: '3.8'
 
 services:
-  mysql:
-    image: mysql:8.0
-    container_name: makemystay-mysql
-    restart: unless-stopped
+  backend:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: makemystay-backend-local
     ports:
-      - "3310:3306"
+      - "80:80"
     environment:
-      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD:-devroot_change_me}
-      MYSQL_DATABASE: ${MYSQL_DATABASE:-makemystay}
-      MYSQL_USER: ${MYSQL_USER:-appuser}
-      MYSQL_PASSWORD: ${MYSQL_PASSWORD:-your_strong_password}
-    volumes:
-      - makemystay_mysql_data:/var/lib/mysql
-    healthcheck:
-      test: ["CMD", "mysqladmin", "ping", "-h", "localhost"]
-      interval: 5s
-      timeout: 3s
-      retries: 12
-      start_period: 25s
-
-volumes:
-  makemystay_mysql_data:
+      - ENV=development
+      # Add other required environment variables here
+    restart: unless-stopped
