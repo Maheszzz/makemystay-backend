@@ -252,6 +252,18 @@ async def global_exception_handler(request: Request, exc: Exception):
     )
 
 
+@app.get("/", tags=["Health"])
+def root():
+    """Root endpoint for status check."""
+    return {"message": "Makemystay API is live 🚀"}
+
+
+@app.get("/favicon.ico", include_in_schema=False)
+def favicon():
+    """Favicon placeholder."""
+    return {}
+
+
 @app.get("/live", tags=["Health"])
 async def live():
     """Liveness check for ALB."""

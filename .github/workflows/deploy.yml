@@ -8,7 +8,7 @@ on:
 env:
   AWS_REGION: ap-south-1
   ECR_REPOSITORY: makemystay-backend
-  ASG_NAME: makemystay-backend-asg
+  ASG_NAME: makemystay-asg
 
 jobs:
   deploy:
@@ -32,18 +32,14 @@ jobs:
       - name: Build, tag, and push image to Amazon ECR
         env:
           ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
-          IMAGE_TAG: ${{ github.sha }}
+          IMAGE_TAG: latest
         run: |
-          # Build Docker image
-          docker build -t $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG -t $ECR_REGISTRY/$ECR_REPOSITORY:latest .
-          # Push specific tag
+          docker build -t $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG .
           docker push $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG
-          # Push latest tag (assuming instances pull latest on boot)
-          docker push $ECR_REGISTRY/$ECR_REPOSITORY:latest
 
       - name: Trigger Auto Scaling Group Instance Refresh
         run: |
           aws autoscaling start-instance-refresh \
             --auto-scaling-group-name ${{ env.ASG_NAME }} \
             --strategy Rolling \
-            --preferences '{"MinHealthyPercentage": 50, "InstanceWarmup": 60}'
+            --preferences '{"MinHealthyPercentage": 100, "InstanceWarmup": 120}'

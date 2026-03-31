@@ -13,7 +13,6 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     python3-dev \
     gcc \
     curl \
-    nginx \
     && rm -rf /var/lib/apt/lists/*
 
 COPY requirements.txt .
@@ -23,13 +22,12 @@ RUN pip install --no-cache-dir --upgrade pip && \
 
 COPY . .
 
-# Copy Nginx configuration
-COPY nginx/nginx.conf /etc/nginx/sites-available/default
+# Nginx configuration is no longer handled in the container
 
 # Provide a startup script
 COPY scripts/start.sh /app/start.sh
 RUN chmod +x /app/start.sh
 
-EXPOSE 80
+EXPOSE 8000
 
 CMD ["/app/start.sh"]
