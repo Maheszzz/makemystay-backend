@@ -32,8 +32,8 @@ echo "Starting backend container..."
 docker run -d \
   --name makemystay-backend \
   --restart always \
-  -p 80:80 \
-  -e ENV=production \
+  --network host \
+  --env-file /home/ubuntu/app/.env.production \
   $ECR_REPO_URL:latest
 
 echo "UserData script execution complete!"
