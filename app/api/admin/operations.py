@@ -175,6 +175,9 @@ async def get_job_status(job_id: str, db: Session = Depends(get_mysql_db), _admi
         }
     except NoSuchJobError:
         raise HTTPException(status_code=404, detail="Job not found")
+    except Exception as e:
+        logger.error(f"Redis Job fetch failed: {e}")
+        raise HTTPException(status_code=503, detail="Error fetching job status from Redis")
 
 
 @router.get(

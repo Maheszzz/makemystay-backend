@@ -3,7 +3,7 @@ module.exports = {
     {
       name: "makemystay-api",
       script: "/home/ubuntu/app/venv/bin/python",
-      args: "-m uvicorn app.main:app --host 0.0.0.0 --port 8000 --workers 4",
+      args: "-m uvicorn app.main:app --host 0.0.0.0 --port 8000 --workers 2",
       instances: 1,
       exec_mode: "fork",
       cwd: "/home/ubuntu/app",

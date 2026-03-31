@@ -98,13 +98,16 @@ class ZohoCRMService:
 
         # 2. Check Redis cache
         if redis_conn:
-            cached_token = redis_conn.get("zoho_access_token")
-            if cached_token:
-                self._access_token = cached_token.decode("utf-8")
-                ttl = redis_conn.ttl("zoho_access_token")
-                self._token_expiry = datetime.now() + timedelta(seconds=ttl)
-                logger.info("Zoho CRM access token retrieved from Redis.")
-                return self._access_token
+            try:
+                cached_token = redis_conn.get("zoho_access_token")
+                if cached_token:
+                    self._access_token = cached_token.decode("utf-8")
+                    ttl = redis_conn.ttl("zoho_access_token")
+                    self._token_expiry = datetime.now() + timedelta(seconds=ttl)
+                    logger.info("Zoho CRM access token retrieved from Redis.")
+                    return self._access_token
+            except Exception as e:
+                logger.warning(f"Failed to get Zoho token from Redis: {e}")
 
         if not all([self.client_id, self.client_secret, self.refresh_token]):
             logger.error("Zoho CRM credentials missing in environment variables.")
@@ -133,7 +136,10 @@ class ZohoCRMService:
 
                     # 3. Cache in Redis
                     if redis_conn:
-                        redis_conn.set("zoho_access_token", token, ex=expires_in - 60)
+                        try:
+                            redis_conn.set("zoho_access_token", token, ex=expires_in - 60)
+                        except Exception as e:
+                            logger.warning(f"Failed to cache Zoho token in Redis: {e}")
 
                     logger.info("Zoho CRM access token refreshed and cached.")
                     return token

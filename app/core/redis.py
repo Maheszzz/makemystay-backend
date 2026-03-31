@@ -12,7 +12,14 @@ ADMIN_CHANNEL = "admin_events"
 HISTORICAL_HOUSING_SYNC_LOCK = "lock:historical_sync_housing"
 
 try:
-    redis_conn = redis.from_url(os.getenv("REDIS_URL", "redis://localhost:6379/0"))
+    redis_conn = redis.from_url(
+        os.getenv("REDIS_URL", "redis://localhost:6379/0"),
+        socket_timeout=2.0,
+        socket_connect_timeout=2.0
+    )
+    # Verify connection on startup
+    redis_conn.ping()
+    
     # Main lead processing queue
     lead_queue = Queue("lead_sync", connection=redis_conn)
     # Background worker/sync queue
@@ -22,4 +29,4 @@ except Exception as e:
     redis_conn = None
     lead_queue = None
     sync_queue = None
-    print(f"Warning: Redis not connected: {e}")
+    print(f"Warning: Redis not connected or failed ping: {e}")

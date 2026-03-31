@@ -75,8 +75,12 @@ def _sess_key(phone: str) -> str:
 def _get_session(phone: str) -> Dict[str, Any]:
     if not redis_conn:
         return {}
-    val = redis_conn.get(_sess_key(phone))
-    if not val:
+    try:
+        val = redis_conn.get(_sess_key(phone))
+        if not val:
+            return {}
+    except Exception as e:
+        logger.error(f"Redis get session failed for {phone}: {e}")
         return {}
     try:
         return json.loads(val)
@@ -87,13 +91,19 @@ def _get_session(phone: str) -> Dict[str, Any]:
 def _set_session(phone: str, data: Dict[str, Any]) -> None:
     if not redis_conn:
         return
-    redis_conn.setex(_sess_key(phone), SESSION_TTL_SECONDS, json.dumps(data))
+    try:
+        redis_conn.setex(_sess_key(phone), SESSION_TTL_SECONDS, json.dumps(data))
+    except Exception as e:
+        logger.error(f"Redis set session failed for {phone}: {e}")
 
 
 def _clear_session(phone: str) -> None:
     if not redis_conn:
         return
-    redis_conn.delete(_sess_key(phone))
+    try:
+        redis_conn.delete(_sess_key(phone))
+    except Exception as e:
+        logger.error(f"Redis delete session failed for {phone}: {e}")
 
 
 def _clean_text(s: str) -> str:
@@ -420,11 +430,14 @@ async def twilio_whatsapp_inbound(request: Request, db: Session = Depends(get_my
 
     # Idempotency: Twilio may retry the same inbound webhook.
     if message_sid and redis_conn:
-        dedup_key = f"wa:inbound:{message_sid}"
-        inserted = redis_conn.set(dedup_key, "1", ex=SESSION_TTL_SECONDS, nx=True)
-        if inserted is None:
-            logger.info(f"Skipping duplicate inbound message sid={message_sid}")
-            return PlainTextResponse("ok")
+        try:
+            dedup_key = f"wa:inbound:{message_sid}"
+            inserted = redis_conn.set(dedup_key, "1", ex=SESSION_TTL_SECONDS, nx=True)
+            if inserted is None:
+                logger.info(f"Skipping duplicate inbound message sid={message_sid}")
+                return PlainTextResponse("ok")
+        except Exception as e:
+            logger.warning(f"Redis idempotency check failed: {e}")
 
     session = _get_session(phone)
     step = session.get("step") or "interest"

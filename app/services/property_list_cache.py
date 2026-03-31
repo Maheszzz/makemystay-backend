@@ -16,8 +16,11 @@ DEFAULT_TTL_SECONDS = 45
 def _cache_version() -> str:
     if not redis_conn:
         return "0"
-    v = redis_conn.get(CACHE_VERSION_KEY)
-    return v.decode() if v else "0"
+    try:
+        v = redis_conn.get(CACHE_VERSION_KEY)
+        return v.decode() if v else "0"
+    except Exception:
+        return "0"
 
 
 def bump_properties_list_cache() -> None:

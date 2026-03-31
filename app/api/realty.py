@@ -101,13 +101,16 @@ def create_contact(
         # Offload all processing to RQ
         from app.core.redis import lead_queue
         if lead_queue:
-            from app.tasks.lead_tasks import process_contact_notifications_task
-            lead_queue.enqueue(
-                process_contact_notifications_task,
-                contact.model_dump(by_alias=False),
-                new_contact.id
-            )
-            logger.info(f"Contact #{new_contact.id} queued for background processing")
+            try:
+                from app.tasks.lead_tasks import process_contact_notifications_task
+                lead_queue.enqueue(
+                    process_contact_notifications_task,
+                    contact.model_dump(by_alias=False),
+                    new_contact.id
+                )
+                logger.info(f"Contact #{new_contact.id} queued for background processing")
+            except Exception as re:
+                logger.error(f"Failed to enqueue contact #{new_contact.id} to Redis: {re}")
         else:
             logger.warning(f"Contact #{new_contact.id} background tasks skipped - Redis not available")
 

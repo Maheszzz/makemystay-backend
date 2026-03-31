@@ -10,11 +10,12 @@ set -e
 
 # ===== CONFIG =====
 EC2_USER="ubuntu"
-EC2_HOST="ec2-13-233-112-159.ap-south-1.compute.amazonaws.com"
+# Public DNS for this instance (updates if you stop/start without Elastic IP)
+EC2_HOST="ec2-3-109-47-194.ap-south-1.compute.amazonaws.com"
 PEM_KEY="/Users/maheswaranm/Downloads/makemystayrealty.pem"
 REMOTE_DIR="/home/ubuntu/app"
 
-SSH="ssh -i $PEM_KEY -o StrictHostKeyChecking=no $EC2_USER@$EC2_HOST"
+SSH="ssh -i $PEM_KEY -o StrictHostKeyChecking=no -o ConnectTimeout=20 $EC2_USER@$EC2_HOST"
 
 echo "💾 Checking server disk space..."
 DISK_PCT=$($SSH "df / --output=pcent | tail -1 | tr -d ' %'")
@@ -55,10 +56,10 @@ rsync -az --delete \
   --exclude='.venv' --exclude='venv' --exclude='__pycache__' \
   --exclude='*.pyc' --exclude='*.egg-info' --exclude='.DS_Store' \
   --exclude='tests/' --exclude='logs/' \
-  -e "ssh -i $PEM_KEY -o StrictHostKeyChecking=no" \
+  -e "ssh -i $PEM_KEY -o StrictHostKeyChecking=no -o ConnectTimeout=30" \
   app alembic scripts alembic.ini requirements.txt .env.production ecosystem.config.js \
   $EC2_USER@$EC2_HOST:$REMOTE_DIR/ 2>/dev/null || \
-  scp -i "$PEM_KEY" -o StrictHostKeyChecking=no -r \
+  scp -i "$PEM_KEY" -o StrictHostKeyChecking=no -o ConnectTimeout=30 -r \
     app alembic scripts alembic.ini requirements.txt .env.production ecosystem.config.js \
     $EC2_USER@$EC2_HOST:$REMOTE_DIR/
 
@@ -137,4 +138,4 @@ echo "💾 Disk after deploy: \$(df / --output=pcent | tail -1 | tr -d ' ')"
 ENDSSH
 
 echo ""
-echo "✅ PM2 Deploy complete → https://api.makemystay.ai/health"
+echo "✅ PM2 Deploy complete — ALB liveness: /live  |  full checks: /health"

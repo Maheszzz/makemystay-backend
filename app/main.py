@@ -252,6 +252,12 @@ async def global_exception_handler(request: Request, exc: Exception):
     )
 
 
+@app.get("/live", tags=["Health"])
+async def live():
+    """Liveness check for ALB."""
+    return {"status": "ok"}
+
+
 @app.get("/health", tags=["Health"])
 async def health():
     """Detailed health check endpoint."""
