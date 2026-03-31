@@ -8,6 +8,10 @@ echo "Updating system and installing Docker..."
 apt-get update -y
 apt-get install -y docker.io unzip curl jq awscli
 
+echo "Disabling old host Nginx to free port 80 for Docker..."
+systemctl stop nginx || true
+systemctl disable nginx || true
+
 systemctl start docker
 systemctl enable docker
 
