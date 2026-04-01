@@ -11,7 +11,7 @@ set -e
 # ===== CONFIG =====
 EC2_USER="ubuntu"
 # Public DNS for this instance (updates if you stop/start without Elastic IP)
-EC2_HOST="ec2-3-109-47-194.ap-south-1.compute.amazonaws.com"
+EC2_HOST="ec2-43-205-233-181.ap-south-1.compute.amazonaws.com"
 PEM_KEY="/Users/maheswaranm/Downloads/makemystayrealty.pem"
 REMOTE_DIR="/home/ubuntu/app"
 
