@@ -87,7 +87,7 @@ async def lifespan(app: FastAPI):
     """Lifecycle manager for the app."""
     logger.info("Starting background scheduler...")
     # Housing / 99acres pull sync requires MySQL; disable when DB is unavailable locally (see LEAD_PULL_SYNC_ENABLED).
-    if getattr(settings, "LEAD_PULL_SYNC_ENABLED", True):
+    if getattr(settings, "LEAD_PULL_SYNC_ENABLED", False):
         scheduler.add_job(
             sync_all_job,
             "interval",
@@ -99,7 +99,7 @@ async def lifespan(app: FastAPI):
         logger.warning(
             "LEAD_PULL_SYNC_ENABLED=false — Housing/99acres interval sync not scheduled (set true when MySQL is up)."
         )
-    if settings.LEAD_DAILY_SYNC_ENABLED and getattr(settings, "LEAD_PULL_SYNC_ENABLED", True):
+    if settings.LEAD_DAILY_SYNC_ENABLED and getattr(settings, "LEAD_PULL_SYNC_ENABLED", False):
         scheduler.add_job(
             daily_recovery_sync_job,
             "cron",
@@ -118,11 +118,11 @@ async def lifespan(app: FastAPI):
         )
 
     scheduler.start()
-    if getattr(settings, "LEAD_PULL_SYNC_ENABLED", True):
+    if getattr(settings, "LEAD_PULL_SYNC_ENABLED", False):
         logger.info(
             f"APScheduler: sync_all_job every {settings.HOUSING_SYNC_INTERVAL_SECONDS}s"
         )
-    if settings.LEAD_DAILY_SYNC_ENABLED and getattr(settings, "LEAD_PULL_SYNC_ENABLED", True):
+    if settings.LEAD_DAILY_SYNC_ENABLED and getattr(settings, "LEAD_PULL_SYNC_ENABLED", False):
         logger.info(
             "Daily recovery sync enabled at "
             f"{settings.LEAD_DAILY_SYNC_HOUR_UTC:02d}:{settings.LEAD_DAILY_SYNC_MINUTE_UTC:02d} UTC"
@@ -299,5 +299,9 @@ register_routers(app)
 
 
 if __name__ == "__main__":
+    import os
+
     import uvicorn
-    uvicorn.run("app.main:app", host="0.0.0.0", port=8000, reload=True)
+
+    port = int(os.environ.get("PORT", "8000"))
+    uvicorn.run("app.main:app", host="0.0.0.0", port=port, reload=True)

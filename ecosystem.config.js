@@ -8,7 +8,8 @@ module.exports = {
       exec_mode: "fork",
       cwd: "/home/ubuntu/app",
       env: {
-        ENV: "production"
+        ENV: "production",
+        LEAD_PULL_SYNC_ENABLED: "true"
       },
       env_file: ".env.production",
       autorestart: true,
@@ -23,7 +24,8 @@ module.exports = {
       exec_mode: "fork",
       cwd: "/home/ubuntu/app",
       env: {
-        ENV: "production"
+        ENV: "production",
+        LEAD_PULL_SYNC_ENABLED: "true"
       },
       env_file: ".env.production",
       autorestart: true,

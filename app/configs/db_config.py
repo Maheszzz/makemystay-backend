@@ -43,9 +43,13 @@ mysql_engine = create_engine(
     # Fail fast instead of hanging on unreachable/slow DB.
     # This helps the API return an error quickly rather than timing out in the browser.
     connect_args={
-        "connect_timeout": 5,
+        "connect_timeout": 10,
+        # PyMySQL: avoid half-open connections (Docker / port-forward / flaky networks).
+        "read_timeout": 60,
+        "write_timeout": 60,
     },
-    pool_recycle=3600,
+    # Recycle before common wait_timeout / proxy idle limits (stale pooled connections).
+    pool_recycle=300,
 )
 
 logger.info("Creating MySQL session local")

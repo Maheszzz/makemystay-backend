@@ -106,8 +106,9 @@ class Settings(BaseSettings):
     HOUSING_API_KEY: str = ""
     HOUSING_API_ID: str = ""
     HOUSING_SYNC_INTERVAL_SECONDS: int = 30
-    # Set to false in .env when MySQL is not running locally (avoids ERROR spam from Housing/99acres pull sync).
-    LEAD_PULL_SYNC_ENABLED: bool = True
+    # Default off: local uvicorn avoids Housing/99acres polling (MySQL load + pool contention with API).
+    # Production: set true in .env.production or ecosystem.config.js (PM2).
+    LEAD_PULL_SYNC_ENABLED: bool = False
     LEAD_DAILY_SYNC_ENABLED: bool = True
     LEAD_DAILY_SYNC_HOUR_UTC: int = 2
     LEAD_DAILY_SYNC_MINUTE_UTC: int = 0

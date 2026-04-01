@@ -5,6 +5,7 @@ logs
 .vscode
 .venv
 .env.production
+.env.production.local
 .env.local
 
 # Python standard ignores

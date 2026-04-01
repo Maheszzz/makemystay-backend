@@ -78,6 +78,41 @@ def _is_missing_soft_delete_column_error(exc: Exception) -> bool:
     return "unknown column" in msg and "is_deleted" in msg
 
 
+def _is_transient_mysql_connection_lost(exc: Exception) -> bool:
+    """2006 / 2013 — stale pool or dropped connection (common with Docker MySQL)."""
+    orig = getattr(exc, "orig", None)
+    if orig is None and getattr(exc, "__cause__", None) is not None:
+        orig = exc.__cause__
+    args = getattr(orig, "args", ()) if orig is not None else ()
+    if args and args[0] in (2006, 2013):
+        return True
+    msg = str(exc).lower()
+    return "lost connection" in msg or "gone away" in msg
+
+
+def _invalidate_session_connection(db: Session) -> None:
+    """Drop bad pooled connection so the next query checks out a fresh one."""
+    try:
+        db.rollback()
+    except Exception:
+        pass
+    try:
+        db.connection().invalidate()
+    except Exception:
+        pass
+
+
+def _query_all_with_connection_retry(db: Session, query, skip: int, limit: int):
+    """Run list query; retry once after invalidate on transient MySQL disconnect."""
+    try:
+        return query.offset(skip).limit(limit).all()
+    except OperationalError as exc:
+        if not _is_transient_mysql_connection_lost(exc):
+            raise
+        _invalidate_session_connection(db)
+        return query.offset(skip).limit(limit).all()
+
+
 # ==================== CONTACT REPO ====================
 
 
@@ -252,7 +287,7 @@ def get_properties(
         query = query.filter(or_(*conditions))
 
     try:
-        properties = query.offset(skip).limit(limit).all()
+        properties = _query_all_with_connection_retry(db, query, skip, limit)
     except OperationalError as exc:
         if not _is_missing_soft_delete_column_error(exc):
             raise
@@ -314,7 +349,7 @@ def get_properties(
                 conditions.append(Property.location.ilike(search_filter))
             fallback_query = fallback_query.filter(or_(*conditions))
 
-        properties = fallback_query.offset(skip).limit(limit).all()
+        properties = _query_all_with_connection_retry(db, fallback_query, skip, limit)
 
     if list_mode:
         _attach_property_images_bulk(db, properties, max_per_property=1)
