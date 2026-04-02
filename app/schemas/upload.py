@@ -1,12 +1,19 @@
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
+
+# Keep in sync with makemystay-admin `MAX_IMAGE_UPLOAD_BYTES` (presigned PUT + UI).
+MAX_IMAGE_UPLOAD_BYTES = 5 * 1024 * 1024
 
 
 class UploadRequest(BaseModel):
     filename: str
     content_type: str
+    # When set, server validates size and may bind ContentLength into the presigned URL (S3 enforces).
+    file_size: int | None = Field(default=None, ge=1, le=MAX_IMAGE_UPLOAD_BYTES)
 
 
 class UploadResponse(BaseModel):
     upload_url: str
     file_key: str
     public_url: str
+    # Exact Content-Type used to sign the URL; PUT must send this header (AWS signature mismatch otherwise).
+    content_type: str

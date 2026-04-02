@@ -29,7 +29,18 @@ celery_app.conf.update(
     enable_utc=True,
     task_track_started=True,
     task_time_limit=3600,       # Max execution time 1 hour
-    worker_prefetch_multiplier=1 # Fair distribution of heavy jobs
+    worker_prefetch_multiplier=1,  # Fair distribution of heavy jobs
+    # Run `celery -A app.core.celery_app beat` alongside workers for queue backlog alerts.
+    beat_schedule={
+        "monitor-celery-queue-backlog": {
+            "task": "monitor_celery_queue_backlog",
+            "schedule": 300.0,
+        },
+        "log-zoho-budget-usage": {
+            "task": "log_zoho_budget_usage_metric",
+            "schedule": 900.0,
+        },
+    },
 )
 
 logger.info(f"Celery App initialized connecting to {redis_url}")

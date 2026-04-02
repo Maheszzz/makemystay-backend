@@ -1,6 +1,7 @@
+import asyncio
 import json
 from datetime import datetime, timedelta
-from typing import Any, Dict, Optional
+from typing import Any, Dict, Optional, Tuple
 
 import httpx
 import pybreaker
@@ -33,6 +34,13 @@ SOURCE_DISPLAY_NAMES = {
 }
 
 from app.core.redis import redis_conn
+from app.services.zoho_daily_budget import ZohoDailyBudgetExceeded, consume_zoho_api_slot_or_raise
+from app.services.zoho_circuit import (
+    ZohoCircuitOpenError,
+    assert_zoho_circuit_allows,
+    record_zoho_circuit_failure,
+    record_zoho_circuit_success,
+)
 from app.utils.zoho_adapter import CRMLeadAdapter
 
 
@@ -177,6 +185,7 @@ class ZohoCRMService:
         url = f"{self.base_url}/{endpoint}"
 
         try:
+            consume_zoho_api_slot_or_raise()
             # Use shorter timeout for fail-fast
             async with httpx.AsyncClient(timeout=10.0) as client:
                 if method.upper() == "POST":
@@ -206,6 +215,8 @@ class ZohoCRMService:
                         f"Zoho CRM API Error ({response.status_code}) [{endpoint}]: {response.text}"
                     )
                     return None
+        except ZohoDailyBudgetExceeded:
+            raise
         except Exception as e:
             logger.error(
                 f"Exception during Zoho CRM API request [{endpoint}]: {str(e)}"
@@ -235,6 +246,20 @@ class ZohoCRMService:
 
     async def create_or_update_lead(self, contact_data: Any) -> str:
         """Creates or updates a Zoho Lead. Raises on API error or non-success row (no silent None)."""
+        await asyncio.sleep(0.2)
+        assert_zoho_circuit_allows()
+        try:
+            out = await self._create_or_update_lead_impl(contact_data)
+            record_zoho_circuit_success()
+            return out
+        except (ValueError, ZohoDailyBudgetExceeded, ZohoCircuitOpenError):
+            raise
+        except Exception:
+            record_zoho_circuit_failure()
+            raise
+
+    async def _create_or_update_lead_impl(self, contact_data: Any) -> str:
+        """Core CRM lead upsert (circuit outcome wrapped by ``create_or_update_lead``)."""
         # Use adapter for mapping if it's not already a dict
         if isinstance(contact_data, CRMLeadAdapter):
             payload_data = contact_data.to_zoho_payload()
@@ -254,28 +279,40 @@ class ZohoCRMService:
 
         # 1) Prefer stored Zoho id so existing rows get a full PUT refresh (all mapped fields).
         lead_id: Optional[str] = None
+        
+        # Check if zoho_lead_id is directly on the adapter/payload
         existing = getattr(contact_data, "zoho_lead_id", None)
         if existing is not None and str(existing).strip():
             lead_id = str(existing).strip()
 
-        # 2) Else resolve by phone, then email (create path).
-        if not lead_id and phone:
-            lead_id = await self.search_lead_by_phone(phone)
-
-        if not lead_id and email:
-            lead_id = await self.search_lead_by_email(email)
+        # 2) Else resolve by phone, then email (only if we don't have lead_id).
+        if not lead_id:
+            if phone:
+                lead_id = await self.search_lead_by_phone(phone)
+            if not lead_id and email:
+                lead_id = await self.search_lead_by_email(email)
 
         payload = {
             "data": [payload_data],
             "trigger": ["workflow"],
         }
 
-        import asyncio
-
         result = None
         action = "updated" if lead_id else "created"
         if lead_id:
             payload["data"][0]["id"] = lead_id
+
+        _db_id = "-"
+        if isinstance(contact_data, CRMLeadAdapter):
+            raw = getattr(contact_data, "raw_data", None)
+            if raw is not None and getattr(raw, "id", None) is not None:
+                _db_id = str(getattr(raw, "id"))
+        elif hasattr(contact_data, "id") and getattr(contact_data, "id", None) is not None:
+            _db_id = str(getattr(contact_data, "id"))
+
+        logger.info(
+            f"Zoho Sync | lead_id={_db_id} | zoho_id={lead_id or '-'} | action={action}"
+        )
 
         logger.debug(
             "Zoho CRM {} payload:\n{}",
@@ -316,10 +353,21 @@ class ZohoCRMService:
         logger.info(f"Zoho CRM Lead {action} successfully: {new_id}")
         return new_id
 
-    async def create_demo_event(self, booking_data: Any) -> Optional[str]:
-        """Creates a Meeting (Event) in Zoho CRM linked to the Lead via Participants."""
-        # 1. Ensure Lead exists
-        lead_id = await self.create_or_update_lead(booking_data)
+    async def create_demo_event(self, booking_data: Any) -> Tuple[Optional[str], str]:
+        """Creates a Meeting (Event) in Zoho CRM linked to the Lead via Participants.
+
+        Returns (event_id_or_none, zoho_lead_id) so callers can persist CRM ids even if Events fails.
+        """
+        # 1. Lead in Zoho — reuse on retry after lead succeeded but Event failed (avoid duplicate Lead).
+        existing = getattr(booking_data, "zoho_lead_id", None)
+        if existing is not None and str(existing).strip():
+            lead_id = str(existing).strip()
+            bid = getattr(booking_data, "id", "?")
+            logger.info(
+                f"Zoho Sync | booking_id={bid} | zoho_id={lead_id} | action=event_only"
+            )
+        else:
+            lead_id = await self.create_or_update_lead(booking_data)
 
         # 2. Format times for Zoho CRM (ISO 8601)
         start_time = booking_data.selected_slot
@@ -362,12 +410,12 @@ class ZohoCRMService:
         if result and "data" in result and result["data"][0].get("status") == "success":
             event_id = result["data"][0]["details"]["id"]
             logger.info(f"Zoho CRM Event created successfully: {event_id}")
-            return event_id
+            return event_id, lead_id
 
         logger.error(
             f"Failed to create Zoho CRM Event for {booking_email}. Response: {result}"
         )
-        return None
+        return None, lead_id
 
     async def log_call(self, contact_data: Any) -> Optional[str]:
         """Logs a call by appending call info to the Lead's Description in Zoho CRM.
@@ -380,8 +428,13 @@ class ZohoCRMService:
             logger.error("No email found in contact data for Zoho CRM call log.")
             return None
 
-        # Find the lead
-        lead_id = await self.search_lead_by_email(email)
+        # Prefer stored Zoho id to avoid search call
+        lead_id: Optional[str] = getattr(contact_data, "zoho_lead_id", None)
+        
+        if not lead_id:
+            # Fallback search if id is missing
+            lead_id = await self.search_lead_by_email(email)
+            
         if not lead_id:
             logger.warning(f"No lead found for {email}, skipping call log.")
             return None
@@ -394,6 +447,7 @@ class ZohoCRMService:
         message = getattr(contact_data, "message", "N/A")
 
         # Get existing lead data to preserve description
+        # TODO: Caching this description would save one GET call per log_call
         lead_data = await self._make_request("GET", f"Leads/{lead_id}")
         existing_desc = ""
         if lead_data and "data" in lead_data:

@@ -30,6 +30,7 @@ from app.models.demo import DemoBooking
 from app.models.lead_event import LeadEvent
 from app.models.agent import Agent
 from app.models.failed_webhook_lead import FailedWebhookLead
+from app.models.failed_zoho_task import FailedZohoTask  # noqa: F401
 
 # this is the Alembic Config object, which provides
 # access to the values within the .ini file in use.

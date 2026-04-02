@@ -11,6 +11,7 @@ from app.api.admin import admin_router
 from app.api.auth import router as auth_router
 from app.api.demo import router as demo_router
 from app.api.housing import housing_router
+from app.api.internal_ops import router as internal_ops_router
 from app.api.meta_whatsapp import meta_whatsapp_router
 from app.api.payment import router as payment_router, razorpay_webhook
 from app.api.realty import realty_router
@@ -54,3 +55,4 @@ def register_routers(app: FastAPI) -> None:
     
     app.include_router(ws_router, prefix=API_PREFIX)
     app.include_router(agent_router, prefix=API_PREFIX)
+    app.include_router(internal_ops_router, prefix=API_PREFIX)

@@ -46,6 +46,16 @@ def get_lead_by_id(db: Session, lead_id: int) -> Optional[Lead]:
     return db.query(Lead).filter(Lead.id == lead_id).first()
 
 
+def get_lead_by_id_for_update(db: Session, lead_id: int) -> Optional[Lead]:
+    """Retrieve a lead row with ``SELECT ... FOR UPDATE`` (serializes concurrent Zoho sync workers)."""
+    return (
+        db.query(Lead)
+        .filter(Lead.id == lead_id)
+        .with_for_update()
+        .first()
+    )
+
+
 def get_lead_by_phone_source(db: Session, phone: str, source: str) -> Optional[Lead]:
     """Retrieve a single lead by phone + source."""
     return (

@@ -252,7 +252,7 @@ async def standardize_response_middleware(request: Request, call_next):
         "/api/v1/health",
         "/api/v1/live",
         "/metrics",
-    ) or p.startswith("/docs") or p.startswith("/openapi"):
+    ) or p.startswith("/docs") or p.startswith("/openapi") or p.startswith("/api/v1/internal"):
         return await call_next(request)
 
     response = await call_next(request)

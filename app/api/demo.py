@@ -1,6 +1,9 @@
+import asyncio
 import uuid
+from datetime import datetime, timezone
 
 from fastapi import APIRouter, Depends, HTTPException, status
+from loguru import logger
 from sqlalchemy.orm import Session
 
 from app.core.celery_app import celery_app
@@ -12,7 +15,7 @@ from app.schemas.demo import (
     ScheduleDemoResponse,
 )
 from app.utils.email_utils import email_service
-from app.utils.zoho_crm_service import zoho_crm_service
+from app.utils.zoho_crm_service import ZohoRateLimitError, zoho_crm_service
 
 router = APIRouter(tags=["Demo"])
 
@@ -23,17 +26,45 @@ def send_demo_email_task(booking_data: dict, meet_link: str):
     from app.schemas.demo import DemoBookingCreate
     email_service.send_booking_confirmation(DemoBookingCreate(**booking_data), meet_link)
 
-@celery_app.task(name="create_zoho_demo_event_task")
-def create_zoho_demo_event_task(db_booking_id: int):
+@celery_app.task(name="create_zoho_demo_event_task", bind=True, max_retries=5, default_retry_delay=60)
+def create_zoho_demo_event_task(self, db_booking_id: int):
     from app.configs.db_config import SessionLocal
-    from app.models.demo import DemoBooking
-    from app.utils.zoho_crm_service import zoho_crm_service
-    
+
     db = SessionLocal()
     try:
         db_booking = db.query(DemoBooking).filter(DemoBooking.id == db_booking_id).first()
-        if db_booking:
-            zoho_crm_service.create_demo_event(db_booking)
+        if not db_booking:
+            logger.error(f"DemoBooking #{db_booking_id} not found.")
+            return
+
+        db.refresh(db_booking)
+        logger.info(
+            f"Zoho Sync | booking_id={db_booking_id} | zoho_id={getattr(db_booking, 'zoho_lead_id', None) or '-'} | action=demo_event"
+        )
+
+        async def _run():
+            return await zoho_crm_service.create_demo_event(db_booking)
+
+        try:
+            event_id, zoho_lead_id = asyncio.run(_run())
+            db_booking.zoho_lead_id = zoho_lead_id
+            db_booking.last_zoho_sync_at = datetime.now(timezone.utc)
+            db.commit()
+            if event_id:
+                logger.info(
+                    f"Demo booking #{db_booking_id} Zoho event {event_id}, lead {zoho_lead_id}"
+                )
+            else:
+                logger.warning(
+                    f"Demo booking #{db_booking_id}: lead {zoho_lead_id} saved in DB but Zoho Event creation failed"
+                )
+        except Exception as e:
+            db.rollback()
+            logger.error(f"Zoho demo sync failed for booking #{db_booking_id}: {e}")
+            if self.request.retries < self.max_retries:
+                countdown = 300 if isinstance(e, ZohoRateLimitError) else 60
+                raise self.retry(exc=e, countdown=countdown)
+            raise
     finally:
         db.close()
 

@@ -6,8 +6,10 @@ FastAPI request cycle. Each task opens its own DB session.
 
 import asyncio
 import traceback
-from typing import Optional, Union, Sequence
+from datetime import datetime, timezone
+from typing import Optional, Sequence, Union
 
+from celery.exceptions import Retry
 from loguru import logger
 
 from app.configs.db_config import MySQLSessionLocal
@@ -15,6 +17,13 @@ from app.core.celery_app import celery_app
 from app.events.event_service import publish_event
 from app.models.failed_job import FailedJob
 from app.repo import lead as lead_repo
+from app.models.failed_zoho_task import FailedZohoTask
+from app.services.zoho_circuit import ZohoCircuitOpenError
+from app.services.zoho_daily_budget import ZohoDailyBudgetExceeded
+from app.services.zoho_sync_policy import (
+    should_defer_due_to_concurrent_processing,
+    should_skip_recent_successful_sync,
+)
 from app.utils.zoho_adapter import CRMLeadAdapter
 from app.utils.zoho_crm_service import ZohoCRMError, ZohoRateLimitError, zoho_crm_service
 
@@ -26,126 +35,201 @@ MAX_RETRIES: int = 5
 
 
 # ────────────────────────────────────────────────────────────────────
+#  Celery queue monitoring (Beat — optional)
+# ────────────────────────────────────────────────────────────────────
+@celery_app.task(name="monitor_celery_queue_backlog")
+def monitor_celery_queue_backlog() -> None:
+    """Emit error logs when default queue depth exceeds ``CELERY_QUEUE_BACKLOG_ALERT_THRESHOLD``."""
+    from app.services.celery_queue_monitor import log_celery_queue_backlog_if_high
+
+    log_celery_queue_backlog_if_high()
+
+
+@celery_app.task(name="log_zoho_budget_usage_metric")
+def log_zoho_budget_usage_metric() -> None:
+    """Periodic ``Zoho Budget Usage | used=… | remaining=…`` for log-based trending."""
+    from app.services.zoho_daily_budget import log_budget_usage_metric
+
+    log_budget_usage_metric()
+
+
+# ────────────────────────────────────────────────────────────────────
 #  Zoho CRM Sync Task
 # ────────────────────────────────────────────────────────────────────
 @celery_app.task(name="sync_lead_to_zoho_task", bind=True, max_retries=5, default_retry_delay=60)
 def sync_lead_to_zoho_task(self, lead_id: int) -> None:
     """Celery Task: Sync a stored lead to Zoho CRM using only its ID.
 
-    Retry / DLQ behaviour is handled by Celery's built-in ``Retry``. When all
-    retries are exhausted the task logs it to FailedJobs.
+    Uses ``SELECT FOR UPDATE`` to serialize concurrent workers, idempotency for duplicate
+    task delivery, and structured logging for production debugging.
     """
     logger.info(f"Celery Task: Syncing Lead #{lead_id} to Zoho CRM...")
 
-    with MySQLSessionLocal() as session:
-        lead_obj = lead_repo.get_lead_by_id(session, lead_id)
+    now = datetime.now(timezone.utc)
+
+    session = MySQLSessionLocal()
+    try:
+        lead_obj = lead_repo.get_lead_by_id_for_update(session, lead_id)
         if not lead_obj:
             logger.error(f"Lead #{lead_id} not found in database. Sync aborted.")
             return
 
-        # ── 1. Idempotency check ──────────────────────────────────
-        # Proceed even if already synced to allow for field updates (Owner, AI Tags, etc.)
-        action_type = "Updating" if lead_obj.zoho_synced else "Syncing"
-        logger.info(f"{action_type} Lead #{lead_id} to Zoho CRM...")
+        if should_skip_recent_successful_sync(lead_obj, now):
+            logger.info(
+                f"Zoho Sync | lead_id={lead_id} | zoho_id={lead_obj.zoho_lead_id} | skipped=duplicate_task_recent_success"
+            )
+            return
 
-        # ── 2. Mark as processing ─────────────────────────────────
+        if lead_obj.crm_status == "processing":
+            if should_defer_due_to_concurrent_processing(lead_obj, now):
+                session.rollback()
+                raise self.retry(countdown=30)
+            logger.warning(
+                f"Zoho Sync takeover | lead_id={lead_id} | reason=stale_processing"
+            )
+
         lead_repo.update_lead(session, lead_obj, {"crm_status": "processing"})
         session.commit()
         publish_event(lead_id, "CRM_SYNC_STARTED", "Starting Zoho CRM synchronisation")
+    finally:
+        session.close()
+
+    session2 = MySQLSessionLocal()
+    try:
+        lead_obj = lead_repo.get_lead_by_id(session2, lead_id)
+        if not lead_obj:
+            return
+
+        if lead_obj.assigned_employee and lead_obj.assigned_employee.zoho_user_id:
+            setattr(lead_obj, "owner_zoho_id", lead_obj.assigned_employee.zoho_user_id)
+        else:
+            setattr(lead_obj, "owner_zoho_id", None)
+
+        adapter = CRMLeadAdapter(lead_obj, lead_obj.source)
+        action = "update" if lead_obj.zoho_lead_id else "create"
+        logger.info(
+            f"Zoho Sync | lead_id={lead_id} | zoho_id={lead_obj.zoho_lead_id or '-'} | action={action}"
+        )
 
         try:
-            # ── 3. Adapt and send ─────────────────────────────────
-            # Ensure assigned employee is loaded to get zoho_user_id
-            if lead_obj.assigned_employee and lead_obj.assigned_employee.zoho_user_id:
-                setattr(lead_obj, "owner_zoho_id", lead_obj.assigned_employee.zoho_user_id)
-            else:
-                setattr(lead_obj, "owner_zoho_id", None)
-
-            adapter = CRMLeadAdapter(lead_obj, lead_obj.source)
-
             zoho_lead_id = asyncio.run(
                 asyncio.wait_for(
                     zoho_crm_service.create_or_update_lead(adapter),
                     timeout=ZOHO_SYNC_TIMEOUT_SECONDS,
                 )
             )
+        except ZohoDailyBudgetExceeded as e:
+            lead_locked = lead_repo.get_lead_by_id_for_update(session2, lead_id)
+            if lead_locked:
+                lead_repo.update_lead(session2, lead_locked, {"crm_status": "queued"})
+                session2.commit()
+            logger.warning(
+                f"Zoho Sync | lead_id={lead_id} | skipped=daily_budget_soft_limit | retry_in_1h"
+            )
+            raise self.retry(exc=e, countdown=3600)
 
-            # ── 4. Success ────────────────────────────────────────
-            logger.info(
-                f"Lead #{lead_id} successfully synced to Zoho CRM: {zoho_lead_id}"
-            )
-            lead_repo.update_lead(
-                session,
-                lead_obj,
-                {
-                    "zoho_lead_id": zoho_lead_id,
-                    "zoho_synced": True,
-                    "crm_status": "success",
-                },
-            )
-            session.commit()
-            publish_event(
-                lead_id,
-                "CRM_SYNC_SUCCESS",
-                f"Successfully synced to Zoho CRM: {zoho_lead_id}",
-            )
+        lead_locked = lead_repo.get_lead_by_id_for_update(session2, lead_id)
+        if not lead_locked:
+            return
 
-        except Exception as e:
-            if self.request.retries < self.max_retries:
-                retry_num = self.request.retries + 1
-                logger.warning(
-                    f"Sync attempt {retry_num}/{self.max_retries} failed for "
-                    f"Lead #{lead_id}: {e}. Retrying..."
-                )
-                lead_repo.update_lead(session, lead_obj, {"crm_status": "retrying"})
-                session.commit()
+        logger.info(
+            f"Zoho Sync | lead_id={lead_id} | zoho_id={zoho_lead_id} | result=success"
+        )
+        lead_repo.update_lead(
+            session2,
+            lead_locked,
+            {
+                "zoho_lead_id": zoho_lead_id,
+                "zoho_synced": True,
+                "crm_status": "success",
+                "last_zoho_sync_at": datetime.now(timezone.utc),
+            },
+        )
+        session2.commit()
+        publish_event(
+            lead_id,
+            "CRM_SYNC_SUCCESS",
+            f"Successfully synced to Zoho CRM: {zoho_lead_id}",
+        )
+
+    except Retry:
+        raise
+    except Exception as e:
+        if isinstance(e, ZohoDailyBudgetExceeded):
+            raise
+        if self.request.retries < self.max_retries:
+            retry_num = self.request.retries + 1
+            logger.warning(
+                f"Zoho Sync | lead_id={lead_id} | attempt={retry_num}/{self.max_retries} | error={e}"
+            )
+            try:
+                lead_locked = lead_repo.get_lead_by_id_for_update(session2, lead_id)
+                if lead_locked:
+                    lead_repo.update_lead(session2, lead_locked, {"crm_status": "retrying"})
+                    session2.commit()
                 publish_event(
                     lead_id,
                     "CRM_SYNC_RETRYING",
                     f"Sync failed, retrying (attempt {retry_num})",
                     payload=str(e),
                 )
-                
-                countdown = 60
-                if isinstance(e, ZohoRateLimitError):
-                    countdown = 300  # 5 minutes for rate limits
-                    logger.warning(f"Rate Limit hit for Lead #{lead_id}. Waiting 5 mins.")
-                
-                raise self.retry(exc=e, countdown=countdown)
+            except Exception as inner:
+                logger.error(f"Failed to mark lead {lead_id} retrying: {inner}")
 
-            # ── Dead Letter Queue: permanently failed ─────────────────
-            logger.error(
-                f"CRM Sync permanently failed for Lead #{lead_id} "
-                f"after retries: {e}"
-            )
-            lead_repo.update_lead(session, lead_obj, {"crm_status": "permanently_failed"})
-            session.commit()
+            countdown = 60
+            if isinstance(e, ZohoRateLimitError):
+                countdown = 300
+                logger.warning(f"Zoho Sync | lead_id={lead_id} | rate_limited | retry_in_5m")
+            elif isinstance(e, ZohoCircuitOpenError):
+                countdown = 300
+                logger.warning(f"Zoho Sync | lead_id={lead_id} | circuit_open | retry_in_5m")
+
+            raise self.retry(exc=e, countdown=countdown)
+
+        logger.error(
+            f"Zoho Sync | lead_id={lead_id} | result=permanently_failed | error={e}"
+        )
+        try:
+            lead_locked = lead_repo.get_lead_by_id_for_update(session2, lead_id)
+            if lead_locked:
+                lead_repo.update_lead(session2, lead_locked, {"crm_status": "permanently_failed"})
+                session2.commit()
             publish_event(
                 lead_id,
                 "CRM_SYNC_FAILED",
                 "Sync permanently failed after maximum retries",
                 payload=str(e),
             )
-
-            # Log to FailedJobs for visibility
             try:
                 from app.utils.alerting import notify_admin_critical_failure
+
                 notify_admin_critical_failure(
                     subject=f"Zoho Sync Permanent Failure: Lead #{lead_id}",
                     message=f"Sync failed after {self.max_retries} retries due to: {e}",
-                    context={"lead_id": lead_id, "error": str(e)}
+                    context={"lead_id": lead_id, "error": str(e)},
                 )
-                
+
                 failed = FailedJob(
                     job_name=f"sync_zoho_{lead_id}",
                     payload={"lead_id": lead_id},
                     error=str(e),
                     stack_trace=traceback.format_exc(),
                 )
-                session.add(failed)
-                session.commit()
+                session2.add(failed)
+                session2.add(
+                    FailedZohoTask(
+                        lead_id=lead_id,
+                        error=str(e),
+                        payload={"lead_id": lead_id},
+                    )
+                )
+                session2.commit()
             except Exception as log_err:
                 logger.error(f"Failed to record DLQ entry: {log_err}")
+        except Exception as final_err:
+            logger.error(f"Zoho Sync DLQ handling failed for lead {lead_id}: {final_err}")
+    finally:
+        session2.close()
 
 
 @celery_app.task(name="sync_contact_to_zoho_task", bind=True, max_retries=5, default_retry_delay=60)
@@ -162,6 +246,7 @@ def sync_contact_to_zoho_task(self, contact_id: int) -> None:
 
         try:
             adapter = CRMLeadAdapter(contact_obj, "website")
+            logger.info(f"Zoho Sync | contact_id={contact_id} | action=upsert")
             zoho_id = asyncio.run(
                 asyncio.wait_for(
                     zoho_crm_service.create_or_update_lead(adapter),
@@ -172,7 +257,8 @@ def sync_contact_to_zoho_task(self, contact_id: int) -> None:
         except Exception as e:
             logger.error(f"Contact sync failed: {e}")
             if self.request.retries < self.max_retries:
-                raise self.retry(exc=e)
+                countdown = 300 if isinstance(e, ZohoRateLimitError) else 60
+                raise self.retry(exc=e, countdown=countdown)
 
 
 # ────────────────────────────────────────────────────────────────────
@@ -254,7 +340,7 @@ def sync_historical_housing_task(days: int = 5) -> None:
     logger.info(f"Celery Task: Starting historical sync for last {days} days")
 
     async def _run_sync():
-        from datetime import datetime
+        from datetime import datetime, timezone
         from app.configs.db_config import MySQLSessionLocal
         from app.services.housing_lead_service import housing_lead_service, BUILDER_API_URL, BROKER_API_URL
         from app.services.lead_processor import process_lead
@@ -262,7 +348,7 @@ def sync_historical_housing_task(days: int = 5) -> None:
 
         db = MySQLSessionLocal()
         try:
-            end_date = int(datetime.now().timestamp())
+            end_date = int(datetime.now(timezone.utc).timestamp())
             start_date = end_date - (86400 * days)
 
             logger.info(f"Background Recovery: Fetching missing Housing.com leads from {start_date} to {end_date}")

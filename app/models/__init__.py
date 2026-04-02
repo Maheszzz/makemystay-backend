@@ -6,6 +6,7 @@ from app.models.csv_import import CsvImport
 from app.models.demo import DemoBooking
 from app.models.employee import Employee
 from app.models.failed_job import FailedJob
+from app.models.failed_zoho_task import FailedZohoTask
 from app.models.lead import Lead
 from app.models.lead_activity import LeadActivity
 from app.models.lead_assignment import LeadAssignment

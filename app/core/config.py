@@ -70,6 +70,24 @@ class Settings(BaseSettings):
     ZOHO_CRM_INQUIRY_COUNT_FIELD: str = "Inquiry_Count"
     # JSON map of city/area keyword → employees.id (PK) for auto RM assignment, e.g. {"BTM": 1, "HSR": 2}
     CRM_CITY_EMPLOYEE_JSON: str = "{}"
+    # Redis-backed daily Zoho HTTP counter; 0 = disable guard. Soft limit = ratio × budget.
+    ZOHO_DAILY_API_BUDGET: int = 10_000
+    ZOHO_DAILY_API_SOFT_LIMIT_RATIO: float = 0.8
+    # Celery duplicate-task idempotency: skip if last success within this window (seconds).
+    ZOHO_SYNC_IDEMPOTENCY_SECONDS: int = 120
+    # If another worker set crm_status=processing within this window, retry later.
+    ZOHO_PROCESSING_CONFLICT_SECONDS: float = 90.0
+    # If stuck in processing longer than this, allow takeover.
+    ZOHO_PROCESSING_STALE_SECONDS: float = 300.0
+    # Celery default-queue depth; log error when exceeded (requires celery beat for periodic check).
+    CELERY_QUEUE_BACKLOG_ALERT_THRESHOLD: int = 1000
+    # Extra countdown (seconds) for Zoho sync enqueues when queue depth > threshold.
+    CELERY_BACKPRESSURE_DELAY_SECONDS: int = 120
+    # Rolling window: open circuit when failure ratio in last N outcomes >= this (requires Redis).
+    ZOHO_CIRCUIT_FAILURE_RATIO: float = 0.5
+    ZOHO_CIRCUIT_PAUSE_SECONDS: int = 300
+    # GET /api/v1/internal/zoho-status — set in production; empty = endpoint returns 404.
+    INTERNAL_METRICS_TOKEN: str = ""
 
     # Retell AI
     RETELL_API_KEY: str = ""

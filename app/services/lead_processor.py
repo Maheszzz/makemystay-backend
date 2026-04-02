@@ -21,6 +21,7 @@ from app.schemas.lead import LeadCreate
 import json
 from app.services.assignment_service import assign_lead
 from app.services.crm_employee_assignment import try_assign_employee_by_city_rules
+from datetime import timedelta
 
 
 def normalize_phone(phone: str) -> str:
@@ -366,16 +367,49 @@ async def process_lead(
         return None
 
 
-def _enqueue_crm_sync(db: Session, lead: Lead, *, csv_stagger_index: Optional[int] = None) -> None:
-    """Enqueue Zoho CRM sync (Celery)."""
+def _should_sync_to_zoho(lead: Lead, force: bool = False) -> bool:
+    """Determine if a lead should be synced to Zoho CRM based on cooldown rules."""
+    if force:
+        return True
+    
+    # New leads always sync
+    if not lead.zoho_synced or not lead.zoho_lead_id:
+        return True
+        
+    # Re-entries: 1 hour cooldown if no major changes
+    if lead.last_zoho_sync_at:
+        now = datetime.now(timezone.utc)
+        # Ensure last_zoho_sync_at is timezone-aware for comparison
+        last_sync = lead.last_zoho_sync_at
+        if last_sync.tzinfo is None:
+            last_sync = last_sync.replace(tzinfo=timezone.utc)
+            
+        diff = (now - last_sync).total_seconds()
+        if diff < 3600: # 1 hour
+            logger.info(
+                f"Zoho Sync | lead_id={lead.id} | zoho_id={lead.zoho_lead_id or '-'} | skipped=cooldown | age_s={diff:.1f}"
+            )
+            return False
+            
+    return True
+
+
+def _enqueue_crm_sync(db: Session, lead: Lead, *, csv_stagger_index: Optional[int] = None, force: bool = False) -> None:
+    """Enqueue Zoho CRM sync (Celery) if cooldown allows."""
+    if not _should_sync_to_zoho(lead, force=force):
+        return
+
     try:
+        from app.services.celery_queue_monitor import get_backpressure_delay_seconds
         from app.tasks.lead_tasks import sync_lead_to_zoho_task
 
+        backpressure = get_backpressure_delay_seconds()
         if csv_stagger_index is not None:
-            countdown = min(float(csv_stagger_index) * 0.2, 600.0)
-            sync_lead_to_zoho_task.apply_async(args=[lead.id], countdown=countdown)
+            countdown = int(min(float(csv_stagger_index) * 0.2, 600.0) + backpressure)
         else:
-            sync_lead_to_zoho_task.delay(lead.id)
+            countdown = int(backpressure)
+
+        sync_lead_to_zoho_task.apply_async(args=[lead.id], countdown=countdown)
 
         lead.crm_status = "queued"
         db.commit()

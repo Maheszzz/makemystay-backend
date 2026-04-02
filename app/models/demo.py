@@ -16,5 +16,7 @@ class DemoBooking(MySQLBase):
     selected_slot = Column(DateTime, nullable=False)
     status = Column(String(50), default="scheduled")
     meeting_link = Column(String(500), nullable=True)
+    zoho_lead_id = Column(String(255), nullable=True)
+    last_zoho_sync_at = Column(DateTime(timezone=True), nullable=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     updated_at = Column(DateTime(timezone=True), onupdate=func.now())

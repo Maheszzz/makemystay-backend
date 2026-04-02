@@ -74,6 +74,7 @@ class Lead(MySQLBase):
     updated_at = Column(
         DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
     )
+    last_zoho_sync_at = Column(DateTime(timezone=True), nullable=True)
 
     # Assignment
     assigned_to = Column(Integer, ForeignKey("agents.id"), nullable=True, index=True)
