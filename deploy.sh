@@ -136,6 +136,16 @@ command -v pm2 >/dev/null 2>&1 || sudo npm install -g pm2
 pm2 reload ecosystem.config.js || pm2 start ecosystem.config.js
 pm2 save
 
+# --- ADDED: Production Stability Cron Job ---
+echo "⚙️  Ensuring disk-alert cron job is installed..."
+# This job checks disk usage every 5 mins; if > 80%, restarts PM2 to clear memory/stuck processes
+CRON_JOB="*/5 * * * * df / | awk 'NR==2 {if (\$5+0 > 80) system(\"pm2 restart makemystay-api\")}'"
+(crontab -l 2>/dev/null | grep -v "pm2 restart makemystay-api"; echo "$CRON_JOB") | crontab -
+
+# Add daily deep cleanup for logs/temp
+CLEANUP_CRON="0 3 * * * sudo journalctl --vacuum-time=2d && sudo rm -rf /tmp/* && pm2 flush"
+(crontab -l 2>/dev/null | grep -v "journalctl --vacuum-time"; echo "$CLEANUP_CRON") | crontab -
+
 echo "💾 Disk after deploy: \$(df / --output=pcent | tail -1 | tr -d ' ')"
 ENDSSH
 

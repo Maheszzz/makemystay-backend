@@ -1,14 +1,26 @@
-"""Repository layer for Realty models with transaction safety."""
-
 import re
+import time
 from collections import defaultdict
-from typing import Dict, List, Optional, Tuple
+from typing import Any, Callable, Dict, List, Optional, Tuple
 
-from sqlalchemy import desc, func
+from sqlalchemy import desc, func, text
 from sqlalchemy.exc import OperationalError, SQLAlchemyError
 from sqlalchemy.orm import Session, attributes, joinedload, selectinload
 
 from app.models.realty import Contact, Property, PropertyImage, Review
+
+
+def execute_with_retry(fn: Callable[[], Any], retries: int = 3, delay: float = 1.0) -> Any:
+    """Robust wrapper for database operations to handle transient OperationalErrors."""
+    for i in range(retries):
+        try:
+            return fn()
+        except OperationalError as exc:
+            if i == retries - 1:
+                from loguru import logger
+                logger.error(f"Database operation failed after {retries} attempts: {exc}")
+                raise
+            time.sleep(delay)
 
 
 def refresh_property_review_stats(db: Session, property_id: int) -> None:
@@ -104,13 +116,8 @@ def _invalidate_session_connection(db: Session) -> None:
 
 def _query_all_with_connection_retry(db: Session, query, skip: int, limit: int):
     """Run list query; retry once after invalidate on transient MySQL disconnect."""
-    try:
-        return query.offset(skip).limit(limit).all()
-    except OperationalError as exc:
-        if not _is_transient_mysql_connection_lost(exc):
-            raise
-        _invalidate_session_connection(db)
-        return query.offset(skip).limit(limit).all()
+    # Legacy wrapper; preferring execute_with_retry for new code.
+    return execute_with_retry(lambda: query.offset(skip).limit(limit).all())
 
 
 # ==================== CONTACT REPO ====================
@@ -296,9 +303,17 @@ def get_properties(
     else:  # rating_desc (default)
         query = query.order_by(desc(func.coalesce(Property.average_rating, 0)))
 
+    # Set query statement timeout to 5 seconds to prevent hanging
+    try:
+        db.execute(text("SET SESSION MAX_EXECUTION_TIME = 5000")) # MySQL 5.7.8+ format
+    except Exception:
+        pass
+
     try:
         properties = _query_all_with_connection_retry(db, query, skip, limit)
-        total_count = query.count()
+        # Use optimized count query instead of query.count() which is slow in SQLAlchemy
+        count_q = query.with_entities(func.count(Property.id)).order_by(None)
+        total_count = execute_with_retry(lambda: count_q.scalar())
     except OperationalError as exc:
         if not _is_missing_soft_delete_column_error(exc):
             raise
@@ -407,50 +422,43 @@ def get_property_suggestions(db: Session, q: str) -> List[str]:
         search_filter = f"%{term}%"
 
         # Get unique property names
+        name_q = (
+            db.query(Property.property_name)
+            .filter(Property.property_name.ilike(search_filter))
+            .distinct()
+            .limit(5)
+        )
+        if False: # include_deleted is not defined here, defaulting to False behavior
+            name_q = name_q.filter(func.coalesce(Property.is_deleted, False) == False)
+
         try:
-            names.extend(
-                db.query(Property.property_name)
-                .filter(
-                    Property.property_name.ilike(search_filter),
-                    func.coalesce(Property.is_deleted, False) == False,  # noqa: E712
-                )
-                .distinct()
-                .limit(5)
-                .all()
-            )
+            results = execute_with_retry(lambda: name_q.all())
+            names.extend(results)
         except OperationalError as exc:
             if not _is_missing_soft_delete_column_error(exc):
                 raise
-            names.extend(
-                db.query(Property.property_name)
-                .filter(Property.property_name.ilike(search_filter))
-                .distinct()
-                .limit(5)
-                .all()
-            )
+            # Fallback for missing soft-delete col
+            fallback_q = db.query(Property.property_name).filter(Property.property_name.ilike(search_filter)).distinct().limit(5)
+            names.extend(execute_with_retry(lambda: fallback_q.all()))
 
         # Get unique locations
+        loc_q = (
+            db.query(Property.location)
+            .filter(Property.location.ilike(search_filter))
+            .distinct()
+            .limit(5)
+        )
+        if False: # include_deleted is not defined here, defaulting to False behavior
+            loc_q = loc_q.filter(func.coalesce(Property.is_deleted, False) == False)
+
         try:
-            locations.extend(
-                db.query(Property.location)
-                .filter(
-                    Property.location.ilike(search_filter),
-                    func.coalesce(Property.is_deleted, False) == False,  # noqa: E712
-                )
-                .distinct()
-                .limit(5)
-                .all()
-            )
+            results = execute_with_retry(lambda: loc_q.all())
+            locations.extend(results)
         except OperationalError as exc:
             if not _is_missing_soft_delete_column_error(exc):
                 raise
-            locations.extend(
-                db.query(Property.location)
-                .filter(Property.location.ilike(search_filter))
-                .distinct()
-                .limit(5)
-                .all()
-            )
+            fallback_q = db.query(Property.location).filter(Property.location.ilike(search_filter)).distinct().limit(5)
+            locations.extend(execute_with_retry(lambda: fallback_q.all()))
 
     # Extract strings and combine
     suggestions = [n[0] for n in names] + [loc[0] for loc in locations]

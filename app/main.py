@@ -250,11 +250,13 @@ async def standardize_response_middleware(request: Request, call_next):
     # We only wrap standard JSONResponse objects to avoid 'Exit code 18' (Connection Reset)
     # which happens when consuming streaming response bodies incorrectly.
     content_type = response.headers.get("Content-Type", "")
+    content_length = int(response.headers.get("Content-Length", 0))
+    
     if "application/json" not in content_type or not isinstance(response, JSONResponse):
         return response
 
-    # 2. Skip if already standardized (e.g., from our global_exception_handler)
-    if response.headers.get("X-Standardized") == "true":
+    # 2. Skip if already standardized or payload is too large (> 1MB)
+    if response.headers.get("X-Standardized") == "true" or content_length > 1_000_000:
         return response
 
     try:
