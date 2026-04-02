@@ -152,11 +152,36 @@ ENDSSH
 echo ""
 echo "🔍 Running post-deployment health check..."
 # Give PM2 a moment to spin up workers
-sleep 5
-# Check internal health via localhost to verify the specific instance
-$SSH "curl -s -f http://localhost:8000/api/v1/live || { echo '❌ Internal health check failed'; exit 1; }"
-echo "✅ Internal health check passed"
+MAX_RETRIES=3
+RETRY_DELAY=5
+SUCCESS=0
+
+for i in $(seq 1 $MAX_RETRIES); do
+  echo "   Attempt $i/$MAX_RETRIES..."
+  # Check internal health via localhost to verify the specific instance
+  # Use -v to see the full response in case of 502
+  HEALTH_OUT=$(ssh -i "$PEM_KEY" -o StrictHostKeyChecking=no "$EC2_USER@$EC2_HOST" "curl -v -s http://localhost:8000/api/v1/live 2>&1")
+  if echo "$HEALTH_OUT" | grep -q "status\":\"ok"; then
+    echo "✅ Internal health check passed"
+    SUCCESS=1
+    break
+  else
+    echo "⚠️  Health check attempt $i failed."
+    echo "--- Last 5 lines of health check output ---"
+    echo "$HEALTH_OUT" | tail -n 5
+    if [ $i -lt $MAX_RETRIES ]; then
+        echo "   Waiting $RETRY_DELAY seconds before retry..."
+        sleep $RETRY_DELAY
+    fi
+  fi
+done
+
+if [ $SUCCESS -eq 0 ]; then
+  echo "❌ All health check attempts failed. Showing PM2 logs on server:"
+  ssh -i "$PEM_KEY" -o StrictHostKeyChecking=no "$EC2_USER@$EC2_HOST" "pm2 logs makemystay-api --lines 20 --no-colors"
+  exit 1
+fi
 
 echo ""
-echo "✅ PM2 Deploy complete — ALB liveness: /live  |  full checks: /health"
+echo "✅ PM2 Deploy complete — ALB liveness: /api/v1/live  |  full checks: /api/v1/health"
 

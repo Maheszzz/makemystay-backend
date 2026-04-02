@@ -51,6 +51,7 @@ from app.api.admin.schemas import (
     EmployeeCreate,
     EmployeeResponse,
     EmployeeUpdate,
+    LeadUpdateRequest,
     SetFollowUpRequest,
     UpdateLeadMessageRequest,
     UpdateLeadStageRequest,

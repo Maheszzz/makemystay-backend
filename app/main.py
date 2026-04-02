@@ -87,6 +87,13 @@ def email_sync_wrapper_job():
 async def lifespan(app: FastAPI):
     """Lifecycle manager for the app."""
     logger.info("Starting background scheduler...")
+    
+    # Run DB init only when enabled (avoids hanging top-level imports)
+    try:
+        maybe_create_tables_from_metadata()
+    except Exception as e:
+        logger.error(f"Database initialization helper failed: {e}")
+
     # Housing / 99acres pull sync requires MySQL; disable when DB is unavailable locally (see LEAD_PULL_SYNC_ENABLED).
     if getattr(settings, "LEAD_PULL_SYNC_ENABLED", False):
         scheduler.add_job(
@@ -229,19 +236,23 @@ app.add_middleware(
 )
 app.add_middleware(GZipMiddleware, minimum_size=1000)
 
-# --- Database initialization (optional create_all; Alembic is source of truth in prod) ---
+# --- Database initialization (Alembic is source of truth in prod; dev-only helper moved to lifespan) ---
 from app.bootstrap.database import maybe_create_tables_from_metadata  # noqa: E402
-
-maybe_create_tables_from_metadata()
 
 
 @app.middleware("http")
 async def standardize_response_middleware(request: Request, call_next):
     """Standardizes JSON responses into {success, data, error} format."""
     # Skip for health checks, metrics, and documentation
-    if request.url.path in ["/health", "/live", "/metrics"] or \
-       request.url.path.startswith("/docs") or \
-       request.url.path.startswith("/openapi"):
+    # Nginx proxies /api/* with full path; ALB often checks /api/v1/live (not /live).
+    p = request.url.path
+    if p in (
+        "/health",
+        "/live",
+        "/api/v1/health",
+        "/api/v1/live",
+        "/metrics",
+    ) or p.startswith("/docs") or p.startswith("/openapi"):
         return await call_next(request)
 
     response = await call_next(request)
@@ -260,8 +271,14 @@ async def standardize_response_middleware(request: Request, call_next):
         return response
 
     try:
-        # Safe to read .body for standard JSONResponse
+        # 3. Safe to read .body for standard JSONResponse
+        # Check content_length to avoid huge JSON parse
+        if content_length > 500_000: # 500KB limit for wrapping
+            return response
+
         body_content = response.body.decode("utf-8")
+        if not body_content:
+            return response
         data = json.loads(body_content)
 
         # 3. Check if it already matches the contract (success field present)
@@ -321,27 +338,30 @@ def favicon():
     return {}
 
 
+@app.get("/api/v1/live", tags=["Health"])
 @app.get("/live", tags=["Health"])
 async def live():
     """Liveness check for ALB."""
-    return {"status": "ok"}
+    return {"status": "ok", "message": "API is alive"}
 
 
+@app.get("/api/v1/health", tags=["Health"])
 @app.get("/health", tags=["Health"])
 async def health():
     """Detailed health check endpoint."""
     from app.configs.db_config import mysql_engine
     try:
-        # Check DB
+        # Check DB with a strict timeout
         from sqlalchemy import text
         with mysql_engine.connect() as conn:
             conn.execute(text("SELECT 1"))
         db_status = "connected"
-    except Exception:
+    except Exception as e:
+        logger.warning(f"Health check DB failure: {e}")
         db_status = "disconnected"
 
     return {
-        "status": "healthy",
+        "status": "healthy" if db_status == "connected" else "degraded",
         "service": "Realty API",
         "version": "1.0.0",
         "env": settings.ENV,

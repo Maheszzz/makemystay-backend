@@ -13,7 +13,10 @@ module.exports = {
       },
       env_file: ".env.production",
       autorestart: true,
-      max_restarts: 5,
+      // Avoid giving up after a few boot-time crashes (would leave nginx with 502 until manual pm2 restart).
+      max_restarts: 50,
+      min_uptime: "8s",
+      restart_delay: 4000,
       watch: false
     },
     {
@@ -29,7 +32,9 @@ module.exports = {
       },
       env_file: ".env.production",
       autorestart: true,
-      max_restarts: 5,
+      max_restarts: 50,
+      min_uptime: "8s",
+      restart_delay: 4000,
       watch: false
     }
   ]
