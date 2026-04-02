@@ -104,7 +104,7 @@ def _first_day_prev_month(d: date) -> date:
 
 
 @router.get(
-    "/admin/lead-metadata",
+    "/lead-metadata",
     summary="Lead statuses, priorities, pipeline stages, contact statuses (single source for admin UI)",
 )
 def get_lead_metadata(user=Depends(security.get_current_user)):
@@ -114,7 +114,7 @@ def get_lead_metadata(user=Depends(security.get_current_user)):
     return build_lead_metadata_payload()
 
 
-@router.get("/admin/stats", summary="Get lead ingestion statistics")
+@router.get("/stats", summary="Get lead ingestion statistics")
 async def get_stats(db: Session = Depends(get_mysql_db)):
     """Provides visibility into lead ingestion health and queue status."""
     try:
@@ -147,7 +147,7 @@ async def get_stats(db: Session = Depends(get_mysql_db)):
         raise HTTPException(status_code=500, detail="Failed to fetch stats")
 
 
-@router.get("/admin/crm/sync-status", summary="Get Zoho CRM synchronization progress")
+@router.get("/crm/sync-status", summary="Get Zoho CRM synchronization progress")
 async def get_crm_sync_status(
     db: Session = Depends(get_mysql_db),
     user=Depends(security.get_current_user)
@@ -180,7 +180,7 @@ async def get_crm_sync_status(
         raise HTTPException(status_code=500, detail="Failed to fetch sync status")
 
 
-@router.get("/admin/analytics", summary="Get simple analytics metrics")
+@router.get("/analytics", summary="Get simple analytics metrics")
 @limiter.limit("10/minute")
 async def analytics(request: Request, db: Session = Depends(get_mysql_db)):
     """High-level CRM + inventory metrics, including month-over-month new listings and leads."""
@@ -312,17 +312,33 @@ async def analytics(request: Request, db: Session = Depends(get_mysql_db)):
         }
 
     try:
-        data = await asyncio.wait_for(asyncio.to_thread(_fetch_data), timeout=5.0)
+        data = await asyncio.wait_for(asyncio.to_thread(_fetch_data), timeout=10.0)
         return data
-    except asyncio.TimeoutError:
-        return {"error": "timeout"}
     except Exception as e:
-        if should_log_once("error:/admin/analytics", window_seconds=60):
-            logger.error(f"Failed to fetch analytics: {e}")
-        raise HTTPException(status_code=500, detail="Failed to fetch analytics")
+        logger.error(f"Failed to fetch analytics (returned safe default): {e}")
+        return {
+            "total_leads": 0,
+            "leads_linked_zoho": 0,
+            "today_leads": 0,
+            "failed": 0,
+            "failed_lead_ids": [],
+            "total_properties": 0,
+            "active_properties": 0,
+            "properties_added_this_month": 0,
+            "properties_added_last_month": 0,
+            "leads_this_month": 0,
+            "leads_last_month": 0,
+            "leads_by_source": {},
+            "leads_by_stage": {},
+            "crm_sync_success_rate": 0,
+            "crm_sync_failed_rate": 1.0,
+            "duplicate_reentry_leads": 0,
+            "reentry_events_total": 0,
+            "csv_import_avg_success_rate_30d": 0.0,
+        }
 
 
-@router.get("/admin/analytics/growth", summary="Monthly properties and leads growth for charts")
+@router.get("/analytics/growth", summary="Monthly properties and leads growth for charts")
 @limiter.limit("20/minute")
 async def analytics_growth(request: Request, db: Session = Depends(get_mysql_db)):
     """Returns month-by-month totals for properties added and leads created — last 12 months."""
@@ -367,13 +383,13 @@ async def analytics_growth(request: Request, db: Session = Depends(get_mysql_db)
         return months
 
     try:
-        data = await asyncio.wait_for(asyncio.to_thread(_fetch), timeout=5.0)
+        # Increase timeout to 10s for potentially slow DB queries on large datasets
+        data = await asyncio.wait_for(asyncio.to_thread(_fetch), timeout=10.0)
         return data
-    except asyncio.TimeoutError:
-        raise HTTPException(status_code=504, detail="Query timeout")
     except Exception as e:
-        logger.error(f"analytics/growth error: {e}")
-        raise HTTPException(status_code=500, detail="Failed to fetch growth data")
+        logger.error(f"analytics/growth error (returned safe []): {e}")
+        # Return empty list to avoid breaking UI charts with 500 error
+        return []
 
 
 @router.get("/users/rms", summary="Get all active Relationship Managers")
@@ -647,7 +663,7 @@ def _crm_leads_visible_query(db: Session, user: User):
     return q
 
 
-@router.get("/admin/leads/{lead_id}", summary="Get single lead (full CRM payload)")
+@router.get("/leads/{lead_id}", summary="Get single lead (full CRM payload)")
 def get_lead_full(lead_id: int, db: Session = Depends(get_mysql_db), user=Depends(security.get_current_user)):
     """Full lead row for admin detail (includes pipeline, Zoho, assigned employee). Prefer over GET /leads/{id}."""
     lead = _crm_leads_visible_query(db, user).filter(Lead.id == lead_id).first()
@@ -657,7 +673,56 @@ def get_lead_full(lead_id: int, db: Session = Depends(get_mysql_db), user=Depend
     return _lead_to_api_dict(lead, columns)
 
 
-@router.get("/admin/leads/export", summary="Export leads as CSV (filters)")
+@router.put("/leads/{lead_id}", summary="Unified atomic update for a lead")
+def update_lead_unified(
+    lead_id: int,
+    req: LeadUpdateRequest,
+    db: Session = Depends(get_mysql_db),
+    user=Depends(security.get_current_user),
+):
+    """
+    Atomic update for lead fields (status, stage, priority, follow-up, assignment).
+    Reduces frontend network overhead and prevents partial-save inconsistency.
+    """
+    lead = _crm_leads_visible_query(db, user).filter(Lead.id == lead_id).first()
+    if not lead:
+        raise HTTPException(status_code=404, detail="Lead not found")
+
+    if req.status is not None:
+        lead.status = req.status
+    if req.lead_stage is not None:
+        st = req.lead_stage.lower()
+        if st not in VALID_LEAD_STAGES:
+            raise HTTPException(status_code=400, detail=f"Invalid lead_stage: {st}")
+        lead.lead_stage = st
+    if req.priority is not None:
+        lead.priority = req.priority
+    if req.follow_up_at is not None:
+        try:
+            lead.follow_up_at = datetime.fromisoformat(req.follow_up_at.replace("Z", "+00:00"))
+        except ValueError:
+            raise HTTPException(status_code=400, detail="Invalid ISO 8601 date format for follow_up_at")
+    if req.assigned_employee_id is not None:
+        emp = db.query(Employee).filter(Employee.id == req.assigned_employee_id).first()
+        if not emp:
+            raise HTTPException(status_code=404, detail="Employee not found")
+        lead.assigned_employee_id = emp.id
+        # Also sync owner_id to the user linked to this employee if exists
+        if emp.user_id:
+            lead.owner_id = emp.user_id
+    if req.message is not None:
+        lead.message = req.message
+    if req.notes is not None:
+        lead.notes = req.notes
+
+    db.commit()
+    db.refresh(lead)
+
+    columns = [col.key for col in sa_inspect(Lead).mapper.column_attrs]
+    return _lead_to_api_dict(lead, columns)
+
+
+@router.get("/leads/export", summary="Export leads as CSV (filters)")
 def export_leads_csv(
     source: Optional[str] = Query(None),
     lead_stage: Optional[str] = Query(None),
@@ -1059,7 +1124,7 @@ def delete_lead(lead_id: int, db: Session = Depends(get_mysql_db), user=Depends(
     return {"message": "Lead deleted"}
 
 
-@router.get("/admin/assignment-batches", summary="Assignment batch history")
+@router.get("/assignment-batches", summary="Assignment batch history")
 def get_assignment_batches(db: Session = Depends(get_mysql_db), _admin=Depends(security.admin_required)):
     batches = (
         db.query(AssignmentBatch)
@@ -1082,7 +1147,7 @@ def get_assignment_batches(db: Session = Depends(get_mysql_db), _admin=Depends(s
     ]
 
 
-@router.get("/admin/funnel", summary="Conversion funnel counts")
+@router.get("/funnel", summary="Conversion funnel counts")
 def conversion_funnel(db: Session = Depends(get_mysql_db), _admin=Depends(security.admin_required)):
     """Count of leads at each pipeline stage — labels/tones from lead_schema (aligned with DB)."""
     rows = db.query(Lead.status, func.count(Lead.id)).group_by(Lead.status).all()
@@ -1098,7 +1163,7 @@ def conversion_funnel(db: Session = Depends(get_mysql_db), _admin=Depends(securi
     ]
 
 
-@router.get("/admin/workload", summary="RM workload overview")
+@router.get("/workload", summary="RM workload overview")
 def rm_workload(db: Session = Depends(get_mysql_db), _admin=Depends(security.admin_required)):
     """Active leads and overdue follow-ups per RM."""
     now = datetime.now(timezone.utc)
@@ -1140,7 +1205,7 @@ def rm_workload(db: Session = Depends(get_mysql_db), _admin=Depends(security.adm
     ]
 
 
-@router.get("/admin/performance", summary="RM performance dashboard")
+@router.get("/performance", summary="RM performance dashboard")
 def rm_performance(db: Session = Depends(get_mysql_db), _admin=Depends(security.admin_required)):
     """Per-RM lead totals, conversions, and conversion rate."""
     rows = (

@@ -9,6 +9,10 @@ from alembic import context
 # Add the project root to sys.path to allow importing the app package
 sys.path.insert(0, os.path.realpath(os.path.join(os.path.dirname(__file__), "..")))
 
+# Load environment before any other project imports
+from app.utils.alembic_helper import load_alembic_env
+load_alembic_env()
+
 # Import your model's MetaData object here
 # for 'autogenerate' support
 from app.configs.db_config import MYSQL_DATABASE_URL, Base

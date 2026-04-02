@@ -11,8 +11,10 @@ set -e
 # ===== CONFIG =====
 EC2_USER="ubuntu"
 # Public DNS for this instance (updates if you stop/start without Elastic IP)
-EC2_HOST="ec2-43-205-233-181.ap-south-1.compute.amazonaws.com"
-PEM_KEY="/Users/maheswaranm/Downloads/makemystayrealty.pem"
+SERVER_HOST="43.205.233.181"   # makemystay-2 (healthy production node)
+EC2_HOST="$SERVER_HOST"
+
+PEM_KEY="/Users/maheswaranm/Makemystayrealty/makemystayrealty.pem"
 REMOTE_DIR="/home/ubuntu/app"
 
 SSH="ssh -i $PEM_KEY -o StrictHostKeyChecking=no -o ConnectTimeout=20 $EC2_USER@$EC2_HOST"
@@ -138,4 +140,13 @@ echo "💾 Disk after deploy: \$(df / --output=pcent | tail -1 | tr -d ' ')"
 ENDSSH
 
 echo ""
+echo "🔍 Running post-deployment health check..."
+# Give PM2 a moment to spin up workers
+sleep 5
+# Check internal health via localhost to verify the specific instance
+$SSH "curl -s -f http://localhost:8000/api/v1/live || { echo '❌ Internal health check failed'; exit 1; }"
+echo "✅ Internal health check passed"
+
+echo ""
 echo "✅ PM2 Deploy complete — ALB liveness: /live  |  full checks: /health"
+

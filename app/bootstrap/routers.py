@@ -50,6 +50,7 @@ def register_routers(app: FastAPI) -> None:
     app.include_router(webhooks_router, prefix=API_PREFIX)
     app.include_router(webhooks_router)
 
-    app.include_router(admin_router, prefix=API_PREFIX)
+    app.include_router(admin_router, prefix=f"{API_PREFIX}/admin")
+    
     app.include_router(ws_router, prefix=API_PREFIX)
     app.include_router(agent_router, prefix=API_PREFIX)

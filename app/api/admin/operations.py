@@ -32,7 +32,7 @@ def _normalize_phone(phone: str) -> str:
     return raw
 
 
-@router.post("/admin/retry-failed", summary="Retry failed CRM syncs")
+@router.post("/retry-failed", summary="Retry failed CRM syncs")
 async def retry_failed_syncs(
     db: Session = Depends(get_mysql_db),
     _user=Depends(security.admin_or_employee_required),
@@ -62,7 +62,7 @@ async def retry_failed_syncs(
 
 
 @router.post(
-    "/admin/sync/email-leads",
+    "/sync/email-leads",
     summary="Trigger IMAP email lead sync now",
 )
 async def trigger_email_lead_sync(
@@ -74,7 +74,7 @@ async def trigger_email_lead_sync(
 
 
 @router.post(
-    "/admin/sync/historical-housing",
+    "/sync/historical-housing",
     summary="Trigger historical Housing.com lead recovery (last 5 days)",
 )
 @limiter.limit("2/minute")
@@ -111,7 +111,7 @@ async def trigger_historical_housing_sync(
 
 
 @router.get(
-    "/admin/job/{job_id}",
+    "/job/{job_id}",
     summary="Get status of a background RQ or Celery job",
 )
 async def get_job_status(job_id: str, db: Session = Depends(get_mysql_db), _admin=Depends(security.admin_required)):
@@ -181,7 +181,7 @@ async def get_job_status(job_id: str, db: Session = Depends(get_mysql_db), _admi
 
 
 @router.get(
-    "/admin/jobs",
+    "/jobs",
     summary="Get history of all Celery Sync Jobs",
 )
 async def get_all_jobs(db: Session = Depends(get_mysql_db), _admin=Depends(security.admin_required)):
@@ -202,7 +202,7 @@ async def get_all_jobs(db: Session = Depends(get_mysql_db), _admin=Depends(secur
 
 
 @router.post(
-    "/admin/whatsapp/bulk",
+    "/whatsapp/bulk",
     summary="Send bulk WhatsApp template messages (queued)",
     response_model=WhatsAppBulkSendResponse,
 )
@@ -248,7 +248,7 @@ async def send_whatsapp_bulk(
 
 
 @router.post(
-    "/admin/whatsapp/clear-flow-session",
+    "/whatsapp/clear-flow-session",
     summary="Clear WhatsApp flow session in Redis (for replay/testing)",
 )
 async def clear_whatsapp_flow_session(
@@ -283,7 +283,7 @@ async def clear_whatsapp_flow_session(
 
 
 @router.get(
-    "/admin/payments/analytics",
+    "/payments/analytics",
     summary="Get global payment analytics",
 )
 async def get_payment_analytics(

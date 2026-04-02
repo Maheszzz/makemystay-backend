@@ -39,7 +39,7 @@ def properties_list_cache_key(payload: dict[str, Any]) -> str:
     return f"{KEY_PREFIX}:{_cache_version()}:{h}"
 
 
-def get_cached_properties_list(key: str) -> Optional[List[dict]]:
+def get_cached_properties_list(key: str) -> Optional[Any]:
     if not redis_conn:
         return None
     try:
@@ -51,10 +51,10 @@ def get_cached_properties_list(key: str) -> Optional[List[dict]]:
         return None
 
 
-def set_cached_properties_list(key: str, items: List[dict], ttl: int = DEFAULT_TTL_SECONDS) -> None:
+def set_cached_properties_list(key: str, content: Any, ttl: int = DEFAULT_TTL_SECONDS) -> None:
     if not redis_conn:
         return
     try:
-        redis_conn.setex(key, ttl, json.dumps(items, default=str))
+        redis_conn.setex(key, ttl, json.dumps(content, default=str))
     except Exception:
         pass

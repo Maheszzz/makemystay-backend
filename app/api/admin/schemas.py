@@ -68,6 +68,18 @@ class UpdateLeadMessageRequest(BaseModel):
     message: Optional[str] = Field(None, max_length=2000)
 
 
+class LeadUpdateRequest(BaseModel):
+    """Unified atomic update for a lead."""
+
+    status: Optional[str] = None
+    lead_stage: Optional[str] = None
+    priority: Optional[int] = Field(None, ge=1, le=3)
+    follow_up_at: Optional[str] = None  # ISO 8601
+    assigned_employee_id: Optional[int] = None
+    message: Optional[str] = None
+    notes: Optional[str] = None
+
+
 class AutoAssignRequest(BaseModel):
     lead_ids: Optional[List[int]] = None  # None = all unassigned
     rm_ids: Optional[List[int]] = None  # None = all active RMs
@@ -88,6 +100,7 @@ class EmployeeUpdate(BaseModel):
     role: Optional[str] = None
     status: Optional[str] = None
     user_id: Optional[int] = None
+    zoho_user_id: Optional[str] = None
 
 
 class EmployeeResponse(BaseModel):
@@ -99,6 +112,7 @@ class EmployeeResponse(BaseModel):
     role: str
     status: str
     user_id: Optional[int] = None
+    zoho_user_id: Optional[str] = None
     created_at: Optional[datetime] = None
     updated_at: Optional[datetime] = None
 

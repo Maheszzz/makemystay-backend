@@ -13,6 +13,7 @@ from loguru import logger
 from prometheus_fastapi_instrumentator import Instrumentator
 from slowapi import _rate_limit_exceeded_handler
 from slowapi.errors import RateLimitExceeded
+import json
 import time
 from collections import defaultdict
 
@@ -234,6 +235,58 @@ from app.bootstrap.database import maybe_create_tables_from_metadata  # noqa: E4
 maybe_create_tables_from_metadata()
 
 
+@app.middleware("http")
+async def standardize_response_middleware(request: Request, call_next):
+    """Standardizes JSON responses into {success, data, error} format."""
+    # Skip for health checks, metrics, and documentation
+    if request.url.path in ["/health", "/live", "/metrics"] or \
+       request.url.path.startswith("/docs") or \
+       request.url.path.startswith("/openapi"):
+        return await call_next(request)
+
+    response = await call_next(request)
+
+    # 1. Skip if not JSON or already specialized response (like StreamingResponse)
+    # We only wrap standard JSONResponse objects to avoid 'Exit code 18' (Connection Reset)
+    # which happens when consuming streaming response bodies incorrectly.
+    content_type = response.headers.get("Content-Type", "")
+    if "application/json" not in content_type or not isinstance(response, JSONResponse):
+        return response
+
+    # 2. Skip if already standardized (e.g., from our global_exception_handler)
+    if response.headers.get("X-Standardized") == "true":
+        return response
+
+    try:
+        # Safe to read .body for standard JSONResponse
+        body_content = response.body.decode("utf-8")
+        data = json.loads(body_content)
+
+        # 3. Check if it already matches the contract (success field present)
+        # Some routes might manually return the standardized format
+        if isinstance(data, dict) and "success" in data and "data" in data:
+            return response
+
+        # 4. Wrap the data
+        wrapped = {
+            "success": True,
+            "data": data,
+            "error": None
+        }
+        
+        # 5. Create new response while preserving original status and headers
+        standardized_res = JSONResponse(content=wrapped, status_code=response.status_code)
+        for k, v in response.headers.items():
+            if k.lower() not in ["content-length", "content-type"]:
+                standardized_res.headers[k] = v
+        
+        standardized_res.headers["X-Standardized"] = "true"
+        return standardized_res
+
+    except (json.JSONDecodeError, Exception):
+        # Fallback to original response for any issues
+        return response
+
 @app.exception_handler(Exception)
 async def global_exception_handler(request: Request, exc: Exception):
     """Global exception handler for unhandled errors."""
@@ -243,11 +296,13 @@ async def global_exception_handler(request: Request, exc: Exception):
             logger.error(f"Unhandled exception at {path}: {exc}")
     else:
         logger.error(f"Unhandled exception at {path}: {exc}")
+    
     return JSONResponse(
-        status_code=500,
+        status_code=200, # Use 200 to keep UI stable
         content={
-            "error": "internal_server_error",
-            "message": str(exc),
+            "success": False,
+            "data": None,
+            "error": str(exc) if settings.ENV != "production" else "A server error occurred. Please try again later.",
         },
     )
 
@@ -291,6 +346,7 @@ async def health():
         "database": db_status,
         "scheduler": "running" if scheduler.running else "stopped"
     }
+
 
 # --- Routers (see app/bootstrap/routers.py) ---
 from app.bootstrap.routers import register_routers  # noqa: E402

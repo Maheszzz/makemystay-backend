@@ -361,3 +361,10 @@ class PropertyResponse(BaseModel):
     @classmethod
     def calculate_review_count(cls, v, info):
         return v or 0
+
+
+class PaginatedPropertyResponse(BaseModel):
+    """Response schema for paginated property results."""
+
+    items: List[PropertyListItem]
+    total: int

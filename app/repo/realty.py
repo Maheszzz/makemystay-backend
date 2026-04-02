@@ -2,7 +2,7 @@
 
 import re
 from collections import defaultdict
-from typing import Dict, List, Optional
+from typing import Dict, List, Optional, Tuple
 
 from sqlalchemy import desc, func
 from sqlalchemy.exc import OperationalError, SQLAlchemyError
@@ -212,9 +212,13 @@ def get_properties(
     search: Optional[str] = None,
     exclude_property_type: Optional[str] = None,
     category: Optional[str] = None,
+    min_price: Optional[float] = None,
+    max_price: Optional[float] = None,
+    city: Optional[str] = None,
+    sort_by: Optional[str] = "rating_desc",
     include_deleted: bool = False,
     list_mode: bool = True,
-) -> List[Property]:
+) -> Tuple[List[Property], int]:
     """Retrieve properties with filters and eager-loaded images and reviews.
 
     When ``category`` is set (pg|rent|buy|plot), it drives the filter and overrides
@@ -227,9 +231,8 @@ def get_properties(
     query = db.query(Property)
     if not list_mode:
         query = query.options(selectinload(Property.reviews))
-    query = query.order_by(desc(func.coalesce(Property.average_rating, 0)))
 
-    # Treat NULL as not deleted for legacy rows
+    # Apply Filters
     if not include_deleted:
         query = query.filter(func.coalesce(Property.is_deleted, False) == False)  # noqa: E712
 
@@ -242,36 +245,34 @@ def get_properties(
             query = query.filter(Property.property_type != exclude_property_type)
         if listing_type:
             query = query.filter(Property.listing_type == listing_type)
+
     if is_available is not None:
         query = query.filter(Property.is_available == is_available)
+
+    if city:
+        # Match city at the end or as part of location
+        query = query.filter(Property.location.ilike(f"%{city}%"))
+
+    if min_price is not None:
+        query = query.filter(Property.starting_price >= min_price)
+    if max_price is not None:
+        query = query.filter(Property.starting_price <= max_price)
+
     if search:
         search_parts = [s.strip().lower() for s in search.split(",") if s.strip()]
         search_terms = []
-
-        # Simple nearby mapping for Bangalore areas
         NEARBY_MAPPING = {
             "electronic city": ["bommasandra", "chandapura", "begur", "hebbagodi"],
             "bommasandra": ["electronic city", "chandapura", "hebbagodi"],
             "hsr layout": ["koramangala", "btm layout", "bellandur", "bommanahalli"],
             "koramangala": ["hsr layout", "btm layout", "indiranagar", "ejipura"],
             "whitefield": ["marathahalli", "bellandur", "mahadevapura", "itpl"],
-            "marathahalli": [
-                "whitefield",
-                "bellandur",
-                "kadubeesanahalli",
-                "munnekollal",
-            ],
+            "marathahalli": ["whitefield", "bellandur", "kadubeesanahalli", "munnekollal"],
             "indiranagar": ["koramangala", "domlur", "hal", "cv raman nagar"],
             "btm layout": ["hsr layout", "koramangala", "jayanagar", "jp nagar"],
             "jayanagar": ["btm layout", "jp nagar", "basavanagudi", "banashankari"],
-            "jp nagar": [
-                "jayanagar",
-                "btm layout",
-                "bannerghatta road",
-                "banashankari",
-            ],
+            "jp nagar": ["jayanagar", "btm layout", "bannerghatta road", "banashankari"],
         }
-
         for part in search_parts:
             search_terms.append(part)
             for key, neighbors in NEARBY_MAPPING.items():
@@ -283,11 +284,21 @@ def get_properties(
             search_filter = f"%{term}%"
             conditions.append(Property.property_name.ilike(search_filter))
             conditions.append(Property.location.ilike(search_filter))
-
         query = query.filter(or_(*conditions))
+
+    # Apply Sorting
+    if sort_by == "price_asc":
+        query = query.order_by(Property.starting_price.asc())
+    elif sort_by == "price_desc":
+        query = query.order_by(Property.starting_price.desc())
+    elif sort_by == "newest":
+        query = query.order_by(Property.created_at.desc())
+    else:  # rating_desc (default)
+        query = query.order_by(desc(func.coalesce(Property.average_rating, 0)))
 
     try:
         properties = _query_all_with_connection_retry(db, query, skip, limit)
+        total_count = query.count()
     except OperationalError as exc:
         if not _is_missing_soft_delete_column_error(exc):
             raise
@@ -296,52 +307,31 @@ def get_properties(
         fallback_query = db.query(Property)
         if not list_mode:
             fallback_query = fallback_query.options(selectinload(Property.reviews))
-        fallback_query = fallback_query.order_by(
-            desc(func.coalesce(Property.average_rating, 0))
-        )
+
         if category:
             fallback_query = _apply_property_category_tab(fallback_query, category)
         else:
             if property_type:
                 fallback_query = fallback_query.filter(Property.property_type == property_type)
             if exclude_property_type:
-                fallback_query = fallback_query.filter(
-                    Property.property_type != exclude_property_type
-                )
+                fallback_query = fallback_query.filter(Property.property_type != exclude_property_type)
             if listing_type:
                 fallback_query = fallback_query.filter(Property.listing_type == listing_type)
+
         if is_available is not None:
             fallback_query = fallback_query.filter(Property.is_available == is_available)
+        if city:
+            fallback_query = fallback_query.filter(Property.location.ilike(f"%{city}%"))
+        if min_price is not None:
+            fallback_query = fallback_query.filter(Property.starting_price >= min_price)
+        if max_price is not None:
+            fallback_query = fallback_query.filter(Property.starting_price <= max_price)
+
         if search:
             search_parts = [s.strip().lower() for s in search.split(",") if s.strip()]
             search_terms = []
-            NEARBY_MAPPING = {
-                "electronic city": ["bommasandra", "chandapura", "begur", "hebbagodi"],
-                "bommasandra": ["electronic city", "chandapura", "hebbagodi"],
-                "hsr layout": ["koramangala", "btm layout", "bellandur", "bommanahalli"],
-                "koramangala": ["hsr layout", "btm layout", "indiranagar", "ejipura"],
-                "whitefield": ["marathahalli", "bellandur", "mahadevapura", "itpl"],
-                "marathahalli": [
-                    "whitefield",
-                    "bellandur",
-                    "kadubeesanahalli",
-                    "munnekollal",
-                ],
-                "indiranagar": ["koramangala", "domlur", "hal", "cv raman nagar"],
-                "btm layout": ["hsr layout", "koramangala", "jayanagar", "jp nagar"],
-                "jayanagar": ["btm layout", "jp nagar", "basavanagudi", "banashankari"],
-                "jp nagar": [
-                    "jayanagar",
-                    "btm layout",
-                    "bannerghatta road",
-                    "banashankari",
-                ],
-            }
             for part in search_parts:
                 search_terms.append(part)
-                for key, neighbors in NEARBY_MAPPING.items():
-                    if key in part or part in key:
-                        search_terms.extend(neighbors)
             conditions = []
             for term in set(search_terms):
                 search_filter = f"%{term}%"
@@ -349,7 +339,17 @@ def get_properties(
                 conditions.append(Property.location.ilike(search_filter))
             fallback_query = fallback_query.filter(or_(*conditions))
 
+        if sort_by == "price_asc":
+            fallback_query = fallback_query.order_by(Property.starting_price.asc())
+        elif sort_by == "price_desc":
+            fallback_query = fallback_query.order_by(Property.starting_price.desc())
+        elif sort_by == "newest":
+            fallback_query = fallback_query.order_by(Property.created_at.desc())
+        else:
+            fallback_query = fallback_query.order_by(desc(func.coalesce(Property.average_rating, 0)))
+
         properties = _query_all_with_connection_retry(db, fallback_query, skip, limit)
+        total_count = fallback_query.count()
 
     if list_mode:
         _attach_property_images_bulk(db, properties, max_per_property=1)
@@ -369,7 +369,7 @@ def get_properties(
                 else 0.0
             )
 
-    return properties
+    return properties, total_count
 
 
 def get_property_suggestions(db: Session, q: str) -> List[str]:

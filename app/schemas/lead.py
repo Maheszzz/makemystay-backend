@@ -52,6 +52,15 @@ class LeadCreate(BaseModel):
     property_id: Optional[str] = Field(None, max_length=100)
 
 
+class LeadEmployeeResponse(BaseModel):
+    id: int
+    employee_id: str
+    name: str
+
+    class Config:
+        from_attributes = True
+
+
 class LeadResponse(BaseModel):
     """Full lead response with ID, timestamps, and CRM sync status."""
 
@@ -66,10 +75,17 @@ class LeadResponse(BaseModel):
     property_type: Optional[str] = None
     budget: Optional[str] = None
     message: Optional[str] = None
+    notes: Optional[str] = None
     status: str
+    lead_stage: str = "new"
+    crm_status: str = "pending"
     assigned_to: Optional[int] = None
+    assigned_employee_id: Optional[int] = None
+    assigned_employee: Optional[LeadEmployeeResponse] = None
     priority: Optional[int] = None
+    follow_up_at: Optional[datetime] = None
     zoho_lead_id: Optional[str] = None
+    zoho_synced: bool = False
     created_at: datetime
     updated_at: Optional[datetime] = None
 

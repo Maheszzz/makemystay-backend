@@ -31,6 +31,7 @@ from app.schemas.realty import (
     PropertyImageUpdate,
     PropertyListItem,
     PropertyResponse,
+    PaginatedPropertyResponse,
     PropertyType,
     PropertyUpdate,
     ReviewCreate,
@@ -162,7 +163,7 @@ def delete_contact(contact_id: int, db: Session = Depends(get_mysql_db), current
 # ==================== PROPERTY ENDPOINTS ====================
 
 
-@realty_router.get("/realty/properties", response_model=List[PropertyListItem])
+@realty_router.get("/realty/properties", response_model=PaginatedPropertyResponse)
 def list_properties(
     skip: int = Query(0, ge=0, description="Number of records to skip"),
     limit: int = Query(
@@ -185,6 +186,12 @@ def list_properties(
     exclude_property_type: Optional[str] = Query(
         None, description="Exclude a specific property type"
     ),
+    min_price: Optional[float] = Query(None, description="Minimum price"),
+    max_price: Optional[float] = Query(None, description="Maximum price"),
+    city: Optional[str] = Query(None, description="Filter by city"),
+    sort_by: Optional[str] = Query(
+        "rating_desc", description="Sort by: rating_desc, price_asc, price_desc, newest"
+    ),
     db: Session = Depends(get_mysql_db),
 ):
     """
@@ -200,6 +207,10 @@ def list_properties(
     - **is_available**: Filter by availability (true/false)
     - **search**: Search string for name, location or description
     - **exclude_property_type**: Exclude a specific type (e.g., PG) — ignored if **category** is set
+    - **min_price**: Minimum price
+    - **max_price**: Maximum price
+    - **city**: Filter by city
+    - **sort_by**: Sort order (default: rating_desc)
     """
     pt = property_type.value if property_type else None
     lt = listing_type.value if listing_type else None
@@ -218,13 +229,17 @@ def list_properties(
         "is_available": is_available,
         "search": search,
         "exclude_property_type": ex,
+        "min_price": min_price,
+        "max_price": max_price,
+        "city": city,
+        "sort_by": sort_by,
     }
     cache_key = properties_list_cache_key(cache_payload)
     cached = get_cached_properties_list(cache_key)
     if cached is not None:
         return JSONResponse(content=cached)
 
-    properties = realty_repo.get_properties(
+    properties, total = realty_repo.get_properties(
         db,
         skip=skip,
         limit=limit,
@@ -234,11 +249,16 @@ def list_properties(
         search=search,
         exclude_property_type=ex,
         category=category.value if category else None,
+        min_price=min_price,
+        max_price=max_price,
+        city=city,
+        sort_by=sort_by,
         list_mode=True,
     )
-    payload = [
+    items = [
         PropertyListItem.model_validate(p).model_dump(mode="json") for p in properties
     ]
+    payload = {"items": items, "total": total}
     set_cached_properties_list(cache_key, payload)
     return JSONResponse(content=payload)
 

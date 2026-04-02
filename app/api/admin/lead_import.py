@@ -23,7 +23,7 @@ _READ_CHUNK = 1024 * 1024  # 1 MiB
 
 
 @router.get(
-    "/admin/leads/import-history",
+    "/leads/import-history",
     response_model=list[CsvImportResponse],
     summary="List recent CSV import history (admin)",
 )
@@ -73,7 +73,7 @@ async def _read_upload_bytes(upload: UploadFile, max_bytes: int) -> bytes:
 
 
 @router.post(
-    "/admin/leads/import-csv",
+    "/leads/import-csv",
     response_model=LeadCsvImportResponse,
     summary="Import leads from CSV (admin)",
 )
@@ -177,7 +177,7 @@ async def import_leads_csv(
 
 
 @router.post(
-    "/admin/leads/import/{import_id}/cancel",
+    "/leads/import/{import_id}/cancel",
     summary="Cancel an in-flight CSV import (worker stops on next row)",
 )
 def cancel_csv_import(
@@ -200,7 +200,7 @@ def cancel_csv_import(
 
 
 @router.post(
-    "/admin/leads/import/{import_id}/retry-failures",
+    "/leads/import/{import_id}/retry-failures",
     response_model=CsvImportRetryQueuedResponse,
     summary="Queue retry of failed rows for a CSV import",
 )
