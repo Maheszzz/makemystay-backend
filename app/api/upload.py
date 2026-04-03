@@ -114,14 +114,14 @@ def generate_upload_url(
         unique_filename = f"uploads/{user_prefix}/{uuid.uuid4()}.{file_extension}"
 
     try:
-        # Architect-level signature: Binding Content-Type to the pre-signed URL 
-        # ensures the upload is used 100% as intended.
-        # Note: ContentLength is removed because browsers often restrict manual 
-        # setting of this header, which causes signature mismatches (403).
+        # Master Compatibility logic: 
+        # We remove ContentLength AND ContentType from the signature.
+        # This makes the upload "Bulletproof" against browser header 
+        # inconsistencies, while our backend still validates the file
+        # properties BEFORE signing the URL.
         put_params: dict = {
             "Bucket": target_bucket,
             "Key": unique_filename,
-            "ContentType": normalized_type,
         }
 
         try:

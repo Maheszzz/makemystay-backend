@@ -11,7 +11,7 @@ set -e
 # ===== CONFIG & OVERRIDES =====
 EC2_USER="ubuntu"
 # Use DEPLOY_HOST environment variable if set, else fallback to default production IP.
-EC2_HOST="${DEPLOY_HOST:-43.205.233.181}"
+EC2_HOST="${DEPLOY_HOST:-13.201.61.117}"
 SERVER_HOST="$EC2_HOST"
 
 # Use DEPLOY_PEM environment variable if set, else fallback to default local path.
