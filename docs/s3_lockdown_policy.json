@@ -1,0 +1,43 @@
+{
+    "Version": "2012-10-17",
+    "Statement": [
+        {
+            "Sid": "AllowIdentityWrites",
+            "Effect": "Allow",
+            "Principal": {
+                "AWS": "arn:aws:iam::614399201534:role/makemystay-ec2-s3-role"
+            },
+            "Action": "s3:PutObject",
+            "Resource": "arn:aws:s3:::makemystayrealty/*"
+        },
+        {
+            "Sid": "AllowCloudFrontRead",
+            "Effect": "Allow",
+            "Principal": {
+                "Service": "cloudfront.amazonaws.com"
+            },
+            "Action": "s3:GetObject",
+            "Resource": "arn:aws:s3:::makemystayrealty/*",
+            "Condition": {
+                "StringEquals": {
+                    "AWS:SourceArn": "arn:aws:cloudfront::614399201534:distribution/<YOUR_CLOUDFRONT_DIST_ID>"
+                }
+            }
+        },
+        {
+            "Sid": "EnforceSSLOnly",
+            "Effect": "Deny",
+            "Principal": "*",
+            "Action": "s3:*",
+            "Resource": [
+                "arn:aws:s3:::makemystayrealty",
+                "arn:aws:s3:::makemystayrealty/*"
+            ],
+            "Condition": {
+                "Bool": {
+                    "aws:SecureTransport": "false"
+                }
+            }
+        }
+    ]
+}

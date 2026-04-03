@@ -1,0 +1,29 @@
+{
+    "Role": "arn:aws:iam::614399201534:role/s3-star-replication-role",
+    "Rules": [
+        {
+            "ID": "MumbaiToVirginia",
+            "Status": "Enabled",
+            "Priority": 1,
+            "DeleteMarkerReplication": { "Status": "Disabled" },
+            "Filter": { "Prefix": "" },
+            "Destination": {
+                "Bucket": "arn:aws:s3:::makemystay-us",
+                "Account": "614399201534",
+                "StorageClass": "STANDARD"
+            }
+        },
+        {
+            "ID": "MumbaiToIreland",
+            "Status": "Enabled",
+            "Priority": 2,
+            "DeleteMarkerReplication": { "Status": "Disabled" },
+            "Filter": { "Prefix": "" },
+            "Destination": {
+                "Bucket": "arn:aws:s3:::makemystay-eu",
+                "Account": "614399201534",
+                "StorageClass": "STANDARD"
+            }
+        }
+    ]
+}

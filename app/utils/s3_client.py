@@ -7,19 +7,26 @@ from app.core.config import settings
 
 
 def get_s3_client():
-    """Return a configured S3 client, or None if credentials are missing."""
+    """Return a configured S3 client. Falls back to IAM Instance Profile if keys are missing."""
     key_id = settings.AWS_ACCESS_KEY_ID
     secret = settings.AWS_SECRET_ACCESS_KEY
-    if not key_id or not secret:
-        logger.warning("AWS credentials not found. S3 operations will fail.")
-        return None
-
     region = settings.AWS_REGION or "ap-south-1"
+    
     from botocore.config import Config
+    s3_config = Config(signature_version="s3v4")
+
+    if not key_id or not secret:
+        logger.info("Initializing S3 client using Identity-based (IAM) credentials.")
+        return boto3.client(
+            "s3",
+            region_name=region,
+            config=s3_config
+        )
+
     return boto3.client(
         "s3",
         region_name=region,
         aws_access_key_id=key_id,
         aws_secret_access_key=secret,
-        config=Config(signature_version="s3v4"),
+        config=s3_config,
     )

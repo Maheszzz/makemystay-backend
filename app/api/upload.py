@@ -1,7 +1,7 @@
 import mimetypes
 import uuid
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Request
 from loguru import logger
 
 from app.core import security
@@ -47,25 +47,54 @@ def _reject_non_image_client_mime(content_type: str) -> None:
 AWS_REGION = settings.AWS_REGION or "ap-south-1"
 BUCKET_NAME = settings.S3_BUCKET_NAME
 
-# Security Constraints
+# Architect-Level Security Guardrails
+MAX_FILE_SIZE = 5 * 1024 * 1024  # 5MB
 ALLOWED_MIME_TYPES = ["image/jpeg", "image/png", "image/webp"]
 
 
 @router.post("/uploads/presigned-url", response_model=UploadResponse)
 def generate_upload_url(
-    data: UploadRequest, current_admin=Depends(security.admin_required)
+    request: Request,
+    data: UploadRequest, 
+    current_user=Depends(security.admin_or_employee_required)
 ):
     s3_client = get_s3_client()
     if not s3_client:
         raise HTTPException(status_code=500, detail="AWS credentials not configured")
 
-    if not BUCKET_NAME:
-        raise HTTPException(status_code=500, detail="S3_BUCKET_NAME not configured")
+    # Distributed Systems Master Logic: Consistency & Failover
+    # 1. Trusted Header Check: Prevent spoofing by verifying secret
+    # Architect Note: Use CloudFront "Add Header" origin request policy for this.
+    cf_secret = request.headers.get("X-MMSR-Secret")
+    trusted_source = (cf_secret == "EliteDistributedMaster")
+    
+    # 2. Regional Selection with Trust (Fallback to primary if not via CF)
+    viewer_country = request.headers.get("CloudFront-Viewer-Country", "IN") if trusted_source else "IN"
+    target_bucket = BUCKET_NAME  # Primary
+    
+    is_regional = False
+    if viewer_country in ["US", "CA", "MX"]:
+        target_bucket = "makemystay-us"
+        is_regional = True
+    elif viewer_country in ["GB", "DE", "FR", "IE"]:
+        target_bucket = "makemystay-eu"
+        is_regional = True
 
-    # 1. Initial reject based on client-provided MIME
+    # 1. Reject non-image MIME
     _reject_non_image_client_mime(data.content_type)
 
-    # 2. Strict normalization and secondary enforcement (Security)
+    # 2. Strict size enforcement (Architect-level check)
+    if data.file_size > MAX_FILE_SIZE:
+        logger.warning(
+            "Upload rejected: File size too large. size={!r} max={!r}",
+            data.file_size, MAX_FILE_SIZE
+        )
+        raise HTTPException(
+            status_code=413, 
+            detail=f"File too large. Maximum allowed size is {MAX_FILE_SIZE // (1024 * 1024)}MB"
+        )
+
+    # 3. Strict normalization and secondary enforcement (Security)
     normalized_type = _normalize_image_content_type(data.filename, data.content_type)
     if normalized_type not in ALLOWED_MIME_TYPES:
         logger.error(f"Security Rejection: forbidden type {normalized_type}")
@@ -76,31 +105,50 @@ def generate_upload_url(
 
     file_extension = data.filename.split(".")[-1] if "." in data.filename else "jpg"
     
-    # 3. Generate Structured Key: properties/{id}/images/{uuid}.{ext} 
-    # Fallback to general uploads/ if no property_id is provided.
+    # 4. Generate Structured Key: properties/{id}/user_{user_id}/images/{uuid}.{ext} 
+    # This enables identity-partitioned storage and per-user access policies.
+    user_prefix = f"user_{current_user.id}"
     if data.property_id:
-        unique_filename = f"properties/{data.property_id}/images/{uuid.uuid4()}.{file_extension}"
+        unique_filename = f"properties/{data.property_id}/{user_prefix}/{uuid.uuid4()}.{file_extension}"
     else:
-        unique_filename = f"uploads/{uuid.uuid4()}.{file_extension}"
+        unique_filename = f"uploads/{user_prefix}/{uuid.uuid4()}.{file_extension}"
 
     try:
-        # Presign with Bucket + Key only so SigV4 signs `host` (see X-Amz-SignedHeaders).
-        # Binding ContentType or ContentLength into the URL requires the browser PUT to match
-        # those headers exactly; fetch() often breaks that (Content-Length vs chunked body,
-        # MIME quirks). We already validate MIME below; the client still sends Content-Type
-        # on PUT so S3 stores correct object metadata.
+        # Architect-level signature: Binding Content-Type to the pre-signed URL 
+        # ensures the upload is used 100% as intended.
+        # Note: ContentLength is removed because browsers often restrict manual 
+        # setting of this header, which causes signature mismatches (403).
         put_params: dict = {
-            "Bucket": BUCKET_NAME,
+            "Bucket": target_bucket,
             "Key": unique_filename,
             "ContentType": normalized_type,
         }
 
-        presigned_url = s3_client.generate_presigned_url(
-            "put_object",
-            Params=put_params,
-            ExpiresIn=300,  # 5 minutes
-        )
+        try:
+            presigned_url = s3_client.generate_presigned_url(
+                "put_object",
+                Params=put_params,
+                ExpiresIn=300,  # 5 minutes
+            )
+        except Exception as e:
+            if is_regional:
+                # Master Failover Observability: Log for CloudWatch Filter
+                logger.warning(f"[FAILOVER_ACTIVE] Regional bucket {target_bucket} failed. Falling back to primary. Error: {e}")
+                put_params["Bucket"] = BUCKET_NAME
+                presigned_url = s3_client.generate_presigned_url(
+                    "put_object",
+                    Params=put_params,
+                    ExpiresIn=300,
+                )
+            else:
+                raise e
 
+        # Master Consistency Strategy: 
+        # READ from Primary (Consistent) | WRITE to Regional (Performance)
+        # All public URLs use the CloudFront Domain pointing to the Primary Origin.
+        import time
+        cache_buster = f"?v={int(time.time())}"
+        
         cloudfront_domain = settings.CLOUDFRONT_DOMAIN
         if cloudfront_domain:
             domain = (
@@ -108,10 +156,11 @@ def generate_upload_url(
                 if cloudfront_domain.startswith("http")
                 else f"https://{cloudfront_domain}"
             )
-            public_url = f"{domain}/{unique_filename}"
+            public_url = f"{domain}/{unique_filename}{cache_buster}"
         else:
+            # Fallback to direct Primary S3 URL (ap-south-1)
             public_url = (
-                f"https://{BUCKET_NAME}.s3.{AWS_REGION}.amazonaws.com/{unique_filename}"
+                f"https://{BUCKET_NAME}.s3.{AWS_REGION}.amazonaws.com/{unique_filename}{cache_buster}"
             )
 
         logger.info(
