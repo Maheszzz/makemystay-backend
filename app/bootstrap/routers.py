@@ -10,6 +10,7 @@ from app.api.agent_routes import router as agent_router
 from app.api.admin import admin_router
 from app.api.auth import router as auth_router
 from app.api.demo import router as demo_router
+from app.api.acres import acres_router
 from app.api.housing import housing_router
 from app.api.internal_ops import router as internal_ops_router
 from app.api.meta_whatsapp import meta_whatsapp_router
@@ -45,6 +46,7 @@ def register_routers(app: FastAPI) -> None:
     app.include_router(demo_router, prefix=API_PREFIX)
     app.include_router(retell_router, prefix=API_PREFIX)
     app.include_router(housing_router, prefix=API_PREFIX)
+    app.include_router(acres_router, prefix=API_PREFIX)
     app.include_router(whatsapp_router, prefix=API_PREFIX)
     app.include_router(meta_whatsapp_router, prefix=API_PREFIX)
 

@@ -14,6 +14,7 @@ Crash-proofing guarantees:
 """
 
 import asyncio
+import threading
 import time
 from datetime import datetime
 from typing import Optional
@@ -22,16 +23,27 @@ from loguru import logger
 from sqlalchemy.exc import OperationalError
 from sqlalchemy.orm import Session
 
+from app.core.config import settings
 from app.core.log_dedupe import should_log_once
 from app.configs.db_config import MySQLSessionLocal
 from app.models.sync_metadata import SyncMetadata
 from app.schemas.lead import LeadCreate
+from app.services.alert_service import alert_service
 from app.services.housing_lead_service import (
     BROKER_API_URL,
     BUILDER_API_URL,
     housing_lead_service,
 )
 from app.services.lead_processor import process_lead
+
+# ---------------------------------------------------------------------------
+# Scheduler overlap guards
+# APScheduler runs syncs via asyncio.run() in a thread-pool thread, so each
+# call creates a *new* event loop. threading.Lock is the correct primitive
+# here — asyncio.Lock would not transfer across event loops.
+# ---------------------------------------------------------------------------
+_housing_sync_lock = threading.Lock()
+_99acres_sync_lock = threading.Lock()
 
 
 # ---------------------------------------------------------------------------
@@ -48,17 +60,28 @@ async def sync_all_sources():
     for r in results:
         if isinstance(r, Exception):
             logger.error(f"sync_all_sources: a source sync raised: {r}")
+            # Proactive alerting for production
+            if settings.ENV == "production":
+                await alert_service.send_alert(
+                    f"Lead sync failed for a source: {r}\nCheck PM2 logs for details.",
+                    level="error"
+                )
 
 async def sync_daily_recovery():
     """Daily safety sync that force-pulls the latest 24-hour window."""
     results = await asyncio.gather(
         _run_housing_sync(forced_lookback_seconds=86400),
-        _run_99acres_sync(),
+        _run_99acres_sync(forced_lookback_seconds=86400),
         return_exceptions=True,
     )
     for r in results:
         if isinstance(r, Exception):
             logger.error(f"sync_daily_recovery: a source sync raised: {r}")
+            if settings.ENV == "production":
+                await alert_service.send_alert(
+                    f"Daily lead recovery failed: {r}",
+                    level="warning"
+                )
 
 
 # ---------------------------------------------------------------------------
@@ -66,7 +89,14 @@ async def sync_daily_recovery():
 # ---------------------------------------------------------------------------
 
 async def _run_housing_sync(forced_lookback_seconds: Optional[int] = None):
-    """Top-level wrapper: creates its own DB session, never leaks exceptions."""
+    """Top-level wrapper: creates its own DB session, never leaks exceptions.
+
+    Uses a threading lock to skip if a previous run hasn't finished yet
+    (prevents stacking when the API is slow and the interval fires again).
+    """
+    if not _housing_sync_lock.acquire(blocking=False):
+        logger.warning("Housing sync skipped — previous run still in progress")
+        return
     db = MySQLSessionLocal()
     try:
         await sync_housing_leads(db, forced_lookback_seconds=forced_lookback_seconds)
@@ -90,6 +120,7 @@ async def _run_housing_sync(forced_lookback_seconds: Optional[int] = None):
             pass
     finally:
         db.close()
+        _housing_sync_lock.release()
 
 
 async def sync_housing_leads(db: Session, forced_lookback_seconds: Optional[int] = None):
@@ -233,13 +264,22 @@ def _update_meta(
 
 
 # ---------------------------------------------------------------------------
-# 99acres sync (webhook-primary; pull stub for future use)
+# 99acres sync — pull-based (webhook-push is primary; pull is safety fallback)
+# Requires ACRES_API_KEY from 99acres account manager to activate pull.
 # ---------------------------------------------------------------------------
 
-async def _run_99acres_sync():
+async def _run_99acres_sync(forced_lookback_seconds: Optional[int] = None):
+    """Top-level wrapper: creates its own DB session, never leaks exceptions.
+
+    Uses a threading lock to skip if a previous run hasn't finished yet
+    (prevents stacking when the API is slow and the interval fires again).
+    """
+    if not _99acres_sync_lock.acquire(blocking=False):
+        logger.warning("99acres sync skipped — previous run still in progress")
+        return
     db = MySQLSessionLocal()
     try:
-        await sync_99acres_leads(db)
+        await sync_99acres_leads(db, forced_lookback_seconds=forced_lookback_seconds)
     except OperationalError as e:
         try:
             db.rollback()
@@ -252,11 +292,129 @@ async def _run_99acres_sync():
             )
     except Exception as e:
         logger.error(f"99acres sync wrapper caught: {e}")
+        try:
+            db.rollback()
+        except Exception:
+            pass
     finally:
         db.close()
+        _99acres_sync_lock.release()
 
 
-async def sync_99acres_leads(db: Session):
-    """99acres primarily pushes leads via webhooks; pull API not yet active."""
-    logger.debug("99acres pull-based sync skipped — no active pull API configured")
-    await asyncio.sleep(0)
+async def sync_99acres_leads(
+    db: Session,
+    forced_lookback_seconds: Optional[int] = None,
+):
+    """Fetch and store leads from the 99acres pull API.
+
+    Gracefully skips when ACRES_API_KEY is absent — the push webhook
+    (POST /webhooks/99acres) is the primary ingestion path and continues
+    to work independently of this pull sync.
+    """
+    from app.services.acres_lead_service import acres_lead_service
+
+    if not acres_lead_service.is_configured:
+        logger.debug(
+            "99acres pull sync skipped — ACRES_API_KEY not configured. "
+            "Webhook push (/webhooks/99acres) continues as primary ingestion."
+        )
+        return
+
+    # ── 1. Load / create sync metadata ──────────────────────────────────────
+    meta = db.query(SyncMetadata).filter(SyncMetadata.source == "99acres").first()
+    if not meta:
+        meta = SyncMetadata(source="99acres")
+        db.add(meta)
+        db.commit()
+        db.refresh(meta)
+
+    now = int(time.time())
+
+    if forced_lookback_seconds is not None and forced_lookback_seconds > 0:
+        start_int = now - forced_lookback_seconds
+    else:
+        if meta.last_lead_timestamp:
+            try:
+                start_int = int(float(str(meta.last_lead_timestamp)))
+            except (ValueError, TypeError):
+                logger.warning("99acres: corrupt last_lead_timestamp — defaulting to 24h ago")
+                start_int = now - 86400
+        else:
+            start_int = now - 86400  # first run: look back 24 h
+
+        # 25-hour self-healing overlap mirrors Housing.com approach
+        overlap_start = now - 90000
+        start_int = min(start_int, overlap_start)
+
+    end_int = now
+    # Cap at 47 h per cycle; subsequent runs catch up automatically
+    if end_int - start_int > 170000:
+        end_int = start_int + 170000
+
+    from_date = str(start_int)
+    to_date   = str(end_int)
+
+    logger.info(
+        f"99acres sync window: {datetime.fromtimestamp(start_int).isoformat()} → "
+        f"{datetime.fromtimestamp(end_int).isoformat()}"
+    )
+
+    # ── 2. Fetch leads ───────────────────────────────────────────────────────
+    leads_raw, error = await acres_lead_service.fetch_leads(from_date, to_date)
+
+    if error:
+        logger.error(f"99acres fetch error: {error}")
+        meta.status = "error"
+        meta.last_error = error
+        db.commit()
+        return
+
+    logger.info(f"99acres: {len(leads_raw)} leads fetched")
+
+    if not leads_raw:
+        logger.info("99acres sync: no leads returned")
+        _update_meta(db, meta, to_date, fetched=0, imported=0, skipped=0)
+        return
+
+    # ── 3. Deduplicate + process each lead through the pipeline ──────────────
+    imported = 0
+    skipped  = 0
+
+    for raw_lead in leads_raw:
+        mapped = acres_lead_service.map_lead(raw_lead)
+        phone  = (mapped.get("phone") or "").strip()
+
+        if len(phone) < 7:
+            logger.warning(f"99acres lead skipped — short phone: {phone!r}")
+            skipped += 1
+            continue
+
+        try:
+            lead_data = LeadCreate(
+                name          = mapped.get("name"),
+                phone         = phone,
+                email         = mapped.get("email"),
+                city          = mapped.get("city"),
+                location      = mapped.get("location"),
+                project_name  = mapped.get("project_name"),
+                property_type = mapped.get("property_type"),
+                budget        = mapped.get("budget"),
+                message       = mapped.get("message"),
+                lead_date     = mapped.get("lead_date"),
+                external_id   = mapped.get("external_id"),
+            )
+        except Exception as val_err:
+            logger.warning(f"99acres lead validation error (phone={phone!r}): {val_err}")
+            skipped += 1
+            continue
+
+        result = await process_lead(db, lead_data, source="99acres", raw_payload=raw_lead)
+        if result:
+            imported += 1
+        else:
+            skipped += 1
+
+    _update_meta(db, meta, to_date, fetched=len(leads_raw), imported=imported, skipped=skipped)
+    logger.success(
+        f"99acres sync done: {len(leads_raw)} fetched, {imported} imported, {skipped} skipped"
+    )

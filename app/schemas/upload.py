@@ -7,6 +7,8 @@ MAX_IMAGE_UPLOAD_BYTES = 5 * 1024 * 1024
 class UploadRequest(BaseModel):
     filename: str
     content_type: str
+    # Optional context for structured S3 key generation
+    property_id: int | None = Field(default=None, ge=1)
     # When set, server validates size and may bind ContentLength into the presigned URL (S3 enforces).
     file_size: int | None = Field(default=None, ge=1, le=MAX_IMAGE_UPLOAD_BYTES)
 

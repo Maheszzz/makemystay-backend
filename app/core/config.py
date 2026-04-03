@@ -131,6 +131,16 @@ class Settings(BaseSettings):
     LEAD_DAILY_SYNC_HOUR_UTC: int = 2
     LEAD_DAILY_SYNC_MINUTE_UTC: int = 0
 
+    # 99acres Pull API
+    # Obtain ACRES_API_KEY from your 99acres account manager.
+    # Without it the pull sync gracefully no-ops; webhook push still works.
+    ACRES_API_KEY: str = ""
+    ACRES_API_URL: str = "https://www.99acres.com/api/fetch-leads"
+    ACRES_SYNC_INTERVAL_SECONDS: int = 120  # default: every 2 minutes
+
+    # Alerting (Slack/Discord/Webhook)
+    ALERT_WEBHOOK_URL: str = ""
+
     # Load env files in increasing priority (later files override earlier ones).
     # This makes local development work out-of-the-box (e.g. DB on a different port)
     # while still supporting environment-specific files when ENV is exported.

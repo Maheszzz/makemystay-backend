@@ -339,6 +339,69 @@ async def analytics(request: Request, db: Session = Depends(get_mysql_db)):
         }
 
 
+@router.get("/analytics/summary", summary="Get lead activity summary (today vs yesterday)")
+async def analytics_summary(db: Session = Depends(get_mysql_db)):
+    """Specialized endpoint for the dashboard Lead Intelligence panel.
+    Returns today vs yesterday comparison + source breakdown for the last 24h.
+    """
+
+    def _fetch():
+        today_d = date.today()
+
+        # Today's bounds
+        today_start = datetime.combine(today_d, datetime.min.time())
+        today_end = today_start + timedelta(days=1)
+
+        # Yesterday's bounds
+        yesterday_start = today_start - timedelta(days=1)
+        yesterday_end = today_start
+
+        today_count = (
+            db.query(Lead).filter(Lead.created_at >= today_start, Lead.created_at < today_end).count()
+        )
+        yesterday_count = (
+            db.query(Lead)
+            .filter(Lead.created_at >= yesterday_start, Lead.created_at < yesterday_end)
+            .count()
+        )
+
+        # Growth calculation
+        growth = 0.0
+        if yesterday_count > 0:
+            growth = ((today_count - yesterday_count) / yesterday_count) * 100
+        elif today_count > 0:
+            growth = 100.0  # Infinite growth from zero
+
+        # Source breakdown for today
+        src_rows = (
+            db.query(Lead.source, func.count(Lead.id))
+            .filter(Lead.created_at >= today_start, Lead.created_at < today_end)
+            .group_by(Lead.source)
+            .all()
+        )
+        by_source = {str(s[0]): s[1] for s in src_rows}
+
+        return {
+            "today_count": today_count,
+            "yesterday_count": yesterday_count,
+            "growth_percentage": round(growth, 1),
+            "by_source": by_source,
+            "period": "today_vs_yesterday",
+        }
+
+    try:
+        data = await asyncio.wait_for(asyncio.to_thread(_fetch), timeout=5.0)
+        return data
+    except Exception as e:
+        logger.error(f"Summary analytics error: {e}")
+        return {
+            "today_count": 0,
+            "yesterday_count": 0,
+            "growth_percentage": 0,
+            "by_source": {},
+        }
+
+
 @router.get("/analytics/growth", summary="Monthly properties and leads growth for charts")
 @limiter.limit("20/minute")
 async def analytics_growth(request: Request, db: Session = Depends(get_mysql_db)):
@@ -662,6 +725,48 @@ def _crm_leads_visible_query(db: Session, user: User):
         else:
             q = q.filter(Lead.owner_id == user.id)
     return q
+
+
+@router.get("/leads/recent", summary="Latest N leads for the dashboard real-time feed")
+async def get_recent_leads(
+    limit: int = Query(20, ge=1, le=100, description="Number of recent leads to return"),
+    db: Session = Depends(get_mysql_db),
+    _user=Depends(security.admin_or_employee_required),
+):
+    """Returns the most recently created leads — used by the dashboard intelligence panel.
+    Phone numbers are partially masked for display safety.
+    """
+    try:
+        rows = (
+            db.query(Lead)
+            .filter(Lead.is_deleted.is_(False))
+            .order_by(Lead.created_at.desc())
+            .limit(limit)
+            .all()
+        )
+
+        def _mask_phone(phone: Optional[str]) -> str:
+            p = (phone or "").strip()
+            return p[:5] + "•••••" if len(p) >= 7 else "—"
+
+        return [
+            {
+                "id": r.id,
+                "name": r.name or "Anonymous",
+                "phone_masked": _mask_phone(r.phone),
+                "source": r.source or "unknown",
+                "city": r.city or r.location or "—",
+                "project_name": r.project_name,
+                "budget": r.budget,
+                "lead_stage": r.lead_stage or "new",
+                "status": getattr(r.status, "value", str(r.status)) if r.status else "new",
+                "created_at": r.created_at.isoformat() if r.created_at else None,
+            }
+            for r in rows
+        ]
+    except Exception as exc:
+        logger.error(f"GET /leads/recent failed: {exc}")
+        raise HTTPException(status_code=500, detail="Failed to fetch recent leads")
 
 
 @router.get("/leads/{lead_id}", summary="Get single lead (full CRM payload)")

@@ -64,6 +64,10 @@ def get_s3_client():
     )
 
 
+# Security Constraints
+ALLOWED_MIME_TYPES = ["image/jpeg", "image/png", "image/webp"]
+
+
 @router.post("/uploads/presigned-url", response_model=UploadResponse)
 def generate_upload_url(
     data: UploadRequest, current_admin=Depends(security.admin_required)
@@ -75,16 +79,29 @@ def generate_upload_url(
     if not BUCKET_NAME:
         raise HTTPException(status_code=500, detail="S3_BUCKET_NAME not configured")
 
+    # 1. Initial reject based on client-provided MIME
     _reject_non_image_client_mime(data.content_type)
 
+    # 2. Strict normalization and secondary enforcement (Security)
     normalized_type = _normalize_image_content_type(data.filename, data.content_type)
-    if not normalized_type.startswith("image/"):
-        raise HTTPException(status_code=400, detail="Only image files are allowed")
+    if normalized_type not in ALLOWED_MIME_TYPES:
+        logger.error(f"Security Rejection: forbidden type {normalized_type}")
+        raise HTTPException(
+            status_code=400, 
+            detail=f"Invalid file type. Allowed: {', '.join(ALLOWED_MIME_TYPES)}"
+        )
 
     file_extension = data.filename.split(".")[-1] if "." in data.filename else "jpg"
-    unique_filename = f"uploads/{uuid.uuid4()}.{file_extension}"
+    
+    # 3. Generate Structured Key: properties/{id}/images/{uuid}.{ext} 
+    # Fallback to general uploads/ if no property_id is provided.
+    if data.property_id:
+        unique_filename = f"properties/{data.property_id}/images/{uuid.uuid4()}.{file_extension}"
+    else:
+        unique_filename = f"uploads/{uuid.uuid4()}.{file_extension}"
 
     try:
+        # S3 pre-signed URL Params (MUST match frontend headers exactly)
         put_params: dict = {
             "Bucket": BUCKET_NAME,
             "Key": unique_filename,
@@ -99,13 +116,6 @@ def generate_upload_url(
             ExpiresIn=300,  # 5 minutes
         )
 
-        # Public URL uses the same object key; when CLOUDFRONT_DOMAIN is set, that origin serves this path too.
-
-        # We pass a long expiry since these URLs will be stored in the DB,
-        # but if CloudFront isn't configured, it falls back to a public S3 URL anyway.
-        # Alternatively, for public assets, we just want the public URL base.
-        # Since uploads are public, let's just construct the direct public URL
-        # or use the CloudFront domain if available.
         cloudfront_domain = settings.CLOUDFRONT_DOMAIN
         if cloudfront_domain:
             domain = (
@@ -120,11 +130,11 @@ def generate_upload_url(
             )
 
         logger.info(
-            "Presigned S3 PUT URL issued: filename={!r} content_type={!r} file_key={!r} file_size={!r}",
-            data.filename,
-            normalized_type,
+            "S3 Upload Signed: key={!r} type={!r} size={!r} url_start={!r}",
             unique_filename,
+            normalized_type,
             data.file_size,
+            presigned_url[:60] + "...",
         )
 
         return {
