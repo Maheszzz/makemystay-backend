@@ -92,6 +92,7 @@ def generate_upload_url(
         put_params: dict = {
             "Bucket": BUCKET_NAME,
             "Key": unique_filename,
+            "ContentType": normalized_type,
         }
 
         presigned_url = s3_client.generate_presigned_url(

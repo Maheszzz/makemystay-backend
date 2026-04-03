@@ -15,9 +15,11 @@ def get_s3_client():
         return None
 
     region = settings.AWS_REGION or "ap-south-1"
+    from botocore.config import Config
     return boto3.client(
         "s3",
         region_name=region,
         aws_access_key_id=key_id,
         aws_secret_access_key=secret,
+        config=Config(signature_version="s3v4"),
     )

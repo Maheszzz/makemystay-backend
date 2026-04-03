@@ -174,6 +174,8 @@ ENDSSH
 echo ""
 echo "🔍 Running post-deployment health check..."
 # Give PM2 a moment to spin up workers
+echo "⏳ Waiting for workers to initialize..."
+sleep 5
 MAX_RETRIES=5
 RETRY_DELAY=8
 SUCCESS=0
@@ -182,7 +184,7 @@ for i in $(seq 1 $MAX_RETRIES); do
   echo "   Attempt $i/$MAX_RETRIES..."
   # Check internal health via localhost to verify the specific instance
   # Use -v to see the full response in case of 502
-  HEALTH_OUT=$(ssh -i "$PEM_KEY" -o StrictHostKeyChecking=no "$EC2_USER@$EC2_HOST" "curl -v -s http://localhost:8000/api/v1/live 2>&1")
+  HEALTH_OUT=$(ssh -i "$PEM_KEY" -o StrictHostKeyChecking=no "$EC2_USER@$EC2_HOST" "curl -v -s http://127.0.0.1:8000/api/v1/live 2>&1")
   if echo "$HEALTH_OUT" | grep -q "status\":\"ok"; then
     echo "✅ Internal health check passed"
     SUCCESS=1
