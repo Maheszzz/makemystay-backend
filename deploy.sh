@@ -152,8 +152,8 @@ ENDSSH
 echo ""
 echo "🔍 Running post-deployment health check..."
 # Give PM2 a moment to spin up workers
-MAX_RETRIES=3
-RETRY_DELAY=5
+MAX_RETRIES=5
+RETRY_DELAY=8
 SUCCESS=0
 
 for i in $(seq 1 $MAX_RETRIES); do
