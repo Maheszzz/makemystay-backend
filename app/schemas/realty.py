@@ -6,6 +6,8 @@ from typing import List, Optional
 
 from pydantic import BaseModel, EmailStr, Field, field_validator, model_validator
 
+from app.schemas.upload import MAX_IMAGE_UPLOAD_BYTES
+
 # ==================== ENUMS ====================
 
 
@@ -112,6 +114,7 @@ class PropertyImageBase(BaseModel):
     image_url: str = Field(..., max_length=1000)
     is_primary: bool = False
     sort_order: int = Field(default=0, ge=0)
+    file_size: Optional[int] = Field(None, ge=1, le=MAX_IMAGE_UPLOAD_BYTES)
 
 
 class PropertyImageCreate(PropertyImageBase):
@@ -124,6 +127,7 @@ class PropertyImageUpdate(BaseModel):
     image_url: Optional[str] = Field(None, max_length=1000)
     is_primary: Optional[bool] = None
     sort_order: Optional[int] = Field(None, ge=0)
+    file_size: Optional[int] = Field(None, ge=1, le=MAX_IMAGE_UPLOAD_BYTES)
 
 
 class PropertyImageResponse(PropertyImageBase):
@@ -131,6 +135,9 @@ class PropertyImageResponse(PropertyImageBase):
 
     id: int
     property_id: int
+    # Set server-side from URL path (and optional S3 HEAD check); not taken from untrusted client MIME.
+    content_type: str = "image/jpeg"
+    mime_validated: bool = True
     created_at: datetime
 
     model_config = {"from_attributes": True}

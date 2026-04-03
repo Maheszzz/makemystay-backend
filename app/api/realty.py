@@ -1,8 +1,8 @@
 """Realty API endpoints for Contacts, Properties, and Property Images."""
 
-from typing import List, Optional
+from typing import List, Optional, Tuple
 
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, HTTPException, Query
 from fastapi.responses import JSONResponse
 from loguru import logger
 from sqlalchemy.exc import SQLAlchemyError
@@ -10,8 +10,18 @@ from sqlalchemy.orm import Session
 
 from app.configs.db_config import get_mysql_db
 from app.core import security
+from app.core.config import settings
 from app.core.exceptions import DatabaseError, NotFoundException
 from app.repo import realty as realty_repo
+from app.utils.property_image_mime import (
+    ALLOWED_IMAGE_MIME_TYPES,
+    derive_image_content_type_from_url,
+    normalize_content_type_for_compare,
+    verify_s3_object_head,
+)
+from app.utils.s3_client import get_s3_client
+from app.utils.s3_magic_bytes import detect_image_mime_from_s3_range
+from app.services.upload_alerts import emit_upload_event, increment_upload_counter
 from app.services.property_list_cache import (
     bump_properties_list_cache,
     get_cached_properties_list,
@@ -39,6 +49,127 @@ from app.schemas.realty import (
 )
 
 realty_router = APIRouter(tags=["Realty"])
+
+
+def _merge_head_and_mime_for_image_url(url: str) -> Tuple[str, bool, Optional[int]]:
+    """URL-derived MIME + optional S3 HEAD (retries), optional libmagic Range GET, delete policy."""
+    derived = derive_image_content_type_from_url(url)
+    content_type = derived
+    mime_validated = True
+    size_from_head: Optional[int] = None
+    if not settings.S3_VERIFY_UPLOAD_CONTENT_TYPE_WITH_HEAD:
+        return content_type, mime_validated, size_from_head
+    client = get_s3_client()
+    bucket = settings.S3_BUCKET_NAME
+    hr = verify_s3_object_head(
+        image_url=url,
+        derived_content_type=derived,
+        bucket=bucket,
+        s3_client=client,
+    )
+    if hr.ok and hr.s3_content_length is not None:
+        size_from_head = hr.s3_content_length
+
+    magic_mime: Optional[str] = None
+    if (
+        hr.ok
+        and settings.S3_VERIFY_MAGIC_FROM_BYTES
+        and client
+        and bucket
+        and hr.key
+    ):
+        magic_mime = detect_image_mime_from_s3_range(
+            client,
+            bucket,
+            hr.key,
+            max_bytes=max(256, settings.S3_MAGIC_RANGE_BYTES),
+        )
+
+    overridden = False
+    if magic_mime and magic_mime in ALLOWED_IMAGE_MIME_TYPES:
+        content_type = magic_mime
+        overridden = True
+    elif (
+        hr.ok
+        and settings.S3_HEAD_VERIFY_OVERRIDE_DB_FROM_S3
+        and hr.s3_content_type
+        and hr.s3_content_type in ALLOWED_IMAGE_MIME_TYPES
+    ):
+        content_type = hr.s3_content_type
+        overridden = True
+
+    policy_type = magic_mime if (magic_mime and magic_mime in ALLOWED_IMAGE_MIME_TYPES) else hr.s3_content_type
+    pt = normalize_content_type_for_compare(policy_type) if policy_type else ""
+    mismatch = bool(hr.ok and pt and pt != normalize_content_type_for_compare(derived))
+
+    if hr.ok and mismatch:
+        increment_upload_counter("s3_head_mismatch")
+
+    if hr.ok and mismatch:
+        if (
+            settings.S3_HEAD_MISMATCH_DELETE_OBJECT
+            and not overridden
+            and hr.key
+            and client
+            and bucket
+        ):
+            should_delete = True
+            if settings.S3_HEAD_DELETE_REQUIRES_DOUBLE_CONFIRM:
+                hr2 = verify_s3_object_head(
+                    image_url=url,
+                    derived_content_type=derived,
+                    bucket=bucket,
+                    s3_client=client,
+                )
+                s1 = normalize_content_type_for_compare(hr.s3_content_type)
+                s2 = normalize_content_type_for_compare(hr2.s3_content_type) if hr2.ok else ""
+                if not hr2.ok:
+                    should_delete = False
+                    increment_upload_counter("s3_head_double_confirm_aborted")
+                    emit_upload_event(
+                        "s3_head_delete_aborted_second_head_failed",
+                        key=hr.key,
+                        error=hr2.error,
+                    )
+                elif not hr2.mismatch:
+                    should_delete = False
+                    increment_upload_counter("s3_head_double_confirm_aborted")
+                    emit_upload_event(
+                        "s3_head_delete_aborted_second_head_ok",
+                        key=hr.key,
+                    )
+                    if hr2.s3_content_type and hr2.s3_content_type in ALLOWED_IMAGE_MIME_TYPES:
+                        content_type = hr2.s3_content_type
+                        mime_validated = True
+                        overridden = True
+                elif s1 != s2:
+                    should_delete = False
+                    increment_upload_counter("s3_head_double_confirm_aborted")
+                    emit_upload_event(
+                        "s3_head_delete_aborted_head_disagree",
+                        key=hr.key,
+                        first=s1,
+                        second=s2,
+                    )
+
+            if should_delete:
+                try:
+                    client.delete_object(Bucket=bucket, Key=hr.key)
+                except Exception as e:
+                    logger.error("S3 delete_object on mismatch failed: {}", e)
+                    raise HTTPException(
+                        status_code=500,
+                        detail="Could not remove invalid upload.",
+                    ) from e
+                increment_upload_counter("s3_head_delete_on_mismatch")
+                emit_upload_event("s3_head_delete_on_mismatch", key=hr.key)
+                raise HTTPException(
+                    status_code=400,
+                    detail="Uploaded object Content-Type does not match the URL extension; object was removed.",
+                )
+        if settings.S3_HEAD_MISMATCH_STRICT and not overridden:
+            mime_validated = False
+    return content_type, mime_validated, size_from_head
 
 
 # ==================== CONTACT ENDPOINTS ====================
@@ -450,9 +581,18 @@ def add_property_image(
         raise NotFoundException("Property", property_id)
 
     try:
-        out = realty_repo.create_property_image(db, image.model_dump(), property_id)
+        payload = image.model_dump()
+        url = payload["image_url"]
+        content_type, mime_validated, size_from_head = _merge_head_and_mime_for_image_url(url)
+        payload["content_type"] = content_type
+        payload["mime_validated"] = mime_validated
+        if payload.get("file_size") is None and size_from_head is not None:
+            payload["file_size"] = size_from_head
+        out = realty_repo.create_property_image(db, payload, property_id)
         bump_properties_list_cache()
         return out
+    except HTTPException:
+        raise
     except SQLAlchemyError as e:
         raise DatabaseError(f"Failed to add property image: {str(e)}")
 
@@ -475,11 +615,19 @@ def update_property_image(
         raise NotFoundException("Image", image_id)
 
     try:
-        out = realty_repo.update_property_image(
-            db, db_image, image.model_dump(exclude_unset=True)
-        )
+        update_data = image.model_dump(exclude_unset=True)
+        if "image_url" in update_data:
+            u = update_data["image_url"]
+            ct, mv, sz_h = _merge_head_and_mime_for_image_url(u)
+            update_data["content_type"] = ct
+            update_data["mime_validated"] = mv
+            if update_data.get("file_size") is None and sz_h is not None:
+                update_data["file_size"] = sz_h
+        out = realty_repo.update_property_image(db, db_image, update_data)
         bump_properties_list_cache()
         return out
+    except HTTPException:
+        raise
     except SQLAlchemyError as e:
         raise DatabaseError(f"Failed to update property image: {str(e)}")
 

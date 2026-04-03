@@ -15,6 +15,7 @@ from slowapi import _rate_limit_exceeded_handler
 from slowapi.errors import RateLimitExceeded
 import json
 import time
+import socket
 from collections import defaultdict
 
 from app.core.config import settings
@@ -55,6 +56,7 @@ from apscheduler.schedulers.background import BackgroundScheduler
 
 from app.services.lead_sync_service import sync_all_sources, sync_daily_recovery
 from app.services.email_service import sync_emails_job
+from app.services.s3_orphan_cleanup import run_s3_uploads_orphan_cleanup
 
 scheduler = BackgroundScheduler()
 THROTTLED_ERROR_ENDPOINTS = {"/api/v1/admin/analytics", "/api/v1/realty/properties"}
@@ -81,6 +83,11 @@ def daily_recovery_sync_job():
 def email_sync_wrapper_job():
     """APScheduler wrapper for the IMAP email sync function."""
     asyncio.run(sync_emails_job())
+
+
+def s3_orphan_cleanup_job():
+    """Remove unreferenced objects under uploads/ (feature-flagged)."""
+    run_s3_uploads_orphan_cleanup()
 
 # --- Lifespan Manager ---
 @asynccontextmanager
@@ -125,6 +132,15 @@ async def lifespan(app: FastAPI):
             next_run_time=datetime.now(),
         )
 
+    if getattr(settings, "S3_ORPHAN_CLEANUP_ENABLED", False):
+        scheduler.add_job(
+            s3_orphan_cleanup_job,
+            "cron",
+            hour=settings.S3_ORPHAN_CLEANUP_CRON_HOUR_UTC,
+            minute=settings.S3_ORPHAN_CLEANUP_CRON_MINUTE_UTC,
+            id="s3_orphan_cleanup_job",
+        )
+
     scheduler.start()
     if getattr(settings, "LEAD_PULL_SYNC_ENABLED", False):
         logger.info(
@@ -137,6 +153,12 @@ async def lifespan(app: FastAPI):
         )
     if getattr(settings, "EMAIL_POLL_INTERVAL_MINUTES", 0) > 0:
         logger.info(f"Email sync job scheduled every {settings.EMAIL_POLL_INTERVAL_MINUTES}m")
+    if getattr(settings, "S3_ORPHAN_CLEANUP_ENABLED", False):
+        logger.info(
+            "S3 orphan cleanup (uploads/) scheduled daily at "
+            f"{settings.S3_ORPHAN_CLEANUP_CRON_HOUR_UTC:02d}:{settings.S3_ORPHAN_CLEANUP_CRON_MINUTE_UTC:02d} UTC "
+            f"(dry_run={settings.S3_ORPHAN_CLEANUP_DRY_RUN})"
+        )
     yield
     logger.info("Shutting down background scheduler...")
     scheduler.shutdown()
@@ -367,6 +389,17 @@ async def health():
         "env": settings.ENV,
         "database": db_status,
         "scheduler": "running" if scheduler.running else "stopped"
+    }
+
+
+@app.get("/api/v1/whoami", tags=["Health"])
+@app.get("/whoami", tags=["Health"])
+def whoami():
+    """Debug endpoint to identify the instance."""
+    return {
+        "hostname": socket.gethostname(),
+        "env": settings.ENV,
+        "ip": socket.gethostbyname(socket.gethostname())
     }
 
 

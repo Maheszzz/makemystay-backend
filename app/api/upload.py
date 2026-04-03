@@ -1,13 +1,13 @@
 import mimetypes
 import uuid
 
-import boto3
 from fastapi import APIRouter, Depends, HTTPException
 from loguru import logger
 
 from app.core import security
 from app.core.config import settings
 from app.schemas.upload import UploadRequest, UploadResponse
+from app.utils.s3_client import get_s3_client
 
 router = APIRouter()
 
@@ -44,25 +44,8 @@ def _reject_non_image_client_mime(content_type: str) -> None:
     )
 
 
-# AWS Configuration
-AWS_ACCESS_KEY_ID = settings.AWS_ACCESS_KEY_ID
-AWS_SECRET_ACCESS_KEY = settings.AWS_SECRET_ACCESS_KEY
 AWS_REGION = settings.AWS_REGION or "ap-south-1"
 BUCKET_NAME = settings.S3_BUCKET_NAME
-
-
-def get_s3_client():
-    if not AWS_ACCESS_KEY_ID or not AWS_SECRET_ACCESS_KEY:
-        logger.warning("AWS credentials not found. S3 uploads will fail.")
-        return None
-
-    return boto3.client(
-        "s3",
-        region_name=AWS_REGION,
-        aws_access_key_id=AWS_ACCESS_KEY_ID,
-        aws_secret_access_key=AWS_SECRET_ACCESS_KEY,
-    )
-
 
 # Security Constraints
 ALLOWED_MIME_TYPES = ["image/jpeg", "image/png", "image/webp"]
@@ -101,14 +84,15 @@ def generate_upload_url(
         unique_filename = f"uploads/{uuid.uuid4()}.{file_extension}"
 
     try:
-        # S3 pre-signed URL Params (MUST match frontend headers exactly)
+        # Presign with Bucket + Key only so SigV4 signs `host` (see X-Amz-SignedHeaders).
+        # Binding ContentType or ContentLength into the URL requires the browser PUT to match
+        # those headers exactly; fetch() often breaks that (Content-Length vs chunked body,
+        # MIME quirks). We already validate MIME below; the client still sends Content-Type
+        # on PUT so S3 stores correct object metadata.
         put_params: dict = {
             "Bucket": BUCKET_NAME,
             "Key": unique_filename,
-            "ContentType": normalized_type,
         }
-        if data.file_size is not None:
-            put_params["ContentLength"] = data.file_size
 
         presigned_url = s3_client.generate_presigned_url(
             "put_object",

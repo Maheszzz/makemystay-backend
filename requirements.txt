@@ -1,6 +1,8 @@
 alembic==1.15.1
 annotated-types==0.7.0
 boto3
+# Optional: byte-level MIME for S3_VERIFY_MAGIC_FROM_BYTES (requires OS libmagic, e.g. brew install libmagic)
+python-magic==0.4.27
 cryptography==46.0.4
 fastapi==0.128.0
 httpx==0.28.1

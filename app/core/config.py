@@ -28,6 +28,37 @@ class Settings(BaseSettings):
     AWS_REGION: Optional[str] = None
     CLOUDFRONT_DOMAIN: Optional[str] = None
     S3_BUCKET_NAME: Optional[str] = None
+    # If true, HEAD the object before persisting property_images; optional override / strict modes below.
+    S3_VERIFY_UPLOAD_CONTENT_TYPE_WITH_HEAD: bool = False
+    # When HEAD succeeds and S3 Content-Type is an allowed image/*, prefer it over URL-derived MIME.
+    S3_HEAD_VERIFY_OVERRIDE_DB_FROM_S3: bool = True
+    # If true and S3 Content-Type disagrees with URL-derived MIME and override did not apply: mime_validated=False.
+    S3_HEAD_MISMATCH_STRICT: bool = False
+    # If true and mismatch remains after override check: delete S3 object and return 400 (no DB row).
+    S3_HEAD_MISMATCH_DELETE_OBJECT: bool = False
+    # When delete-on-mismatch is enabled, require two agreeing HEAD results before delete (reduces flaky deletes).
+    S3_HEAD_DELETE_REQUIRES_DOUBLE_CONFIRM: bool = True
+    # HEAD retries (transient errors / empty metadata).
+    S3_HEAD_MAX_ATTEMPTS: int = 3
+    S3_HEAD_RETRY_BASE_SECONDS: float = 0.5
+    # Optional: Range GET first bytes + libmagic (requires python-magic + system libmagic).
+    S3_VERIFY_MAGIC_FROM_BYTES: bool = False
+    S3_MAGIC_RANGE_BYTES: int = 8192
+
+    # Orphan uploads/ cleanup (APScheduler daily job)
+    S3_ORPHAN_CLEANUP_ENABLED: bool = False
+    S3_ORPHAN_CLEANUP_DRY_RUN: bool = True
+    S3_ORPHAN_CLEANUP_MIN_AGE_HOURS: int = 48
+    # Extra minutes added to min age (staging tuning); production keep 0 and rely on hours.
+    S3_ORPHAN_CLEANUP_MIN_AGE_MINUTES: int = 0
+    S3_ORPHAN_CLEANUP_MAX_DELETES_PER_RUN: int = 500
+    # Log / webhook alert if non-dry-run deletes in one run exceed this (0 = disabled).
+    S3_ORPHAN_CLEANUP_ALERT_DELETES_THRESHOLD: int = 100
+
+    # Optional POST JSON alerts (Slack-compatible webhook, etc.)
+    ALERT_WEBHOOK_URL: Optional[str] = None
+    S3_ORPHAN_CLEANUP_CRON_HOUR_UTC: int = 3
+    S3_ORPHAN_CLEANUP_CRON_MINUTE_UTC: int = 15
 
     # CloudFront Configuration
     CLOUDFRONT_KEY_PAIR_ID: Optional[str] = None

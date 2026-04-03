@@ -1,4 +1,5 @@
 from sqlalchemy import (
+    BigInteger,
     DECIMAL,
     JSON,
     Boolean,
@@ -100,6 +101,10 @@ class PropertyImage(MySQLBase):
         Integer, ForeignKey("properties.id", ondelete="CASCADE"), nullable=False
     )
     image_url = Column(String(500), nullable=False)
+    # Server-derived from URL path; do not trust client MIME for security decisions.
+    content_type = Column(String(80), nullable=False, default="image/jpeg")
+    mime_validated = Column(Boolean, nullable=False, default=True)
+    file_size = Column(BigInteger, nullable=True)
     is_primary = Column(Boolean, default=False, nullable=False)
     sort_order = Column(Integer, default=0, nullable=False)
     is_deleted = Column(Boolean, default=False, nullable=False)

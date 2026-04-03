@@ -9,13 +9,13 @@ class UploadRequest(BaseModel):
     content_type: str
     # Optional context for structured S3 key generation
     property_id: int | None = Field(default=None, ge=1)
-    # When set, server validates size and may bind ContentLength into the presigned URL (S3 enforces).
-    file_size: int | None = Field(default=None, ge=1, le=MAX_IMAGE_UPLOAD_BYTES)
+    # Required: enforced server-side before presign (S3 presign does not bind Content-Length).
+    file_size: int = Field(..., ge=1, le=MAX_IMAGE_UPLOAD_BYTES)
 
 
 class UploadResponse(BaseModel):
     upload_url: str
     file_key: str
     public_url: str
-    # Exact Content-Type used to sign the URL; PUT must send this header (AWS signature mismatch otherwise).
+    # MIME to send on PUT (S3 object metadata); presigned URL no longer binds it in the signature.
     content_type: str

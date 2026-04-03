@@ -8,16 +8,38 @@
 
 set -e
 
-# ===== CONFIG =====
+# ===== CONFIG & OVERRIDES =====
 EC2_USER="ubuntu"
-# Public DNS for this instance (updates if you stop/start without Elastic IP)
-SERVER_HOST="43.205.233.181"   # makemystay-2 (healthy production node)
-EC2_HOST="$SERVER_HOST"
+# Use DEPLOY_HOST environment variable if set, else fallback to default production IP.
+EC2_HOST="${DEPLOY_HOST:-43.205.233.181}"
+SERVER_HOST="$EC2_HOST"
 
-PEM_KEY="/Users/maheswaranm/Makemystayrealty/makemystayrealty.pem"
+# Use DEPLOY_PEM environment variable if set, else fallback to default local path.
+PEM_KEY="${DEPLOY_PEM:-/Users/maheswaranm/Makemystayrealty/makemystayrealty.pem}"
 REMOTE_DIR="/home/ubuntu/app"
 
-SSH="ssh -i $PEM_KEY -o StrictHostKeyChecking=no -o ConnectTimeout=20 $EC2_USER@$EC2_HOST"
+# Common SSH options for reliability and automated environments
+SSH_OPTS="-i $PEM_KEY -o StrictHostKeyChecking=no -o ConnectTimeout=15 -o ServerAliveInterval=60"
+SSH="ssh $SSH_OPTS $EC2_USER@$EC2_HOST"
+
+echo "🚀 Starting Backend Deployment..."
+echo "📍 Target Host: $EC2_HOST"
+
+# ===== PREFLIGHT CHECK =====
+echo "🔍 Checking server reachability..."
+if ! ssh $SSH_OPTS -o BatchMode=yes $EC2_USER@$EC2_HOST "exit" 2>/dev/null; then
+  echo "❌ Error: Cannot reach server @ $EC2_HOST via SSH (Port 22)."
+  echo "--------------------------------------------------------"
+  echo "👉 Double-check the following:"
+  echo "1. AWS Security Group: Is your current public IP whitelisted for TCP 22?"
+  echo "2. Instance Status: Is the instance running in the AWS EC2 console?"
+  echo "3. Public IP: Did the IP change? (Elastic IP usage recommended)."
+  echo "4. Path to PEM: Is your $PEM_KEY correct? (Try setting DEPLOY_PEM)."
+  echo "5. Local Network: Some Wi-Fi networks block Outbound Port 22."
+  echo "--------------------------------------------------------"
+  exit 1
+fi
+echo "✅ Server reachable. Proceeding..."
 
 echo "💾 Checking server disk space..."
 DISK_PCT=$($SSH "df / --output=pcent | tail -1 | tr -d ' %'")
