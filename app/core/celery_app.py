@@ -17,7 +17,8 @@ celery_app = Celery(
         "app.api.demo", 
         "app.api.admin",
         "app.tasks.webhook_tasks",
-        "app.tasks.lead_tasks"
+        "app.tasks.lead_tasks",
+        "app.tasks.zoho_tasks"
     ]
 )
 
@@ -40,6 +41,14 @@ celery_app.conf.update(
             "task": "log_zoho_budget_usage_metric",
             "schedule": 900.0,
         },
+        "sync-pending-leads-batch": {
+            "task": "sync_pending_leads_batch_task",
+            "schedule": 60.0,
+        },
+    },
+    # Ensure Redis doesn't re-queue tasks too early. 1-hour visibility matches task_time_limit.
+    broker_transport_options={
+        "visibility_timeout": 3600,
     },
 )
 

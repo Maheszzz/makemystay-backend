@@ -29,6 +29,7 @@ class Contact(MySQLBase):
     message = Column(String(250), nullable=False)
     location = Column(String(100), nullable=True)
     property_type = Column(String(50), nullable=True)
+    source = Column(String(100), nullable=True, default="Website")
     status = Column(
         Enum("new", "contacted", "closed", name="contact_status"),
         default="new",

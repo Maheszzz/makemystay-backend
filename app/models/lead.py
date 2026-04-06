@@ -57,6 +57,7 @@ class Lead(MySQLBase):
     
     inquiry_count = Column(Integer, default=1, nullable=False)
     reentry_count = Column(Integer, default=0, nullable=False)
+    crm_retry_count = Column(Integer, default=0, nullable=False)
 
     # Marketing Analytics
     campaign = Column(String(100), nullable=True)
@@ -112,4 +113,5 @@ class Lead(MySQLBase):
             "phone", "property_id", "lead_date", name="uq_lead_phone_property_date"
         ),
         Index("ix_leads_status_created_at", "status", "created_at"),
+        Index("ix_leads_crm_status_retry", "crm_status", "crm_retry_count"),
     )

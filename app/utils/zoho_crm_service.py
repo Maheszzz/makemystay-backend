@@ -52,30 +52,35 @@ class ZohoRateLimitError(ZohoCRMError):
     """Zoho CRM API returned a 429 Too Many Requests status."""
 
 
-def _extract_zoho_lead_id_or_raise(result: Optional[Dict[str, Any]], action: str) -> str:
-    """Hard-fail on any outcome that is not a successful single-record Leads upsert."""
+def _extract_zoho_lead_ids_or_raise(result: Optional[Dict[str, Any]], action: str) -> list[str]:
+    """Extract list of Lead IDs from a bulk upsert response."""
     if result is None:
         raise ZohoCRMError(
-            f"Zoho CRM {action}: no JSON response (auth failure, HTTP error, or network). See logs above."
+            f"Zoho CRM {action}: no JSON response. Check logs."
         )
     rows = result.get("data")
     if not isinstance(rows, list) or len(rows) == 0:
         raise ZohoCRMError(
             f"Zoho CRM {action}: unexpected response (no data[]): {json.dumps(result, default=str)[:4000]}"
         )
-    row = rows[0]
-    if row.get("status") == "success":
-        details = row.get("details") or {}
-        rid = details.get("id")
-        if rid:
-            return str(rid)
-        raise ZohoCRMError(
-            f"Zoho CRM {action}: status=success but missing details.id: {json.dumps(row, default=str)[:4000]}"
-        )
-    raise ZohoCRMError(
-        f"Zoho CRM {action}: record not accepted (picklist/API mismatch or invalid data): "
-        f"{json.dumps(row, default=str)[:4000]}"
-    )
+    
+    ids = []
+    for row in rows:
+        if row.get("status") == "success":
+            details = row.get("details") or {}
+            rid = details.get("id")
+            if rid:
+                ids.append(str(rid))
+                continue
+        
+        # If any record fails in a strict context, we might want to know, 
+        # but for bulk, we'll collect what we can or raise if it's a total failure.
+        logger.warning(f"Zoho CRM {action} row failure: {row.get('message')}")
+        
+    if not ids and len(rows) > 0:
+        raise ZohoCRMError(f"Zoho CRM {action}: all records failed: {json.dumps(rows, default=str)[:4000]}")
+        
+    return ids
 
 
 class ZohoCRMService:
@@ -245,113 +250,89 @@ class ZohoCRMService:
         return None
 
     async def create_or_update_lead(self, contact_data: Any) -> str:
-        """Creates or updates a Zoho Lead. Raises on API error or non-success row (no silent None)."""
-        await asyncio.sleep(0.2)
+        """Creates or updates a Zoho Lead using the efficient /upsert API.
+        
+        This reduces API consumption by combining search and update into one call.
+        """
         assert_zoho_circuit_allows()
         try:
-            out = await self._create_or_update_lead_impl(contact_data)
+            ids = await self.upsert_leads_bulk([contact_data])
             record_zoho_circuit_success()
-            return out
+            return ids[0]
         except (ValueError, ZohoDailyBudgetExceeded, ZohoCircuitOpenError):
             raise
         except Exception:
             record_zoho_circuit_failure()
             raise
 
-    async def _create_or_update_lead_impl(self, contact_data: Any) -> str:
-        """Core CRM lead upsert (circuit outcome wrapped by ``create_or_update_lead``)."""
-        # Use adapter for mapping if it's not already a dict
-        if isinstance(contact_data, CRMLeadAdapter):
-            payload_data = contact_data.to_zoho_payload()
-        elif hasattr(contact_data, "to_zoho_payload"):
-            payload_data = contact_data.to_zoho_payload()
-        else:
-            # Fallback for generic objects (like DemoBooking)
-            # Ideally we should use the adapter everywhere
-            adapter = CRMLeadAdapter(contact_data, getattr(contact_data, "lead_source", "Website"))
-            payload_data = adapter.to_zoho_payload()
+    async def upsert_leads_bulk(self, leads_data: list[Any]) -> list[str]:
+        """Bulk upsert leads (up to 100) in a single Zoho API call."""
+        if not leads_data:
+            return []
 
-        email = payload_data.get("Email")
-        phone = payload_data.get("Phone")
+        payload_list = []
+        _db_ids = []
 
-        if not email and not phone:
-            raise ValueError("Zoho CRM sync: neither email nor phone on payload (cannot upsert Lead).")
+        for contact_data in leads_data:
+            # 1) Map data to Zoho payload
+            if isinstance(contact_data, CRMLeadAdapter):
+                p_data = contact_data.to_zoho_payload()
+            elif hasattr(contact_data, "to_zoho_payload"):
+                p_data = contact_data.to_zoho_payload()
+            else:
+                adapter = CRMLeadAdapter(contact_data, getattr(contact_data, "lead_source", "Website"))
+                p_data = adapter.to_zoho_payload()
 
-        # 1) Prefer stored Zoho id so existing rows get a full PUT refresh (all mapped fields).
-        lead_id: Optional[str] = None
-        
-        # Check if zoho_lead_id is directly on the adapter/payload
-        existing = getattr(contact_data, "zoho_lead_id", None)
-        if existing is not None and str(existing).strip():
-            lead_id = str(existing).strip()
+            # 2) Attach existing Zoho ID if known (forces update on that record)
+            zoho_id = getattr(contact_data, "zoho_lead_id", None)
+            if zoho_id:
+                p_data["id"] = str(zoho_id)
 
-        # 2) Else resolve by phone, then email (only if we don't have lead_id).
-        if not lead_id:
-            if phone:
-                lead_id = await self.search_lead_by_phone(phone)
-            if not lead_id and email:
-                lead_id = await self.search_lead_by_email(email)
+            payload_list.append(p_data)
+            
+            # For logging tracking
+            db_id = getattr(contact_data, "id", "-")
+            if isinstance(contact_data, CRMLeadAdapter):
+                raw = getattr(contact_data, "raw_data", None)
+                db_id = getattr(raw, "id", db_id)
+            _db_ids.append(str(db_id))
 
+        if not payload_list:
+            return []
+
+        # Zoho v7 Upsert payload structure
         payload = {
-            "data": [payload_data],
-            "trigger": ["workflow"],
+            "data": payload_list,
+            "duplicate_check_fields": ["Email", "Phone"],
+            "trigger": ["workflow"]
         }
 
-        result = None
-        action = "updated" if lead_id else "created"
-        if lead_id:
-            payload["data"][0]["id"] = lead_id
-
-        _db_id = "-"
-        if isinstance(contact_data, CRMLeadAdapter):
-            raw = getattr(contact_data, "raw_data", None)
-            if raw is not None and getattr(raw, "id", None) is not None:
-                _db_id = str(getattr(raw, "id"))
-        elif hasattr(contact_data, "id") and getattr(contact_data, "id", None) is not None:
-            _db_id = str(getattr(contact_data, "id"))
-
-        logger.info(
-            f"Zoho Sync | lead_id={_db_id} | zoho_id={lead_id or '-'} | action={action}"
-        )
-
-        logger.debug(
-            "Zoho CRM {} payload:\n{}",
-            action,
-            json.dumps(payload, default=str, indent=2),
-        )
+        logger.info(f"Zoho Sync Bulk | count={len(payload_list)} | db_ids={_db_ids}")
 
         last_error: Optional[Exception] = None
+        result = None
+        
+        # Retry logic for the bulk request
         for i in range(3):
             try:
-                # Existing id → always PUT so Zoho applies every sent field (POST alone does not backfill blanks).
-                method = "PUT" if lead_id else "POST"
-                result = await self._make_request(method, "Leads", data=payload)
+                # Always use POST /upsert for efficient duplicate handling
+                result = await self._make_request("POST", "Leads/upsert", data=payload)
                 if result is not None:
                     break
             except ZohoRateLimitError:
-                # Propagate rate limit immediately - no point in retrying 3 times rapidly
                 raise
             except Exception as e:
                 last_error = e
-                logger.warning(f"Zoho CRM Sync attempt {i+1} failed: {e}")
+                logger.warning(f"Zoho CRM Bulk Sync attempt {i+1} failed: {e}")
                 if i < 2:
                     await asyncio.sleep(2)
 
         if result is None:
             if isinstance(last_error, ZohoRateLimitError):
                 raise last_error
-            if last_error:
-                raise ZohoCRMError(
-                    f"Zoho CRM {action}: request failed after retries: {last_error}"
-                ) from last_error
-            raise ZohoCRMError(
-                f"Zoho CRM {action}: empty response for email={email} phone={phone}. "
-                "Check HTTP error logs (token, 400/401, INVALID_DATA)."
-            )
+            raise ZohoCRMError(f"Zoho CRM Bulk Upsert failed after retries: {last_error}")
 
-        new_id = _extract_zoho_lead_id_or_raise(result, action)
-        logger.info(f"Zoho CRM Lead {action} successfully: {new_id}")
-        return new_id
+        return _extract_zoho_lead_ids_or_raise(result, "Bulk Upsert")
 
     async def create_demo_event(self, booking_data: Any) -> Tuple[Optional[str], str]:
         """Creates a Meeting (Event) in Zoho CRM linked to the Lead via Participants.
@@ -468,6 +449,45 @@ class ZohoCRMService:
 
         logger.error(f"Failed to log call info on Lead for {email}. Response: {result}")
         return None
+
+
+    async def convert_lead(self, zoho_lead_id: str, deal_data: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
+        """Converts a Lead into a Contact + Account + (optional) Deal.
+        
+        Ref: https://www.zoho.com/crm/developer/docs/api/v7/convert-lead.html
+        """
+        assert_zoho_circuit_allows()
+        
+        # Default Deal structure if none provided
+        if not deal_data:
+            deal_data = {
+                "Deal_Name": "New Deal from Lead Conversion",
+                "Stage": "Qualification",
+                "Closing_Date": (datetime.now() + timedelta(days=30)).strftime("%Y-%m-%d"),
+                "Amount": 0
+            }
+
+        payload = {
+            "data": [{
+                "overwrite": True,
+                "notify_lead_owner": True,
+                "notify_new_entity_owner": True,
+                "Deals": deal_data
+            }]
+        }
+
+        try:
+            result = await self._make_request("POST", f"Leads/{zoho_lead_id}/actions/convert", data=payload)
+            if result and "data" in result and result["data"][0].get("status") == "success":
+                record_zoho_circuit_success()
+                logger.info(f"Zoho Lead Conversion successful: {zoho_lead_id}")
+                return result["data"][0]
+            else:
+                error = result.get("data", [{}])[0].get("message", "Unknown error during conversion")
+                raise ZohoCRMError(f"Zoho Lead Conversion failed: {error}")
+        except Exception:
+            record_zoho_circuit_failure()
+            raise
 
 
 zoho_crm_service = ZohoCRMService()

@@ -18,6 +18,12 @@ SOURCE_DISPLAY_NAMES = {
     "magicbricks": "MagicBricks",
     "meta": "Meta Ads",
     "website": "Website",
+    "website - whatsapp": "Website - WhatsApp",
+    "website - contact": "Website - Contact",
+    "website - book visit": "Website - Book Visit",
+    "website - call back": "Website - Call Back",
+    "website - get details": "Website - Get Details",
+    "website - paid ads": "Website - Paid Ads",
     "broker": "Broker Referral",
 }
 
@@ -25,6 +31,10 @@ SOURCE_DISPLAY_NAMES = {
 def _get_display_source(source: str) -> str:
     """Return a display-friendly source name for CRM."""
     return SOURCE_DISPLAY_NAMES.get(source.lower(), source.title())
+
+
+# Standard Zoho Picklist Values for Lead_Type__c (Silent Failure Guard)
+VALID_LEAD_TYPES = {"Hot Lead", "Warm Lead", "Cold Lead"}
 
 
 def classify_lead(lead: Any) -> str:
@@ -203,8 +213,8 @@ class CRMLeadAdapter:
         sub_raw = (self.sub_status or "").strip()
         lead_substatus = sub_raw if sub_raw else default_zoho_substatus_for_parent(lead_status)
 
-        preferred_field = (getattr(settings, "ZOHO_CRM_PREFERRED_LOCATION_FIELD", None) or "Preferred_Location").strip()
-        lead_type_field = (getattr(settings, "ZOHO_CRM_LEAD_TYPE_FIELD", None) or "Lead_Type").strip()
+        preferred_field = (getattr(settings, "ZOHO_CRM_PREFERRED_LOCATION_FIELD", None) or "Preferred_Location__c").strip()
+        lead_type_field = (getattr(settings, "ZOHO_CRM_LEAD_TYPE_FIELD", None) or "Lead_Type__c").strip()
         inquiry_field = (getattr(settings, "ZOHO_CRM_INQUIRY_COUNT_FIELD", None) or "Inquiry_Count").strip()
 
         lead_type_val = (self.lead_type or "").strip() or classify_lead(self.raw_data)
@@ -261,6 +271,12 @@ class CRMLeadAdapter:
         for k in ["Lead_Status", "Lead_Substatus"]:
             if k in payload and isinstance(payload[k], str):
                 payload[k] = payload[k].strip()
+
+        # Silent Failure Guard: Validate Picklist Lead_Type__c
+        lt_val = payload.get(lead_type_field)
+        if lt_val and lt_val not in VALID_LEAD_TYPES:
+            logger.warning(f"Zoho Sync: Invalid Lead_Type value '{lt_val}'. Falling back to 'Cold Lead' to prevent sync failure.")
+            payload[lead_type_field] = "Cold Lead"
 
         return _omit_none(payload)
 

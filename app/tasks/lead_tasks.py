@@ -112,6 +112,10 @@ def sync_lead_to_zoho_task(self, lead_id: int) -> None:
         )
 
         try:
+            # use adapter to correctly map fields
+            adapter = CRMLeadAdapter(lead_obj, lead_obj.source)
+            
+            # Efficient upsert (REFACTOR: internally uses /upsert)
             zoho_lead_id = asyncio.run(
                 asyncio.wait_for(
                     zoho_crm_service.create_or_update_lead(adapter),
@@ -143,6 +147,7 @@ def sync_lead_to_zoho_task(self, lead_id: int) -> None:
                 "zoho_synced": True,
                 "crm_status": "success",
                 "last_zoho_sync_at": datetime.now(timezone.utc),
+                "crm_retry_count": 0, # Reset on success
             },
         )
         session2.commit()
@@ -151,6 +156,16 @@ def sync_lead_to_zoho_task(self, lead_id: int) -> None:
             "CRM_SYNC_SUCCESS",
             f"Successfully synced to Zoho CRM: {zoho_lead_id}",
         )
+
+        # Revenue Engine: Instant WhatsApp alert for Hot Leads (First sync only)
+        if action == "create":
+            from app.utils.zoho_adapter import classify_lead
+            if classify_lead(lead_locked) == "Hot Lead":
+                try:
+                    from app.services.alert_service import alert_service
+                    alert_service.send_hot_lead_alert(lead_locked.name, lead_locked.phone, lead_locked.source)
+                except Exception as e:
+                    logger.error(f"Failed to send Hot Lead alert: {e}")
 
     except Retry:
         raise
@@ -192,7 +207,11 @@ def sync_lead_to_zoho_task(self, lead_id: int) -> None:
         try:
             lead_locked = lead_repo.get_lead_by_id_for_update(session2, lead_id)
             if lead_locked:
-                lead_repo.update_lead(session2, lead_locked, {"crm_status": "permanently_failed"})
+                lead_locked.crm_retry_count += 1
+                if lead_locked.crm_retry_count >= 5: # Individual tasks have slightly higher limit
+                    lead_locked.crm_status = "permanently_failed"
+                else:
+                    lead_locked.crm_status = "failed"
                 session2.commit()
             publish_event(
                 lead_id,
@@ -287,7 +306,7 @@ def process_contact_notifications_task(
         tasks = [
             email_service.send_contact_notification(contact_obj),
             zoho_crm_service.create_or_update_lead(
-                CRMLeadAdapter(contact_obj, "website")
+                CRMLeadAdapter(contact_obj, getattr(contact_obj, "source", "website"))
             ),
         ]
 
@@ -328,6 +347,7 @@ def process_contact_notifications_task(
     except Exception as e:
         logger.error(f"RQ Task Error [process_contact_notifications_task]: {e}")
         raise
+
 
 # ────────────────────────────────────────────────────────────────────
 #  Historical Recovery Task
@@ -407,6 +427,7 @@ def sync_historical_housing_task(days: int = 5) -> None:
             except Exception as ex:
                 logger.warning(f"Failed to release historical housing sync lock: {ex}")
 
+
 # ────────────────────────────────────────────────────────────────────
 #  AI Call Trigger Task
 # ────────────────────────────────────────────────────────────────────
@@ -456,6 +477,8 @@ def enqueue_call_task(self, contact_id: int, phone: str, name: str) -> None:
             session.commit()
             logger.error(f"Error triggering AI call for Contact #{contact_id}: {e}")
             raise self.retry(exc=e)
+
+
 @celery_app.task(name="process_csv_import_task", bind=True, max_retries=1)
 def process_csv_import_task(self, import_id: int, csv_text: str, source: str) -> None:
     """Celery Task: Process a CSV lead import asynchronously."""
@@ -619,3 +642,110 @@ def trigger_lead_ai_call_task(self, lead_id: int) -> None:
             logger.error(f"Error triggering AI call for Lead #{lead_id}: {e}")
             if self.request.retries < self.max_retries:
                 raise self.retry(exc=e)
+
+
+# ────────────────────────────────────────────────────────────────────
+#  Batch Sync Task (API Optimization)
+# ────────────────────────────────────────────────────────────────────
+@celery_app.task(name="sync_pending_leads_batch_task", bind=True)
+def sync_pending_leads_batch_task(self, limit: int = 100) -> None:
+    """Celery Task: Sync a batch of leads to Zoho CRM in a single API call.
+    
+    Uses Redis lock to prevent multiple workers from running this task concurrently.
+    """
+    from app.core.redis import redis_conn
+    from app.models.lead import Lead
+
+    # Distributed lock: 2-minute TTL to prevent zombie locks
+    lock_key = "lock:zoho_batch_sync"
+    if redis_conn:
+        if not redis_conn.set(lock_key, "1", nx=True, ex=120):
+            logger.debug("Zoho batch sync already in progress. Skipping.")
+            return
+
+    try:
+        logger.info(f"Celery Task: Starting batch sync for up to {limit} pending leads...")
+        
+        with MySQLSessionLocal() as db:
+            # 1. Fetch pending leads
+            pending_leads = db.query(Lead).filter(
+                Lead.crm_status == "pending",
+                Lead.is_deleted == False
+            ).order_by(Lead.id.asc()).limit(limit).with_for_update().all()
+            
+            if not pending_leads:
+                logger.debug("No pending leads to batch sync.")
+                return
+
+            # 2. Mark as processing
+            for l in pending_leads:
+                l.crm_status = "processing"
+            db.commit()
+            
+            # Prepare adapters for Zoho payload
+            adapters = []
+            for l in pending_leads:
+                if l.assigned_employee and l.assigned_employee.zoho_user_id:
+                    setattr(l, "owner_zoho_id", l.assigned_employee.zoho_user_id)
+                else:
+                    setattr(l, "owner_zoho_id", None)
+                adapters.append(CRMLeadAdapter(l, l.source))
+
+            # 3. Call Zoho Bulk Upsert
+            try:
+                zoho_ids = asyncio.run(
+                    asyncio.wait_for(
+                        zoho_crm_service.upsert_leads_bulk(adapters),
+                        timeout=45.0, # Bulk is heavier
+                    )
+                )
+                
+                logger.info(f"Batch Sync | total={len(pending_leads)} | synced={len(zoho_ids)}")
+                
+                # Map ids back to lead objects
+                now = datetime.now(timezone.utc)
+                for idx, lead_obj in enumerate(pending_leads):
+                    if idx < len(zoho_ids) and zoho_ids[idx]:
+                        lead_obj.zoho_lead_id = zoho_ids[idx]
+                        lead_obj.zoho_synced = True
+                        lead_obj.crm_status = "success"
+                        lead_obj.last_zoho_sync_at = now
+                        lead_obj.crm_retry_count = 0 # Reset on success
+                        publish_event(lead_obj.id, "CRM_SYNC_SUCCESS", f"Synced via batch: {zoho_ids[idx]}", session=db)
+                    else:
+                        # Row-level failure
+                        lead_obj.crm_retry_count += 1
+                        if lead_obj.crm_retry_count >= 3:
+                            lead_obj.crm_status = "permanently_failed"
+                        else:
+                            lead_obj.crm_status = "failed"
+                        logger.warning(f"Lead {lead_obj.id} failed batch sync (retry {lead_obj.crm_retry_count})")
+                db.commit()
+                
+            except ZohoDailyBudgetExceeded:
+                # Back off and reset to pending
+                for l in pending_leads:
+                    l.crm_status = "pending"
+                db.commit()
+                logger.warning(f"Batch Sync | budget_exceeded | reset {len(pending_leads)} leads to pending")
+                
+            except Exception as e:
+                # Fail the batch and log errors
+                logger.error(f"Batch Sync HTTP/Network failed: {e}")
+                for l in pending_leads:
+                    l.crm_retry_count += 1
+                    if l.crm_retry_count >= 3:
+                        l.crm_status = "permanently_failed"
+                    else:
+                        l.crm_status = "failed"
+                db.commit()
+                
+    except Exception as e:
+        logger.error(f"Batch Sync Critical Error: {e}")
+        raise
+    finally:
+        if redis_conn:
+            try:
+                redis_conn.delete(lock_key)
+            except Exception as ex:
+                logger.error(f"Failed to release batch sync lock: {ex}")

@@ -19,4 +19,5 @@ from app.models.reconciliation import ReconciliationIssue
 from app.models.retell_call import RetellCall
 from app.models.sync_job import SyncJob
 from app.models.sync_metadata import SyncMetadata
+from app.models.zoho_webhook_event import ZohoWebhookEvent
 from app.models.user import User

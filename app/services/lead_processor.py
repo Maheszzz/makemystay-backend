@@ -395,8 +395,21 @@ def _should_sync_to_zoho(lead: Lead, force: bool = False) -> bool:
 
 
 def _enqueue_crm_sync(db: Session, lead: Lead, *, csv_stagger_index: Optional[int] = None, force: bool = False) -> None:
-    """Enqueue Zoho CRM sync (Celery) if cooldown allows."""
+    """Enqueue Zoho CRM sync. 
+    
+    High-volume sources (housing, 99acres, csv) are marked as 'pending' for batch processing.
+    Direct sources (website) are still queued immediately for low latency.
+    """
     if not _should_sync_to_zoho(lead, force=force):
+        return
+
+    # High-volume sources get batch-processed to save API credits
+    batch_sources = {"housing", "99acres", "magicbricks", "csv", "lead_import"}
+    
+    if lead.source and lead.source.lower() in batch_sources:
+        lead.crm_status = "pending"
+        db.commit()
+        logger.info(f"Lead {lead.id} marked as 'pending' for Zoho batch sync (source: {lead.source})")
         return
 
     try:

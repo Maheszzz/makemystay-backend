@@ -96,8 +96,8 @@ class Settings(BaseSettings):
     # API field name in Zoho Leads module for budget (create custom field in Zoho if needed).
     ZOHO_CRM_BUDGET_FIELD: str = "Budget"
     # Use exact API names from Zoho → Setup → Modules → Leads → Fields. Override if your org uses __c custom fields.
-    ZOHO_CRM_PREFERRED_LOCATION_FIELD: str = "Preferred_Location"
-    ZOHO_CRM_LEAD_TYPE_FIELD: str = "Lead_Type"
+    ZOHO_CRM_PREFERRED_LOCATION_FIELD: str = "Preferred_Location__c"
+    ZOHO_CRM_LEAD_TYPE_FIELD: str = "Lead_Type__c"
     ZOHO_CRM_INQUIRY_COUNT_FIELD: str = "Inquiry_Count"
     # JSON map of city/area keyword → employees.id (PK) for auto RM assignment, e.g. {"BTM": 1, "HSR": 2}
     CRM_CITY_EMPLOYEE_JSON: str = "{}"
@@ -144,6 +144,10 @@ class Settings(BaseSettings):
     META_GRAPH_API_VERSION: str = "v18.0"
 
     # Webhook
+    ZOHO_WEBHOOK_SECRET: str = ""
+    # The phone number (with country code, e.g. +91...) to receive Hot Lead / Deal alerts
+    SALES_TEAM_PHONE: str = "+910000000000"
+    # Required for Zoho HMAC verification
     HOUSING_WEBHOOK_API_KEY: str = ""
     ENABLE_AI_CALLING_FOR_LEADS: bool = True
     # Log first N bytes of raw 99acres POST body (debugging; avoid huge logs in prod).

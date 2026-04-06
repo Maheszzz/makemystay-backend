@@ -21,13 +21,17 @@ from loguru import logger
 from sqlalchemy.orm import Session
 
 from app.adapters.acers_adapter import AcersAdapter
-from app.configs.db_config import get_mysql_db
+import hmac
+import hashlib
+import json
+from app.configs.db_config import get_mysql_db, MySQLSessionLocal
 from app.core.config import settings
 from app.repo import lead as lead_repo
 from app.repo.failed_webhook_lead_repo import record_failed_webhook_lead
 from app.schemas.lead import LeadCreate, LeadResponse, LeadStatus, LeadWebhookResponse
 from app.services.lead_processor import process_lead
 from app.core import security
+from app.models.zoho_webhook_event import ZohoWebhookEvent
 
 webhooks_router = APIRouter(tags=["Webhooks / Leads"])
 
@@ -121,6 +125,91 @@ async def receive_lead(
         ),
         lead_id=0,
     )
+
+
+# ================================================================== #
+#  POST /webhooks/zoho  —  Zoho CRM Bidirectional Sync Receiver
+# ================================================================== #
+@webhooks_router.post(
+    "/webhooks/zoho",
+    summary="Zoho CRM Inbound Webhook Receiver",
+    description="Captures updates from Zoho CRM with HMAC signature and replay protection."
+)
+async def receive_zoho_webhook(
+    request: Request,
+    x_zoho_signature: Optional[str] = Header(None, alias="X-Zoho-Signature"),
+    x_zoho_timestamp: Optional[str] = Header(None, alias="X-Zoho-Timestamp")
+):
+    """
+    Receives JSON updates from Zoho:
+    
+    1. **Verify** HMAC signature using ZOHO_WEBHOOK_SECRET
+    2. **Validate** timestamp (5-minute window) for Replay Protection
+    3. **Log** event for idempotency & Audit
+    """
+    body = await request.body()
+    
+    # 1. Signature & Replay Protection (Elite Hardening)
+    if settings.ZOHO_WEBHOOK_SECRET:
+        if not x_zoho_signature or not x_zoho_timestamp:
+            logger.warning("Zoho Webhook: Missing security headers. Rejecting.")
+            raise HTTPException(status_code=401, detail="Missing security headers")
+            
+        # Replay protection: Reject if more than 5 minutes old
+        try:
+            ts = float(x_zoho_timestamp)
+            if abs(time.time() - ts) > 300:
+                logger.warning(f"Zoho Webhook: Replay detected (TS: {ts}). Rejecting.")
+                raise HTTPException(status_code=401, detail="Timestamp stale (Replay Protection)")
+        except ValueError:
+            raise HTTPException(status_code=400, detail="Invalid timestamp format")
+
+        # HMAC verification
+        expected = hmac.new(
+            settings.ZOHO_WEBHOOK_SECRET.encode(),
+            body,
+            hashlib.sha256
+        ).hexdigest()
+        
+        if not hmac.compare_digest(expected, x_zoho_signature):
+            logger.warning("Zoho Webhook: Invalid Signature. Rejecting.")
+            raise HTTPException(status_code=401, detail="Invalid HMAC signature")
+
+    try:
+        payload = json.loads(body)
+    except json.JSONDecodeError:
+        raise HTTPException(status_code=400, detail="Invalid JSON payload")
+
+    # event_id is the Zoho Lead ID and potentially a timestamp to distinguish updates
+    zoho_id = payload.get("id") or payload.get("LEADID")
+    if not zoho_id:
+        # Some Zoho alerts don't have IDs in top-level; we log it anyway
+        zoho_id = f"Z-{int(time.time())}"
+
+    # Persistent log for idempotency (using MySQLSessionLocal for fast immediate commit)
+    with MySQLSessionLocal() as session:
+        # Check if already processed (idempotency check)
+        existing = session.query(ZohoWebhookEvent).filter(
+            ZohoWebhookEvent.event_id == zoho_id,
+            ZohoWebhookEvent.status == "processed"
+        ).first()
+        if existing:
+            return {"status": "accepted", "detail": "Already processed"}
+
+        event = ZohoWebhookEvent(
+            event_id=str(zoho_id),
+            payload=payload,
+            status="pending"
+        )
+        session.add(event)
+        session.commit()
+        event_db_id = event.id
+
+    # Offload the heavy lifting to Celery
+    from app.tasks.zoho_tasks import process_zoho_webhook_task
+    process_zoho_webhook_task.delay(event_db_id)
+
+    return {"status": "accepted", "event_id": zoho_id}
 
 
 # ================================================================== #

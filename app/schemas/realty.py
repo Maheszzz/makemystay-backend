@@ -60,6 +60,7 @@ class ContactBase(BaseModel):
     message: str = Field(..., max_length=250)
     location: Optional[str] = Field(None, max_length=100)
     property_type: Optional[str] = Field(None, max_length=50)
+    source: Optional[str] = Field("Website", max_length=100)
     status: Optional[ContactStatus] = ContactStatus.new
 
     model_config = {"populate_by_name": True}
@@ -98,6 +99,7 @@ class ContactResponse(BaseModel):
     message: Optional[str] = None
     location: Optional[str] = None
     property_type: Optional[str] = None
+    source: Optional[str] = "Website"
     status: Optional[ContactStatus] = None
     created_at: Optional[datetime] = None
     updated_at: Optional[datetime] = None
