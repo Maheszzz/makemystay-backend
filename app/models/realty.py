@@ -53,12 +53,12 @@ class Property(MySQLBase):
 
     id = Column(Integer, primary_key=True, index=True, autoincrement=True)
     property_name = Column(String(150), nullable=False, index=True)
-    location = Column(String(150), nullable=False, index=True)
-    phone = Column(String(15), nullable=False)
+    location = Column(String(150), nullable=True, index=True)
+    phone = Column(String(15), nullable=True)
     map_link = Column(String(500), nullable=True)
     description = Column(Text, nullable=True)
     features = Column(JSON, nullable=True)
-    property_type = Column(String(50), nullable=False)
+    property_type = Column(String(50), nullable=True)
     furnishing = Column(
         Enum(
             "fully_furnished", "semi_furnished", "unfurnished", name="furnishing_enum"

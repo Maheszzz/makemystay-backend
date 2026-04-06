@@ -1,0 +1,120 @@
+# Unified Nginx Config for makemystay.ai
+# Handling Main Site, Admin Portal, and API Subdomain separately
+# After edits: sudo nginx -t && sudo systemctl reload nginx
+
+# --- www → apex redirect ---
+server {
+    listen 80;
+    server_name www.makemystay.ai;
+
+    location = /health {
+        access_log off;
+        return 200 'healthy\n';
+        add_header Content-Type text/plain;
+    }
+
+    return 301 https://makemystay.ai$request_uri;
+}
+
+# Main Website (Primary Domain)
+server {
+    listen 80;
+    server_name makemystay.ai;
+
+    root /var/www/react-app;
+    index index.html;
+
+    location = /health {
+        access_log off;
+        return 200 'healthy\n';
+        add_header Content-Type text/plain;
+    }
+
+    location /assets/ {
+        root /var/www/react-app;
+        try_files $uri =404;
+        expires 1y;
+        add_header Cache-Control "public, immutable";
+    }
+
+    location ~* ^/[^/]+\.(svg|ico|png|jpg|jpeg|gif|webp|json|webmanifest|txt|xml)$ {
+        try_files $uri =404;
+        expires 7d;
+        add_header Cache-Control "public";
+    }
+
+    # Proxy /api/* to FastAPI backend
+    location /api/ {
+        client_max_body_size 10m;
+        proxy_pass http://127.0.0.1:8000;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        
+        # 🛡️ EXPLICIT AUTH PASS: Standard Nginx pattern for Bearer tokens
+        proxy_set_header Authorization $http_authorization;
+    }
+
+    location / {
+        try_files $uri $uri/ /index.html;
+    }
+}
+
+# Admin Portal (Dedicated Subdomain)
+server {
+    listen 80;
+    server_name admin.makemystay.ai;
+
+    root /var/www/makemystay-admin;
+    index index.html;
+
+    location = /health {
+        access_log off;
+        return 200 'healthy\n';
+        add_header Content-Type text/plain;
+    }
+
+    # Proxy /api/* to FastAPI backend
+    location /api/ {
+        client_max_body_size 10m;
+        proxy_pass http://127.0.0.1:8000;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+
+        # 🛡️ EXPLICIT AUTH PASS: Standard Nginx pattern for Bearer tokens
+        proxy_set_header Authorization $http_authorization;
+    }
+
+    location /assets/ {
+        root /var/www/makemystay-admin;
+        try_files $uri =404;
+        expires 1y;
+        add_header Cache-Control "public, immutable";
+    }
+
+    location / {
+        try_files $uri $uri/ /index.html;
+    }
+}
+
+# API Subdomain (Dedicated Subdomain)
+server {
+    listen 80;
+    server_name api.makemystay.ai;
+
+    client_max_body_size 10m;
+
+    location / {
+        proxy_pass http://127.0.0.1:8000;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        
+        # 🛡️ EXPLICIT AUTH PASS
+        proxy_set_header Authorization $http_authorization;
+    }
+}

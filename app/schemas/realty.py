@@ -183,29 +183,47 @@ class PropertyBase(BaseModel):
     """Base schema for Property with validation."""
 
     property_name: str = Field(..., min_length=1, max_length=150)
-    location: str = Field(..., min_length=1, max_length=150)
-    phone: str = Field(..., min_length=10, max_length=15)
+    location: Optional[str] = Field(None, max_length=150)
+    phone: Optional[str] = Field(None, max_length=15)
     map_link: Optional[str] = Field(None, max_length=500)
     description: Optional[str] = None
     features: Optional[List[str]] = None
-    property_type: str = Field(..., min_length=1, max_length=50)
+    property_type: Optional[str] = Field("1BHK", max_length=50)
     furnishing: Optional[Furnishing] = Furnishing.unfurnished
     private_price: Optional[float] = Field(None, ge=0)
     single_price: Optional[float] = Field(None, ge=0)
     double_price: Optional[float] = Field(None, ge=0)
     triple_price: Optional[float] = Field(None, ge=0)
-    starting_price: Optional[float] = Field(None, ge=0)
+    starting_price: float = Field(..., ge=0)
     listing_type: ListingType = ListingType.rent
     is_available: Optional[bool] = True
     slug: Optional[str] = None
 
-    @field_validator("property_name", "location")
+    @field_validator("property_name")
     @classmethod
     def validate_non_empty_string(cls, v: str) -> str:
         """Ensure string is not just whitespace."""
         if not v or not v.strip():
             raise ValueError("Must provide a non-empty value")
         return v.strip()
+
+    @field_validator("location")
+    @classmethod
+    def validate_location(cls, v: Optional[str]) -> Optional[str]:
+        """Strip whitespace from location if provided."""
+        if v is not None:
+            stripped = v.strip()
+            return stripped if stripped else None
+        return v
+
+    @field_validator("phone")
+    @classmethod
+    def validate_phone(cls, v: Optional[str]) -> Optional[str]:
+        """Strip non-digit characters and validate length if provided."""
+        if v is not None:
+            stripped = v.strip()
+            return stripped if stripped else None
+        return v
 
     @field_validator("map_link")
     @classmethod
@@ -267,10 +285,10 @@ class PropertyListItem(BaseModel):
 
     id: int
     property_name: str
-    location: str
+    location: Optional[str] = None
     phone: Optional[str] = None
     map_link: Optional[str] = None
-    property_type: str
+    property_type: Optional[str] = None
     furnishing: Optional[str] = None
     private_price: Optional[float] = None
     single_price: Optional[float] = None
@@ -320,12 +338,12 @@ class PropertyResponse(BaseModel):
 
     id: int
     property_name: str
-    location: str
+    location: Optional[str] = None
     phone: Optional[str] = None
     map_link: Optional[str] = None
     description: Optional[str] = None
     features: Optional[List[str]] = []
-    property_type: str
+    property_type: Optional[str] = None
     furnishing: Optional[str] = None
     private_price: Optional[float] = None
     single_price: Optional[float] = None

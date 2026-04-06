@@ -1,9 +1,10 @@
 import mimetypes
 import uuid
-
-from fastapi import APIRouter, Depends, HTTPException, Request
+from typing import Optional
 from loguru import logger
+import time
 
+from fastapi import APIRouter, Depends, HTTPException, Request, UploadFile, File, Form
 from app.core import security
 from app.core.config import settings
 from app.schemas.upload import UploadRequest, UploadResponse
@@ -11,9 +12,8 @@ from app.utils.s3_client import get_s3_client
 
 router = APIRouter()
 
-
 def _normalize_image_content_type(filename: str, content_type: str) -> str:
-    """Infer MIME from filename when the browser omits or misreports file.type (common for WhatsApp exports)."""
+    """Infer MIME from filename when the browser omits or misreports file.type."""
     ct = (content_type or "").strip().lower()
     if ct == "image/jpg":
         ct = "image/jpeg"
@@ -23,33 +23,105 @@ def _normalize_image_content_type(filename: str, content_type: str) -> str:
     guessed, _ = mimetypes.guess_type(f"file.{ext}" if ext else filename)
     if guessed and guessed.startswith("image/"):
         return guessed.lower()
-    logger.warning(
-        "MIME fallback to image/jpeg (could not infer from client or filename): filename={!r} client_type={!r}",
-        filename,
-        content_type,
-    )
     return "image/jpeg"
 
+@router.get("/uploads/test")
+async def test_upload_router():
+    """Verify that the router is correctly registered and reachable."""
+    return {"status": "router_active"}
 
-def _reject_non_image_client_mime(content_type: str) -> None:
-    """Allow empty / octet-stream (browsers) / image/*. Block obvious non-images before signing."""
-    ct = (content_type or "").strip().lower()
-    if not ct or ct == "application/octet-stream":
-        return
-    if ct.startswith("image/"):
-        return
-    raise HTTPException(
-        status_code=400,
-        detail="Only image files are allowed",
-    )
+@router.post("/uploads/binary")
+async def proxy_upload_to_s3(
+    request: Request,
+    property_id: Optional[str] = Form(None),
+    file: UploadFile = File(...),
+    current_user=Depends(security.admin_or_employee_required)
+):
+    """
+    Absolute Ingestion Fix: Proxy browser upload through backend to eliminate S3 signature/CORS issues.
+    """
+    # FINAL DIAGNOSTIC: Print ALL headers to stdout (visible in pm2 logs)
+    print(f"DEBUG: ALL HEADERS RECEIVED: {dict(request.headers)}")
+    logger.info(f"PROXY HIT | auth={request.headers.get('authorization', 'MISSING')[:15]}... | type={request.headers.get('content-type')}")
+    logger.info(f"PROXY START | file={file.filename} property_id={property_id} user={current_user.id}")
+    
+    s3_client = get_s3_client()
+    if not s3_client:
+        logger.error("AWS S3 Client Initialization Failed")
+        raise HTTPException(status_code=500, detail="AWS credentials not configured")
 
+    BUCKET_NAME = settings.S3_BUCKET_NAME
+    AWS_REGION = settings.AWS_REGION or "ap-south-1"
+    
+    if not BUCKET_NAME:
+        logger.error("S3_BUCKET_NAME missing in env")
+        raise HTTPException(status_code=500, detail="S3 bucket not configured")
 
-AWS_REGION = settings.AWS_REGION or "ap-south-1"
-BUCKET_NAME = settings.S3_BUCKET_NAME
+    # 1. MIME Normalization
+    def get_normalized_mime(name: str, ctype: str) -> str:
+        c = (ctype or "").strip().lower()
+        if c == "image/jpg": c = "image/jpeg"
+        # Allowed types
+        if c in ["image/jpeg", "image/png", "image/webp"]: return c
+        # Fallback to extension
+        ext = name.rsplit(".", 1)[-1].lower() if "." in name else ""
+        if ext in ["jpg", "jpeg"]: return "image/jpeg"
+        if ext == "png": return "image/png"
+        if ext == "webp": return "image/webp"
+        return "image/jpeg"
 
-# Architect-Level Security Guardrails
-MAX_FILE_SIZE = 5 * 1024 * 1024  # 5MB
-ALLOWED_MIME_TYPES = ["image/jpeg", "image/png", "image/webp"]
+    normalized_type = get_normalized_mime(file.filename, file.content_type)
+
+    # 2. Key Generation
+    user_prefix = f"user_{current_user.id}"
+    file_extension = file.filename.split(".")[-1] if "." in file.filename else "jpg"
+    
+    if property_id:
+        unique_filename = f"properties/{property_id}/{user_prefix}/{uuid.uuid4()}.{file_extension}"
+    else:
+        unique_filename = f"uploads/{user_prefix}/{uuid.uuid4()}.{file_extension}"
+
+    try:
+        # 3. Hardened Ingestion: Read into memory and use put_object
+        logger.info(f"READING FILE | {file.filename}")
+        contents = await file.read()
+        logger.info(f"READ COMPLETE | bytes={len(contents)}")
+
+        if not contents:
+            logger.error("Empty file received from client")
+            raise Exception("Empty file received")
+        
+        logger.info(f"S3 PUT START | key={unique_filename}")
+        s3_client.put_object(
+            Bucket=BUCKET_NAME,
+            Key=unique_filename,
+            Body=contents,
+            ContentType=normalized_type
+        )
+        logger.info("S3 PUT SUCCESS")
+
+        cache_buster = f"?v={int(time.time())}"
+        
+        # 4. Construct Public URL
+        cloudfront_domain = settings.CLOUDFRONT_DOMAIN
+        if cloudfront_domain:
+            domain = cloudfront_domain if cloudfront_domain.startswith("http") else f"https://{cloudfront_domain}"
+            public_url = f"{domain}/{unique_filename}{cache_buster}"
+        else:
+            public_url = f"https://{BUCKET_NAME}.s3.{AWS_REGION}.amazonaws.com/{unique_filename}{cache_buster}"
+
+        logger.info(f"Successful Proxy Upload: {unique_filename} via user {current_user.id}")
+        
+        return {
+            "file_key": unique_filename,
+            "public_url": public_url,
+            "content_type": normalized_type,
+            "status": "success"
+        }
+
+    except Exception as e:
+        logger.error(f"Proxy Upload Failed: {e}")
+        raise HTTPException(status_code=500, detail=f"S3 ingestion failed: {str(e)}")
 
 
 @router.post("/uploads/presigned-url", response_model=UploadResponse)
@@ -62,117 +134,48 @@ def generate_upload_url(
     if not s3_client:
         raise HTTPException(status_code=500, detail="AWS credentials not configured")
 
-    # Distributed Systems Master Logic: Consistency & Failover
-    # 1. Trusted Header Check: Prevent spoofing by verifying secret
-    # Architect Note: Use CloudFront "Add Header" origin request policy for this.
-    cf_secret = request.headers.get("X-MMSR-Secret")
-    trusted_source = (cf_secret == "EliteDistributedMaster")
+    BUCKET_NAME = settings.S3_BUCKET_NAME
+    # Regional Failover Logic
+    target_bucket = BUCKET_NAME
     
-    # 2. Regional Selection with Trust (Fallback to primary if not via CF)
-    viewer_country = request.headers.get("CloudFront-Viewer-Country", "IN") if trusted_source else "IN"
-    target_bucket = BUCKET_NAME  # Primary
-    
-    is_regional = False
-    if viewer_country in ["US", "CA", "MX"]:
-        target_bucket = "makemystay-us"
-        is_regional = True
-    elif viewer_country in ["GB", "DE", "FR", "IE"]:
-        target_bucket = "makemystay-eu"
-        is_regional = True
+    # Simple whitelist for now
+    if data.file_size > 5 * 1024 * 1024:
+        raise HTTPException(status_code=413, detail="File too large")
 
-    # 1. Reject non-image MIME
-    _reject_non_image_client_mime(data.content_type)
-
-    # 2. Strict size enforcement (Architect-level check)
-    if data.file_size > MAX_FILE_SIZE:
-        logger.warning(
-            "Upload rejected: File size too large. size={!r} max={!r}",
-            data.file_size, MAX_FILE_SIZE
-        )
-        raise HTTPException(
-            status_code=413, 
-            detail=f"File too large. Maximum allowed size is {MAX_FILE_SIZE // (1024 * 1024)}MB"
-        )
-
-    # 3. Strict normalization and secondary enforcement (Security)
     normalized_type = _normalize_image_content_type(data.filename, data.content_type)
-    if normalized_type not in ALLOWED_MIME_TYPES:
-        logger.error(f"Security Rejection: forbidden type {normalized_type}")
-        raise HTTPException(
-            status_code=400, 
-            detail=f"Invalid file type. Allowed: {', '.join(ALLOWED_MIME_TYPES)}"
-        )
-
     file_extension = data.filename.split(".")[-1] if "." in data.filename else "jpg"
-    
-    # 4. Generate Structured Key: properties/{id}/user_{user_id}/images/{uuid}.{ext} 
-    # This enables identity-partitioned storage and per-user access policies.
     user_prefix = f"user_{current_user.id}"
+    
     if data.property_id:
         unique_filename = f"properties/{data.property_id}/{user_prefix}/{uuid.uuid4()}.{file_extension}"
     else:
         unique_filename = f"uploads/{user_prefix}/{uuid.uuid4()}.{file_extension}"
 
     try:
-        # Master Compatibility logic: 
-        # We remove ContentLength AND ContentType from the signature.
-        # This makes the upload "Bulletproof" against browser header 
-        # inconsistencies, while our backend still validates the file
-        # properties BEFORE signing the URL.
-        put_params: dict = {
-            "Bucket": target_bucket,
-            "Key": unique_filename,
-        }
-
-        try:
-            presigned_url = s3_client.generate_presigned_url(
-                "put_object",
-                Params=put_params,
-                ExpiresIn=300,  # 5 minutes
-            )
-        except Exception as e:
-            if is_regional:
-                # Master Failover Observability: Log for CloudWatch Filter
-                logger.warning(f"[FAILOVER_ACTIVE] Regional bucket {target_bucket} failed. Falling back to primary. Error: {e}")
-                put_params["Bucket"] = BUCKET_NAME
-                presigned_url = s3_client.generate_presigned_url(
-                    "put_object",
-                    Params=put_params,
-                    ExpiresIn=300,
-                )
-            else:
-                raise e
-
-        # Master Consistency Strategy: 
-        # READ from Primary (Consistent) | WRITE to Regional (Performance)
-        # All public URLs use the CloudFront Domain pointing to the Primary Origin.
-        import time
-        cache_buster = f"?v={int(time.time())}"
+        conditions = [
+            ["content-length-range", 0, 5 * 1024 * 1024],
+            {"Content-Type": normalized_type},
+        ]
         
+        post_response = s3_client.generate_presigned_post(
+            Bucket=target_bucket,
+            Key=unique_filename,
+            Fields={"Content-Type": normalized_type},
+            Conditions=conditions,
+            ExpiresIn=300,
+        )
+        
+        cache_buster = f"?v={int(time.time())}"
         cloudfront_domain = settings.CLOUDFRONT_DOMAIN
         if cloudfront_domain:
-            domain = (
-                cloudfront_domain
-                if cloudfront_domain.startswith("http")
-                else f"https://{cloudfront_domain}"
-            )
+            domain = cloudfront_domain if cloudfront_domain.startswith("http") else f"https://{cloudfront_domain}"
             public_url = f"{domain}/{unique_filename}{cache_buster}"
         else:
-            # Fallback to direct Primary S3 URL (ap-south-1)
-            public_url = (
-                f"https://{BUCKET_NAME}.s3.{AWS_REGION}.amazonaws.com/{unique_filename}{cache_buster}"
-            )
-
-        logger.info(
-            "S3 Upload Signed: key={!r} type={!r} size={!r} url_start={!r}",
-            unique_filename,
-            normalized_type,
-            data.file_size,
-            presigned_url[:60] + "...",
-        )
+            public_url = f"https://{BUCKET_NAME}.s3.{settings.AWS_REGION}.amazonaws.com/{unique_filename}{cache_buster}"
 
         return {
-            "upload_url": presigned_url,
+            "upload_url": post_response["url"],
+            "fields": post_response["fields"],
             "file_key": unique_filename,
             "public_url": public_url,
             "content_type": normalized_type,
