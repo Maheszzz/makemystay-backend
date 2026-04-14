@@ -1,40 +1,51 @@
 import boto3
 import json
+import os
+from dotenv import load_dotenv
 
-def discover():
-    session = boto3.Session(region_name='ap-south-1')
-    
-    elbv2 = session.client('elbv2')
+# Load from .env.local if available
+load_dotenv(".env.local")
+
+def discover_instances():
+    # Use environment variables if present
+    session = boto3.Session(
+        aws_access_key_id=os.getenv('AWS_ACCESS_KEY_ID'),
+        aws_secret_access_key=os.getenv('AWS_SECRET_ACCESS_KEY'),
+        region_name=os.getenv('AWS_REGION', 'ap-south-1')
+    )
     ec2 = session.client('ec2')
     
-    print("--- Target Groups ---")
-    tgs = elbv2.describe_target_groups()
-    for tg in tgs['TargetGroups']:
-        tg_arn = tg['TargetGroupArn']
-        tg_name = tg['TargetGroupName']
-        print(f"\nGroup: {tg_name}")
-        print(f"ARN: {tg_arn}")
-        
-        health = elbv2.describe_target_health(TargetGroupArn=tg_arn)
-        instance_ids = []
-        for target in health['TargetHealthDescriptions']:
-            target_id = target['Target']['Id']
-            state = target['TargetHealth']['State']
-            print(f"  - Target: {target_id} (State: {state})")
-            if state == 'healthy':
-                instance_ids.append(target_id)
-        
-        if instance_ids:
-            print("  --- Public IPs ---")
-            instances = ec2.describe_instances(InstanceIds=instance_ids)
-            for reservation in instances['Reservations']:
-                for instance in reservation['Instances']:
-                    ip = instance.get('PublicIpAddress', 'N/A')
-                    name = next((t['Value'] for t in instance.get('Tags', []) if t['Key'] == 'Name'), 'Unnamed')
-                    print(f"    - {name}: {ip} (ID: {instance['InstanceId']})")
+    # Filter for instances with 'makemystay' in the Name tag
+    response = ec2.describe_instances(
+        Filters=[
+            {'Name': 'tag:Name', 'Values': ['*makemystay*']}
+        ]
+    )
+    
+    print(f"{'Name':<25} | {'Instance ID':<20} | {'State':<15} | {'Public IP':<15}")
+    print("-" * 85)
+    
+    found = False
+    for reservation in response['Reservations']:
+        for instance in reservation['Instances']:
+            name = "N/A"
+            for tag in instance.get('Tags', []):
+                if tag['Key'] == 'Name':
+                    name = tag['Value']
+            
+            instance_id = instance['InstanceId']
+            state = instance['State']['Name']
+            public_ip = instance.get('PublicIpAddress', 'N/A')
+            
+            print(f"{name:<25} | {instance_id:<20} | {state:<15} | {public_ip:<15}")
+            found = True
+            
+    if not found:
+        print("No matches found for 'makemystay' in tags.")
 
 if __name__ == "__main__":
     try:
-        discover()
+        discover_instances()
     except Exception as e:
-        print(f"Error: {e}")
+        print(f"Error connecting to AWS: {e}")
+        print("Please ensure your AWS credentials (~/.aws/credentials) are configured correctly.")

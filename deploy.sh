@@ -11,11 +11,11 @@ set -e
 # ===== CONFIG & OVERRIDES =====
 EC2_USER="ubuntu"
 # Use DEPLOY_HOST environment variable if set, else fallback to default production IP.
-EC2_HOST="${DEPLOY_HOST:-13.201.61.117}"
+EC2_HOST="${DEPLOY_HOST:-13.126.149.224}"
 SERVER_HOST="$EC2_HOST"
 
 # Use DEPLOY_PEM environment variable if set, else fallback to default local path.
-PEM_KEY="${DEPLOY_PEM:-/Users/maheswaranm/Makemystayrealty/makemystayrealty.pem}"
+PEM_KEY="${DEPLOY_PEM:-/Users/maheswaranm/Downloads/makemystayrealty.pem}"
 REMOTE_DIR="/home/ubuntu/app"
 
 # Common SSH options for reliability and automated environments
@@ -89,7 +89,7 @@ rsync -az --delete \
 
 # ===== PM2 DEPLOY ON EC2 =====
 echo "🚀 Starting PM2 zero-downtime reload..."
-$SSH "bash -s" << ENDSSH
+$SSH "bash -sx" << ENDSSH
 set -e
 cd $REMOTE_DIR
 
