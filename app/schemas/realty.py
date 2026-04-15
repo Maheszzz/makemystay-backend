@@ -362,6 +362,10 @@ class PropertyResponse(BaseModel):
     average_rating: Optional[float] = 0.0
     review_count: Optional[int] = 0
     category: Optional[str] = None
+    seo_about: Optional[str] = Field(
+        None,
+        description="Long-form (~500 words) SEO narrative for PDPs; server-generated from listing data.",
+    )
 
     model_config = {"from_attributes": True}
 

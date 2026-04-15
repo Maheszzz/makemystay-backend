@@ -28,6 +28,7 @@ from app.services.property_list_cache import (
     properties_list_cache_key,
     set_cached_properties_list,
 )
+from app.utils.property_seo_narrative import build_property_seo_about
 from app.schemas.realty import (
     ContactCreate,
     ContactResponse,
@@ -49,6 +50,12 @@ from app.schemas.realty import (
 )
 
 realty_router = APIRouter(tags=["Realty"])
+
+
+def _property_response_from_orm(property_obj) -> PropertyResponse:
+    """ORM row → PropertyResponse, with server-generated long-form `seo_about` for PDP SEO."""
+    p = PropertyResponse.model_validate(property_obj)
+    return p.model_copy(update={"seo_about": build_property_seo_about(property_obj)})
 
 
 def _merge_head_and_mime_for_image_url(url: str) -> Tuple[str, bool, Optional[int]]:
@@ -407,6 +414,32 @@ def get_property_suggestions(
     return realty_repo.get_property_suggestions(db, q)
 
 
+@realty_router.get("/realty/properties/{property_id}/similar", response_model=PaginatedPropertyResponse)
+def list_similar_properties(
+    property_id: int,
+    limit: int = Query(
+        6,
+        ge=1,
+        le=12,
+        description="Max similar listings (default 6, max 12)",
+    ),
+    db: Session = Depends(get_mysql_db),
+):
+    """
+    Similar listings for a property detail page: locality + neighbor areas first, then broader same-category fill.
+
+    Not cached (property-specific; low volume).
+    """
+    out = realty_repo.get_similar_properties(db, property_id, limit=limit)
+    if out is None:
+        raise NotFoundException("Property", property_id)
+    properties, total = out
+    items = [
+        PropertyListItem.model_validate(p).model_dump(mode="json") for p in properties
+    ]
+    return JSONResponse(content={"items": items, "total": total})
+
+
 @realty_router.get("/realty/properties/{property_id}", response_model=PropertyResponse)
 def get_property(property_id: int, db: Session = Depends(get_mysql_db)):
     """
@@ -417,7 +450,7 @@ def get_property(property_id: int, db: Session = Depends(get_mysql_db)):
     property_obj = realty_repo.get_property_by_id(db, property_id)
     if not property_obj:
         raise NotFoundException("Property", property_id)
-    return property_obj
+    return _property_response_from_orm(property_obj)
 
 
 @realty_router.get(
@@ -435,7 +468,7 @@ def get_property_by_slug(
     property_obj = realty_repo.get_property_by_slug(db, property_type, slug)
     if not property_obj:
         raise NotFoundException("Property", f"{property_type}/{slug}")
-    return property_obj
+    return _property_response_from_orm(property_obj)
 
 
 @realty_router.post(
@@ -457,7 +490,7 @@ def create_property(
     try:
         out = realty_repo.create_property(db, property_data.model_dump())
         bump_properties_list_cache()
-        return out
+        return _property_response_from_orm(out)
     except SQLAlchemyError as e:
         raise DatabaseError(f"Failed to create property: {str(e)}")
 
@@ -484,7 +517,7 @@ def update_property(
             db, db_property, property_data.model_dump(exclude_unset=True)
         )
         bump_properties_list_cache()
-        return out
+        return _property_response_from_orm(out)
     except SQLAlchemyError as e:
         raise DatabaseError(f"Failed to update property: {str(e)}")
 
@@ -530,7 +563,7 @@ def restore_property(
     try:
         out = realty_repo.restore_property(db, db_property)
         bump_properties_list_cache()
-        return out
+        return _property_response_from_orm(out)
     except SQLAlchemyError as e:
         raise DatabaseError(f"Failed to restore property: {str(e)}")
 

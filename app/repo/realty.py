@@ -3,7 +3,7 @@ import time
 from collections import defaultdict
 from typing import Any, Callable, Dict, List, Optional, Tuple
 
-from sqlalchemy import desc, func, text
+from sqlalchemy import desc, func, or_, text
 from sqlalchemy.exc import OperationalError, SQLAlchemyError
 from sqlalchemy.orm import Session, attributes, joinedload, selectinload
 
@@ -385,6 +385,105 @@ def get_properties(
             )
 
     return properties, total_count
+
+
+# Bangalore micro-areas — reused for "similar property" locality expansion (keep in sync with get_properties search).
+_SIMILAR_NEARBY_LOCALITIES: Dict[str, List[str]] = {
+    "electronic city": ["bommasandra", "chandapura", "begur", "hebbagodi"],
+    "bommasandra": ["electronic city", "chandapura", "hebbagodi"],
+    "hsr layout": ["koramangala", "btm layout", "bellandur", "bommanahalli"],
+    "koramangala": ["hsr layout", "btm layout", "indiranagar", "ejipura"],
+    "whitefield": ["marathahalli", "bellandur", "mahadevapura", "itpl"],
+    "marathahalli": ["whitefield", "bellandur", "kadubeesanahalli", "munnekollal"],
+    "indiranagar": ["koramangala", "domlur", "hal", "cv raman nagar"],
+    "btm layout": ["hsr layout", "koramangala", "jayanagar", "jp nagar"],
+    "jayanagar": ["btm layout", "jp nagar", "basavanagudi", "banashankari"],
+    "jp nagar": ["jayanagar", "btm layout", "bannerghatta road", "banashankari"],
+}
+
+
+def _similar_locality_terms(location: Optional[str]) -> List[str]:
+    """First segment of location + neighbor areas (same idea as listing search)."""
+    if not location or not str(location).strip():
+        return []
+    first = str(location).split(",")[0].strip().lower()
+    if not first:
+        return []
+    terms: set = {first}
+    for key, neighbors in _SIMILAR_NEARBY_LOCALITIES.items():
+        if key in first or first in key:
+            terms.add(key)
+            terms.update(neighbors)
+    return list(terms)
+
+
+def get_similar_properties(
+    db: Session,
+    property_id: int,
+    limit: int = 6,
+) -> Optional[Tuple[List[Property], int]]:
+    """Similar listings for PDP: same tab as source (PG or same type), locality + neighbors then broader fill.
+
+    Returns ``None`` if the source property does not exist or is deleted.
+    """
+    src = (
+        db.query(Property)
+        .filter(Property.id == property_id)
+        .filter(func.coalesce(Property.is_deleted, False) == False)  # noqa: E712
+        .first()
+    )
+    if not src:
+        return None
+
+    is_pg = (src.property_type or "").lower() == "pg"
+
+    def base_query():
+        q = db.query(Property).filter(func.coalesce(Property.is_deleted, False) == False)  # noqa: E712
+        q = q.filter(Property.id != property_id)
+        if is_pg:
+            q = _apply_property_category_tab(q, "pg")
+        else:
+            if src.property_type:
+                q = q.filter(Property.property_type == src.property_type)
+            if src.listing_type:
+                q = q.filter(Property.listing_type == src.listing_type)
+        return q
+
+    terms = _similar_locality_terms(src.location)
+    results: List[Property] = []
+    seen_ids: set = set()
+
+    try:
+        db.execute(text("SET SESSION MAX_EXECUTION_TIME = 5000"))
+    except Exception:
+        pass
+
+    if terms:
+        q1 = base_query()
+        q1 = q1.filter(or_(*[Property.location.ilike(f"%{t}%") for t in terms]))
+        q1 = q1.order_by(desc(func.coalesce(Property.average_rating, 0)))
+        stage1 = execute_with_retry(lambda: q1.limit(limit).all())
+        results.extend(stage1)
+        seen_ids.update(p.id for p in results)
+
+    remaining = limit - len(results)
+    if remaining > 0:
+        q2 = base_query()
+        if seen_ids:
+            q2 = q2.filter(~Property.id.in_(seen_ids))
+        q2 = q2.order_by(desc(func.coalesce(Property.average_rating, 0)))
+        stage2 = execute_with_retry(lambda: q2.limit(remaining).all())
+        results.extend(stage2)
+
+    _attach_property_images_bulk(db, results, max_per_property=1)
+    for p in results:
+        if p.average_rating is not None:
+            p.average_rating = float(p.average_rating)
+        if p.review_count is None:
+            p.review_count = 0
+        attributes.set_committed_value(p, "reviews", [])
+
+    return results, len(results)
 
 
 def get_property_suggestions(db: Session, q: str) -> List[str]:
