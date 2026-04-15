@@ -21,7 +21,12 @@ def backfill_slugs():
         count = 0
         for p in properties:
             if p.property_name:
-                slug = generate_unique_slug(db, p.property_name)
+                slug = generate_unique_slug(
+                    db,
+                    p.property_name,
+                    p.property_type,
+                    p.location,
+                )
                 p.slug = slug
                 count += 1
 

@@ -638,8 +638,35 @@ def get_property_by_slug(
     return p
 
 
-def generate_unique_slug(db: Session, name: str) -> str:
-    base_slug = re.sub(r"[^a-zA-Z0-9]+", "-", name).strip("-").lower()
+def _slugify_fragment(value: Optional[str]) -> str:
+    if not value:
+        return ""
+    return re.sub(r"[^a-zA-Z0-9]+", "-", value).strip("-").lower()
+
+
+def _build_property_slug_source(
+    name: Optional[str],
+    property_type: Optional[str] = None,
+    location: Optional[str] = None,
+) -> str:
+    ordered_tokens: List[str] = []
+    for fragment in (name, property_type, location):
+        cleaned = _slugify_fragment(fragment)
+        if not cleaned:
+            continue
+        for token in cleaned.split("-"):
+            if token and token not in ordered_tokens:
+                ordered_tokens.append(token)
+    return "-".join(ordered_tokens)
+
+
+def generate_unique_slug(
+    db: Session,
+    name: str,
+    property_type: Optional[str] = None,
+    location: Optional[str] = None,
+) -> str:
+    base_slug = _build_property_slug_source(name, property_type, location) or _slugify_fragment(name)
     slug = base_slug
     counter = 1
     while db.query(Property).filter(Property.slug == slug).first():
@@ -651,7 +678,12 @@ def generate_unique_slug(db: Session, name: str) -> str:
 def create_property(db: Session, property_data: dict) -> Property:
     """Create a new property with transaction safety."""
     if not property_data.get("slug") and property_data.get("property_name"):
-        property_data["slug"] = generate_unique_slug(db, property_data["property_name"])
+        property_data["slug"] = generate_unique_slug(
+            db,
+            property_data["property_name"],
+            property_data.get("property_type"),
+            property_data.get("location"),
+        )
 
     try:
         db_property = Property(**property_data)
