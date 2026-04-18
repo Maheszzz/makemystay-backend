@@ -11,6 +11,7 @@ from alembic import op
 import sqlalchemy as sa
 from sqlalchemy import inspect
 from sqlalchemy.dialects import mysql
+from sqlalchemy.exc import OperationalError
 
 # revision identifiers, used by Alembic.
 revision: str = '7e87738469e8'
@@ -20,7 +21,27 @@ depends_on: Union[str, Sequence[str], None] = None
 
 
 def _table_exists(bind, name: str) -> bool:
-    return name in inspect(bind).get_table_names()
+    """Detect existing tables even when SA inspector misses them (MySQL quirks / partial runs)."""
+    insp = inspect(bind)
+    names_lower = {t.lower() for t in insp.get_table_names()}
+    if name.lower() in names_lower:
+        return True
+    if bind.dialect.name == "mysql":
+        row = bind.execute(
+            sa.text(
+                "SELECT 1 FROM information_schema.tables "
+                "WHERE table_schema = DATABASE() AND LOWER(table_name) = LOWER(:t) LIMIT 1"
+            ),
+            {"t": name},
+        ).fetchone()
+        return row is not None
+    return False
+
+
+def _is_mysql_duplicate_table(err: Exception) -> bool:
+    orig = getattr(err, "orig", err)
+    args = getattr(orig, "args", ())
+    return bool(args) and args[0] == 1050
 
 
 def _column_exists(bind, table: str, col: str) -> bool:
@@ -54,21 +75,25 @@ def upgrade() -> None:
 
     # zoho_webhook_events may already exist (manual / partial run) — avoid 1050 duplicate table.
     if not _table_exists(bind, "zoho_webhook_events"):
-        op.create_table(
-            "zoho_webhook_events",
-            sa.Column("id", sa.Integer(), nullable=False),
-            sa.Column("event_id", sa.String(length=100), nullable=False),
-            sa.Column("event_type", sa.String(length=50), nullable=True),
-            sa.Column("source", sa.String(length=50), nullable=True),
-            sa.Column("payload", sa.JSON(), nullable=False),
-            sa.Column("status", sa.String(length=20), nullable=True),
-            sa.Column("retry_count", sa.Integer(), nullable=True),
-            sa.Column("processing_time_ms", sa.Integer(), nullable=True),
-            sa.Column("created_at", sa.DateTime(), nullable=True),
-            sa.Column("processed_at", sa.DateTime(), nullable=True),
-            sa.Column("error_log", sa.Text(), nullable=True),
-            sa.PrimaryKeyConstraint("id"),
-        )
+        try:
+            op.create_table(
+                "zoho_webhook_events",
+                sa.Column("id", sa.Integer(), nullable=False),
+                sa.Column("event_id", sa.String(length=100), nullable=False),
+                sa.Column("event_type", sa.String(length=50), nullable=True),
+                sa.Column("source", sa.String(length=50), nullable=True),
+                sa.Column("payload", sa.JSON(), nullable=False),
+                sa.Column("status", sa.String(length=20), nullable=True),
+                sa.Column("retry_count", sa.Integer(), nullable=True),
+                sa.Column("processing_time_ms", sa.Integer(), nullable=True),
+                sa.Column("created_at", sa.DateTime(), nullable=True),
+                sa.Column("processed_at", sa.DateTime(), nullable=True),
+                sa.Column("error_log", sa.Text(), nullable=True),
+                sa.PrimaryKeyConstraint("id"),
+            )
+        except OperationalError as e:
+            if not _is_mysql_duplicate_table(e):
+                raise
 
     _safe_create_index(
         bind, op.f("ix_zoho_webhook_events_event_id"), "zoho_webhook_events", ["event_id"], unique=True

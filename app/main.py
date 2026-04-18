@@ -3,7 +3,11 @@
 import logging
 from contextlib import asynccontextmanager
 
-import sentry_sdk
+try:
+    import sentry_sdk
+except ImportError:
+    sentry_sdk = None  # type: ignore[assignment, misc]
+
 from dotenv import load_dotenv
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
@@ -63,13 +67,19 @@ THROTTLED_ERROR_ENDPOINTS = {"/api/v1/admin/analytics", "/api/v1/realty/properti
 
 # --- Sentry Setup ---
 if settings.SENTRY_DSN:
-    sentry_sdk.init(
-        dsn=settings.SENTRY_DSN,
-        environment=settings.ENV,
-        traces_sample_rate=1.0,
-        profiles_sample_rate=1.0,
-    )
-    logger.info("Sentry initialization complete")
+    if sentry_sdk is None:
+        logger.warning(
+            "SENTRY_DSN is set but sentry_sdk is not installed; "
+            "run `pip install sentry-sdk` using this environment's Python. Sentry disabled."
+        )
+    else:
+        sentry_sdk.init(
+            dsn=settings.SENTRY_DSN,
+            environment=settings.ENV,
+            traces_sample_rate=1.0,
+            profiles_sample_rate=1.0,
+        )
+        logger.info("Sentry initialization complete")
 
 def sync_all_job():
     """APScheduler wrapper for the unified sync function."""
