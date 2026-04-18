@@ -186,6 +186,7 @@ class PropertyBase(BaseModel):
 
     property_name: str = Field(..., min_length=1, max_length=150)
     location: Optional[str] = Field(None, max_length=150)
+    city: Optional[str] = Field(None, max_length=50)
     phone: Optional[str] = Field(None, max_length=15)
     map_link: Optional[str] = Field(None, max_length=500)
     description: Optional[str] = None
@@ -247,6 +248,7 @@ class PropertyUpdate(BaseModel):
 
     property_name: Optional[str] = Field(None, min_length=1, max_length=150)
     location: Optional[str] = Field(None, min_length=1, max_length=150)
+    city: Optional[str] = Field(None, max_length=50)
     phone: Optional[str] = Field(None, min_length=10, max_length=15)
     map_link: Optional[str] = Field(None, max_length=500)
     description: Optional[str] = None
@@ -288,6 +290,7 @@ class PropertyListItem(BaseModel):
     id: int
     property_name: str
     location: Optional[str] = None
+    city: Optional[str] = None
     phone: Optional[str] = None
     map_link: Optional[str] = None
     property_type: Optional[str] = None
@@ -341,6 +344,7 @@ class PropertyResponse(BaseModel):
     id: int
     property_name: str
     location: Optional[str] = None
+    city: Optional[str] = None
     phone: Optional[str] = None
     map_link: Optional[str] = None
     description: Optional[str] = None

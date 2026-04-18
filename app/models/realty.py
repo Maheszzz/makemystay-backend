@@ -55,6 +55,7 @@ class Property(MySQLBase):
     id = Column(Integer, primary_key=True, index=True, autoincrement=True)
     property_name = Column(String(150), nullable=False, index=True)
     location = Column(String(150), nullable=True, index=True)
+    city = Column(String(50), nullable=True, index=True)
     phone = Column(String(15), nullable=True)
     map_link = Column(String(500), nullable=True)
     description = Column(Text, nullable=True)

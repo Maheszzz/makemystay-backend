@@ -257,8 +257,8 @@ def get_properties(
         query = query.filter(Property.is_available == is_available)
 
     if city:
-        # Match city at the end or as part of location
-        query = query.filter(Property.location.ilike(f"%{city}%"))
+        # Match against the dedicated city column (exact if normalized, or ilike as fallback)
+        query = query.filter(or_(Property.city == city.lower(), Property.location.ilike(f"%{city}%")))
 
     if min_price is not None:
         query = query.filter(Property.starting_price >= min_price)
@@ -336,7 +336,7 @@ def get_properties(
         if is_available is not None:
             fallback_query = fallback_query.filter(Property.is_available == is_available)
         if city:
-            fallback_query = fallback_query.filter(Property.location.ilike(f"%{city}%"))
+            fallback_query = fallback_query.filter(or_(Property.city == city.lower(), Property.location.ilike(f"%{city}%")))
         if min_price is not None:
             fallback_query = fallback_query.filter(Property.starting_price >= min_price)
         if max_price is not None:
