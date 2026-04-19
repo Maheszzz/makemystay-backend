@@ -10,7 +10,7 @@ from app.core.redis import redis_conn
 
 CACHE_VERSION_KEY = "cache:realty:properties:list:ver"
 KEY_PREFIX = "cache:realty:properties:list"
-DEFAULT_TTL_SECONDS = 45
+DEFAULT_TTL_SECONDS = 300  # 5 minutes
 
 
 def _cache_version() -> str:

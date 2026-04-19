@@ -235,6 +235,9 @@ def get_properties(
     """
     from sqlalchemy import or_
 
+    # Safety: Enforce hard limit to prevent DB exhaustion / timeouts
+    limit = min(limit, 100)
+    
     query = db.query(Property)
     if not list_mode:
         query = query.options(selectinload(Property.reviews))

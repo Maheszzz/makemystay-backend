@@ -1,21 +1,34 @@
 #!/bin/bash
+# AWS Launch Template User Data Script for MakeMyStay Backend
+# This script runs automatically on every new instance launch.
 
-# Navigate to application directory
-cd /home/ubuntu/app
+set -e
 
-# Activate virtual environment
-# This ensures the correct python version and dependencies are used by PM2
+# 1. Cleanup old environments & stray processes
+sudo fuser -k 8000/tcp || true
+sudo pm2 kill || true
+
+# 2. Prepare Work Directory
+APP_DIR="/home/ubuntu/app"
+cd $APP_DIR
+
+# 3. Pull latest code (Optional: if using git)
+# git reset --hard HEAD
+# git pull origin production
+
+# 4. Initialize Virtual Environment
+if [ ! -d "venv" ]; then
+    python3 -m venv venv
+fi
 source venv/bin/activate
+pip install -r requirements.txt
 
-# Start the application using PM2 and save the process list
-echo "🚀 Starting backend with PM2..."
-pm2 start ecosystem.config.js
-pm2 save
+# 5. Start Application via PM2
+# We use 'ubuntu' user context for PM2 to match existing setup
+sudo -u ubuntu bash -c "cd $APP_DIR && pm2 start ecosystem.config.js && pm2 save"
 
-# Restart Nginx to ensure it's pointing to the fresh backend process
-echo "🔄 Restarting Nginx..."
-sudo systemctl restart nginx
+# 6. Setup Daily Cleanup Crons (Disk health)
+CRON_JOB="0 3 * * * sudo journalctl --vacuum-time=2d && sudo rm -rf /tmp/* && pm2 flush"
+(crontab -l 2>/dev/null | grep -v "journalctl --vacuum-time"; echo "$CRON_JOB") | crontab -
 
-# Success check (local)
-echo "🔍 Performing local health check..."
-curl -s -f http://localhost:8000/api/v1/live && echo "✅ High Availability Boot Sequence Complete!"
+echo "✅ Instance Initialization Complete"

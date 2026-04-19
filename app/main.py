@@ -112,7 +112,7 @@ async def lifespan(app: FastAPI):
         logger.error(f"Database initialization helper failed: {e}")
 
     # Housing / 99acres pull sync requires MySQL; disable when DB is unavailable locally (see LEAD_PULL_SYNC_ENABLED).
-    if getattr(settings, "LEAD_PULL_SYNC_ENABLED", False):
+    if getattr(settings, "RUN_SCHEDULER", False) and getattr(settings, "LEAD_PULL_SYNC_ENABLED", False):
         scheduler.add_job(
             sync_all_job,
             "interval",
@@ -122,9 +122,9 @@ async def lifespan(app: FastAPI):
         )
     else:
         logger.warning(
-            "LEAD_PULL_SYNC_ENABLED=false — Housing/99acres interval sync not scheduled (set true when MySQL is up)."
+            "LEAD_PULL_SYNC_ENABLED=false or RUN_SCHEDULER=false — sync not scheduled."
         )
-    if settings.LEAD_DAILY_SYNC_ENABLED and getattr(settings, "LEAD_PULL_SYNC_ENABLED", False):
+    if getattr(settings, "RUN_SCHEDULER", False) and settings.LEAD_DAILY_SYNC_ENABLED and getattr(settings, "LEAD_PULL_SYNC_ENABLED", False):
         scheduler.add_job(
             daily_recovery_sync_job,
             "cron",
@@ -133,7 +133,7 @@ async def lifespan(app: FastAPI):
             id="daily_recovery_sync_job",
         )
 
-    if getattr(settings, "EMAIL_POLL_INTERVAL_MINUTES", 0) > 0:
+    if getattr(settings, "RUN_SCHEDULER", False) and getattr(settings, "EMAIL_POLL_INTERVAL_MINUTES", 0) > 0:
         scheduler.add_job(
             email_sync_wrapper_job,
             "interval",
@@ -142,7 +142,7 @@ async def lifespan(app: FastAPI):
             next_run_time=datetime.now(),
         )
 
-    if getattr(settings, "S3_ORPHAN_CLEANUP_ENABLED", False):
+    if getattr(settings, "RUN_SCHEDULER", False) and getattr(settings, "S3_ORPHAN_CLEANUP_ENABLED", False):
         scheduler.add_job(
             s3_orphan_cleanup_job,
             "cron",
@@ -151,7 +151,10 @@ async def lifespan(app: FastAPI):
             id="s3_orphan_cleanup_job",
         )
 
-    scheduler.start()
+    if getattr(settings, "RUN_SCHEDULER", False):
+        scheduler.start()
+    else:
+        logger.info("Background scheduler disabled for this instance (RUN_SCHEDULER=false)")
     if getattr(settings, "LEAD_PULL_SYNC_ENABLED", False):
         logger.info(
             f"APScheduler: sync_all_job every {settings.HOUSING_SYNC_INTERVAL_SECONDS}s"

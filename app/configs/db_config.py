@@ -37,16 +37,16 @@ mysql_engine = create_engine(
     MYSQL_DATABASE_URL,
     echo=settings.SQLALCHEMY_ECHO,
     pool_pre_ping=True,
-    pool_size=10,
-    max_overflow=20,
-    pool_timeout=30,
+    pool_size=20,
+    max_overflow=40,
+    pool_timeout=15,
     # Fail fast instead of hanging on unreachable/slow DB.
-    # This helps the API return an error quickly rather than timing out in the browser.
+    # This helps the API return an error quickly (before frontend's 30-45s timeout).
     connect_args={
-        "connect_timeout": 10,
+        "connect_timeout": 5,
         # PyMySQL: avoid half-open connections (Docker / port-forward / flaky networks).
-        "read_timeout": 60,
-        "write_timeout": 60,
+        "read_timeout": 30,
+        "write_timeout": 30,
     },
     # Recycle before common wait_timeout / proxy idle limits (stale pooled connections).
     pool_recycle=300,

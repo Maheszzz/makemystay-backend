@@ -165,6 +165,9 @@ class Settings(BaseSettings):
     LEAD_DAILY_SYNC_ENABLED: bool = True
     LEAD_DAILY_SYNC_HOUR_UTC: int = 2
     LEAD_DAILY_SYNC_MINUTE_UTC: int = 0
+    # If true, the background APScheduler starts in this process.
+    # Usually enabled for only ONE of the PM2 API instances or a dedicated worker.
+    RUN_SCHEDULER: bool = False
 
     # 99acres Pull API
     # Obtain ACRES_API_KEY from your 99acres account manager.
