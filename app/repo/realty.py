@@ -222,7 +222,7 @@ def get_properties(
     min_price: Optional[float] = None,
     max_price: Optional[float] = None,
     city: Optional[str] = None,
-    sort_by: Optional[str] = "rating_desc",
+    sort_by: Optional[str] = "review_count_desc",
     include_deleted: bool = False,
     list_mode: bool = True,
 ) -> Tuple[List[Property], int]:
@@ -303,6 +303,8 @@ def get_properties(
         query = query.order_by(Property.starting_price.desc())
     elif sort_by == "newest":
         query = query.order_by(Property.created_at.desc())
+    elif sort_by == "review_count_desc":
+        query = query.order_by(desc(func.coalesce(Property.review_count, 0)))
     else:  # rating_desc (default)
         query = query.order_by(desc(func.coalesce(Property.average_rating, 0)))
 
@@ -363,6 +365,8 @@ def get_properties(
             fallback_query = fallback_query.order_by(Property.starting_price.desc())
         elif sort_by == "newest":
             fallback_query = fallback_query.order_by(Property.created_at.desc())
+        elif sort_by == "review_count_desc":
+            fallback_query = fallback_query.order_by(desc(func.coalesce(Property.review_count, 0)))
         else:
             fallback_query = fallback_query.order_by(desc(func.coalesce(Property.average_rating, 0)))
 

@@ -328,7 +328,8 @@ def list_properties(
     max_price: Optional[float] = Query(None, description="Maximum price"),
     city: Optional[str] = Query(None, description="Filter by city"),
     sort_by: Optional[str] = Query(
-        "rating_desc", description="Sort by: rating_desc, price_asc, price_desc, newest"
+        "review_count_desc",
+        description="Sort by: review_count_desc, rating_desc, price_asc, price_desc, newest",
     ),
     db: Session = Depends(get_mysql_db),
 ):
@@ -348,7 +349,7 @@ def list_properties(
     - **min_price**: Minimum price
     - **max_price**: Maximum price
     - **city**: Filter by city
-    - **sort_by**: Sort order (default: rating_desc)
+    - **sort_by**: Sort order (default: review_count_desc)
     """
     pt = property_type.value if property_type else None
     lt = listing_type.value if listing_type else None
