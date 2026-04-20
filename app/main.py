@@ -174,7 +174,8 @@ async def lifespan(app: FastAPI):
         )
     yield
     logger.info("Shutting down background scheduler...")
-    scheduler.shutdown()
+    if scheduler.running:
+        scheduler.shutdown()
 
 # --- FastAPI App ---
 app = FastAPI(
