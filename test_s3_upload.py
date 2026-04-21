@@ -19,7 +19,7 @@ def test_s3_connection():
     if key_id:
         print(f"🔑 Key ID: {key_id[:8]}... (mask)")
     else:
-        print("👤 Identity: Credential-less (Using IAM Instance Profile)")
+        print("👤 Identity: Credential-less (Checking IAM Instance Profile / Local Session)")
 
     try:
         if key_id and secret:
