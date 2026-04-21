@@ -2,8 +2,8 @@ import boto3
 import sys
 
 def find_instances():
-    access_key = "AKIAY6DIL2D7OWCXNI7G"
-    secret_key = "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"
+    access_key = "AKIAY6DIL2D7DYV2ECJI"
+    secret_key = "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"
     region = "ap-south-1"
 
     try:
