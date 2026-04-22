@@ -8,6 +8,7 @@ from sqlalchemy.exc import OperationalError, SQLAlchemyError
 from sqlalchemy.orm import Session, attributes, joinedload, selectinload
 
 from app.models.realty import Contact, Property, PropertyImage, Review
+from app.utils.city_mapping import find_city_for_location
 
 
 def execute_with_retry(fn: Callable[[], Any], retries: int = 3, delay: float = 1.0) -> Any:
@@ -260,8 +261,21 @@ def get_properties(
         query = query.filter(Property.is_available == is_available)
 
     if city:
-        # Match against the dedicated city column (exact if normalized, or ilike as fallback)
-        query = query.filter(or_(Property.city == city.lower(), Property.location.ilike(f"%{city}%")))
+        # Match against the dedicated city column, the literal location string, 
+        # OR known sub-localities that belong to this city if the city column is empty.
+        c_lower = city.lower().strip()
+        conditions = [
+            Property.city == c_lower,
+            Property.location.ilike(f"%{city}%")
+        ]
+        
+        # If city is a major one (bangalore, hyderabad, pune), include its sub-localities
+        from app.utils.city_mapping import get_localities_for_city
+        localities = get_localities_for_city(c_lower)
+        if localities:
+            conditions.append(or_(*[Property.location.ilike(f"%{loc}%") for loc in localities]))
+            
+        query = query.filter(or_(*conditions))
 
     if min_price is not None:
         query = query.filter(Property.starting_price >= min_price)
@@ -691,6 +705,10 @@ def create_property(db: Session, property_data: dict) -> Property:
             property_data.get("property_type"),
             property_data.get("location"),
         )
+    
+    # Auto-populate city if missing
+    if not property_data.get("city") and property_data.get("location"):
+        property_data["city"] = find_city_for_location(property_data["location"])
 
     try:
         db_property = Property(**property_data)
@@ -708,6 +726,11 @@ def update_property(db: Session, db_property: Property, update_data: dict) -> Pr
     try:
         for field, value in update_data.items():
             setattr(db_property, field, value)
+            
+        # If location changed and city is not explicitly provided, re-derive city
+        if "location" in update_data and "city" not in update_data:
+            db_property.city = find_city_for_location(update_data["location"])
+            
         db.commit()
         db.refresh(db_property)
         return db_property
