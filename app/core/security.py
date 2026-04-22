@@ -20,6 +20,9 @@ ALGORITHM = settings.ALGORITHM
 ACCESS_TOKEN_EXPIRE_MINUTES = settings.ACCESS_TOKEN_EXPIRE_MINUTES
 REFRESH_TOKEN_EXPIRE_MINUTES = getattr(settings, "REFRESH_TOKEN_EXPIRE_MINUTES", 60 * 24 * 7) # 7 days default
 
+from loguru import logger
+logger.info(f"OAUTH2 SECURITY INIT | SECRET_KEY_PREFIX: {SECRET_KEY[:5]}... | ALGORITHM: {ALGORITHM}")
+
 
 
 def verify_password(plain_password: str, hashed_password: str) -> bool:
@@ -41,6 +44,7 @@ def create_access_token(data: dict, expires_delta: Optional[timedelta] = None) -
         expire = datetime.utcnow() + timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
 
     to_encode.update({"exp": expire})
+    logger.info(f"SIGNING TOKEN | key_len={len(SECRET_KEY)} prefix={SECRET_KEY[:5]}")
     encoded_jwt = jwt.encode(to_encode, SECRET_KEY, algorithm=ALGORITHM)
     return encoded_jwt
 
@@ -81,10 +85,13 @@ def get_current_user(
     token: Optional[str] = Depends(oauth2_scheme), 
     db: Session = Depends(get_mysql_db)
 ):
-    """Validate token from Context or Cookie and return current user."""
-    access_token = request.cookies.get("access_token")
+    """Validate token from Header (priority) or Cookie and return current user."""
+    # 1. Prioritize Authorization header (passed via oauth2_scheme)
+    access_token = token
+    
+    # 2. Fallback to Cookie only if header is missing
     if not access_token:
-        access_token = token
+        access_token = request.cookies.get("access_token")
 
     credentials_exception = HTTPException(
         status_code=status.HTTP_401_UNAUTHORIZED,
@@ -106,6 +113,7 @@ def get_current_user(
     user = user_repo.get_user_by_email(db, email=email)
     if user is None:
         raise credentials_exception
+    
     return user
 
 

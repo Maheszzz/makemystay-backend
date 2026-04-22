@@ -9,8 +9,9 @@ except ImportError:
     sentry_sdk = None  # type: ignore[assignment, misc]
 
 from dotenv import load_dotenv
-from fastapi import FastAPI, Request
+from fastapi import FastAPI, Request, Depends
 from fastapi.middleware.cors import CORSMiddleware
+from sqlalchemy.orm import Session
 from fastapi.responses import JSONResponse
 from starlette.middleware.gzip import GZipMiddleware
 from loguru import logger
@@ -24,6 +25,7 @@ from collections import defaultdict
 
 from app.core.config import settings
 from app.core.log_dedupe import should_log_once
+from app.configs.db_config import get_mysql_db
 
 # --- Settings & Logging ---
 load_dotenv()
@@ -192,6 +194,13 @@ app.state.limiter = limiter
 app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 
 # --- Middleware ---
+@app.middleware("http")
+async def log_request_headers(request: Request, call_next):
+    if "/uploads/binary" in request.url.path:
+        auth = request.headers.get("authorization", "MISSING")
+        logger.info(f"UPLOAD REQ | path={request.url.path} auth={auth[:20]}... | type={request.headers.get('content-type')}")
+    return await call_next(request)
+
 # CSRF first, then CORS (last add_middleware = outermost in Starlette) so OPTIONS preflights
 # hit CORSMiddleware before any other logic. See Starlette `reversed(user_middleware)` stack build.
 @app.middleware("http")
@@ -407,7 +416,6 @@ async def health():
 
 
 @app.get("/api/v1/whoami", tags=["Health"])
-@app.get("/whoami", tags=["Health"])
 def whoami():
     """Debug endpoint to identify the instance."""
     return {
