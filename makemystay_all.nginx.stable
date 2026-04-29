@@ -66,7 +66,7 @@ server {
     listen 80;
     server_name admin.makemystay.ai;
 
-    root /var/www/makemystay-admin;
+    root /var/www/makemystay-admin/current;
     index index.html;
 
     location = /health {
@@ -89,10 +89,19 @@ server {
     }
 
     location /assets/ {
-        root /var/www/makemystay-admin;
+        root /var/www/makemystay-admin/current;
         try_files $uri =404;
         expires 1y;
-        add_header Cache-Control "public, immutable";
+        add_header Cache-Control "public, immutable" always;
+    }
+
+    # Prevent stale HTML during rolling deploys.
+    location = /index.html {
+        try_files $uri =404;
+        expires -1;
+        add_header Cache-Control "no-cache, no-store, must-revalidate" always;
+        add_header Pragma "no-cache" always;
+        add_header Expires "0" always;
     }
 
     location / {
