@@ -243,13 +243,35 @@ async def analytics(request: Request, db: Session = Depends(get_mysql_db)):
             .count()
         )
 
-        failed_lead_ids = [
-            row[0]
-            for row in db.query(Lead.id)
-            .filter(Lead.crm_status == "failed")
-            .order_by(Lead.id.asc())
-            .limit(50)
+        recent_leads = [
+            {
+                "id": l.id,
+                "name": l.name,
+                "phone_masked": f"{l.phone[:2]}***{l.phone[-4:]}" if l.phone and len(l.phone) > 6 else l.phone,
+                "source": l.source,
+                "city": l.city,
+                "project_name": l.project_name,
+                "lead_stage": l.lead_stage,
+                "created_at": l.created_at.isoformat() if l.created_at else None,
+            }
+            for l in db.query(Lead)
+            .filter(Lead.is_deleted.is_(False))
+            .order_by(Lead.id.desc())
+            .limit(30)
             .all()
+        ]
+
+        from app.models.sync_metadata import SyncMetadata
+        sync_meta = db.query(SyncMetadata).all()
+        sync_status = [
+            {
+                "source": s.source,
+                "last_sync_at": s.last_sync_at.isoformat() if s.last_sync_at else None,
+                "status": s.status,
+                "leads_fetched": s.leads_fetched,
+                "last_error": s.last_error,
+            }
+            for s in sync_meta
         ]
 
         # Rows that received a Zoho Lead ID after sync (closest to “exists in Zoho org”).
@@ -290,24 +312,30 @@ async def analytics(request: Request, db: Session = Depends(get_mysql_db)):
             .scalar()
         )
 
-        sync_meta = db.query(SyncMetadata).all()
-        sync_status = [
-            {
-                "source": s.source,
-                "last_sync": s.last_sync_at.isoformat() if s.last_sync_at else None,
-                "status": s.status,
-                "leads_fetched": s.leads_fetched,
-                "last_error": s.last_error,
-            }
-            for s in sync_meta
-        ]
+        # Property counts by category (UI filter tabs)
+        pg_count = db.query(Property).filter(not_deleted, Property.property_type.ilike("PG")).count()
+        plot_count = db.query(Property).filter(not_deleted, Property.property_type.ilike("Plot")).count()
+        # Rent: listing_type=rent but not PG or Plot
+        rent_count = db.query(Property).filter(
+            not_deleted, 
+            Property.listing_type == "rent",
+            ~Property.property_type.ilike("PG"),
+            ~Property.property_type.ilike("Plot")
+        ).count()
+        # Buy: listing_type=buy but not Plot
+        buy_count = db.query(Property).filter(
+            not_deleted,
+            Property.listing_type == "buy",
+            ~Property.property_type.ilike("Plot")
+        ).count()
 
         return {
             "total_leads": total_leads,
             "leads_linked_zoho": leads_linked_zoho,
             "today_leads": today_leads,
             "failed": failed,
-            "failed_lead_ids": failed_lead_ids,
+            "recent_leads": recent_leads,
+            "sync_status": sync_status,
             "total_properties": total_properties,
             "active_properties": active_properties,
             "properties_added_this_month": properties_added_this_month,
@@ -323,6 +351,13 @@ async def analytics(request: Request, db: Session = Depends(get_mysql_db)):
             "reentry_events_total": reentry_events_total,
             "csv_import_avg_success_rate_30d": float(csv_avg) if csv_avg is not None else None,
             "sync_status": sync_status,
+            "property_counts": {
+                "all": total_properties,
+                "pg": pg_count,
+                "rent": rent_count,
+                "buy": buy_count,
+                "plot": plot_count
+            }
         }
 
     try:

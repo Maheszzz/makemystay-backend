@@ -403,3 +403,4 @@ class PaginatedPropertyResponse(BaseModel):
 
     items: List[PropertyListItem]
     total: int
+    property_counts: Optional[dict] = None

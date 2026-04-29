@@ -394,10 +394,41 @@ def list_properties(
         sort_by=sort_by,
         list_mode=True,
     )
+    from app.models.realty import Property as PropertyModel
+    from sqlalchemy import func
+
+    not_deleted = PropertyModel.is_deleted == False
+    
+    # Global counts for all categories (public UI tabs)
+    pg_count = db.query(PropertyModel).filter(not_deleted, PropertyModel.property_type.ilike("PG")).count()
+    plot_count = db.query(PropertyModel).filter(not_deleted, PropertyModel.property_type.ilike("Plot")).count()
+    rent_count = db.query(PropertyModel).filter(
+        not_deleted, 
+        PropertyModel.listing_type == "rent",
+        ~PropertyModel.property_type.ilike("PG"),
+        ~PropertyModel.property_type.ilike("Plot")
+    ).count()
+    buy_count = db.query(PropertyModel).filter(
+        not_deleted,
+        PropertyModel.listing_type == "buy",
+        ~PropertyModel.property_type.ilike("Plot")
+    ).count()
+
     items = [
         PropertyListItem.model_validate(p).model_dump(mode="json") for p in properties
     ]
-    payload = {"items": items, "total": total}
+
+    payload = {
+        "items": items, 
+        "total": total,
+        "property_counts": {
+            "all": db.query(PropertyModel).filter(not_deleted).count(),
+            "pg": pg_count,
+            "rent": rent_count,
+            "buy": buy_count,
+            "plot": plot_count
+        }
+    }
     set_cached_properties_list(cache_key, payload)
     return JSONResponse(content=payload)
 
