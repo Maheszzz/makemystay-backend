@@ -23,7 +23,14 @@ SSH_OPTS="-i $PEM_KEY -o StrictHostKeyChecking=no -o ConnectTimeout=15 -o Server
 SSH="ssh $SSH_OPTS $EC2_USER@$EC2_HOST"
 
 echo "🚀 Starting Backend Deployment..."
-echo "📍 Target Host: $EC2_HOST"
+# ===== TARGET SERVERS =====
+# We have a Load Balancer (ELB) with two targets. We must deploy to BOTH.
+ALL_SERVERS=("13.126.149.224" "13.201.61.117")
+
+for EC2_HOST in "${ALL_SERVERS[@]}"; do
+    echo "--------------------------------------------------------"
+    echo "📍 Target Host: $EC2_HOST"
+    SSH="ssh $SSH_OPTS $EC2_USER@$EC2_HOST"
 
 # ===== PREFLIGHT CHECK =====
 echo "🔍 Checking server reachability..."
@@ -201,11 +208,15 @@ for i in $(seq 1 $MAX_RETRIES); do
 done
 
 if [ $SUCCESS -eq 0 ]; then
-  echo "❌ All health check attempts failed. Showing PM2 logs on server:"
-  ssh -i "$PEM_KEY" -o StrictHostKeyChecking=no "$EC2_USER@$EC2_HOST" "pm2 logs makemystay-api --lines 20 --no-colors"
+  echo "❌ All health check attempts failed for $EC2_HOST. Showing PM2 logs on server:"
+  ssh -i "$PEM_KEY" -o StrictHostKeyChecking=no "$EC2_USER@$EC2_HOST" "pm2 logs makemystay-api --lines 20"
   exit 1
 fi
 
-echo ""
-echo "✅ PM2 Deploy complete — ALB liveness: /api/v1/live  |  full checks: /api/v1/health"
+echo "✅ Successfully deployed to $EC2_HOST"
+done
+
+echo "--------------------------------------------------------"
+echo "✅ All-Server Backend Deployment complete!"
+echo "🚀 PM2 Deploy complete — ALB liveness: /api/v1/live  |  full checks: /api/v1/health"
 
