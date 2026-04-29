@@ -435,6 +435,14 @@ def _enqueue_crm_sync(db: Session, lead: Lead, *, csv_stagger_index: Optional[in
 
 def _enqueue_whatsapp(db: Session, lead: Lead, *, csv_stagger_index: Optional[int] = None) -> None:
     """Enqueue WhatsApp notification (Celery)."""
+    # 🔴 Safety Guard: Suppress notifications for backfilled (old) leads
+    if lead.lead_date:
+        now_ts = int(datetime.now(timezone.utc).timestamp())
+        age_seconds = now_ts - lead.lead_date
+        if age_seconds > 3600: # 1 hour
+            logger.info(f"WhatsApp suppressed for lead {lead.id} — lead age is {age_seconds/3600:.1f} hours")
+            return
+
     try:
         from app.tasks.lead_tasks import send_lead_whatsapp_task
 
@@ -452,6 +460,14 @@ def _enqueue_whatsapp(db: Session, lead: Lead, *, csv_stagger_index: Optional[in
 
 def _enqueue_ai_call(db: Session, lead: Lead, *, csv_stagger_index: Optional[int] = None) -> None:
     """Enqueue AI call (Celery)."""
+    # 🔴 Safety Guard: Suppress AI calls for backfilled (old) leads
+    if lead.lead_date:
+        now_ts = int(datetime.now(timezone.utc).timestamp())
+        age_seconds = now_ts - lead.lead_date
+        if age_seconds > 3600: # 1 hour
+            logger.info(f"AI call suppressed for lead {lead.id} — lead age is {age_seconds/3600:.1f} hours")
+            return
+
     try:
         from app.tasks.lead_tasks import trigger_lead_ai_call_task
 

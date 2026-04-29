@@ -51,37 +51,72 @@ _99acres_sync_lock = threading.Lock()
 # ---------------------------------------------------------------------------
 
 async def sync_all_sources():
-    """Run all lead-source syncs; each in its own DB session and error bubble."""
-    results = await asyncio.gather(
-        _run_housing_sync(),
-        _run_99acres_sync(),
-        return_exceptions=True,          # never let one source cancel another
-    )
-    for r in results:
-        if isinstance(r, Exception):
-            logger.error(f"sync_all_sources: a source sync raised: {r}")
-            # Proactive alerting for production
-            if settings.ENV == "production":
-                await alert_service.send_alert(
-                    f"Lead sync failed for a source: {r}\nCheck PM2 logs for details.",
-                    level="error"
-                )
+    """Run all lead-source syncs; each in its own DB session and error bubble.
+    Uses a Redis distributed lock to ensure only one worker process runs this at a time.
+    """
+    from app.core.redis import redis_conn
+    
+    lock_key = "lock:global_lead_sync"
+    is_locked = False
+    
+    if redis_conn:
+        # Acquire lock with 5-minute expiry to prevent deadlocks on crash
+        is_locked = redis_conn.set(lock_key, "locked", nx=True, ex=300)
+        if not is_locked:
+            logger.debug("Global lead sync skipped: another worker process is already running it")
+            return
+
+    try:
+        results = await asyncio.gather(
+            _run_housing_sync(),
+            _run_99acres_sync(),
+            return_exceptions=True,          # never let one source cancel another
+        )
+        for r in results:
+            if isinstance(r, Exception):
+                logger.error(f"sync_all_sources: a source sync raised: {r}")
+                # Proactive alerting for production
+                if settings.ENV == "production":
+                    await alert_service.send_alert(
+                        f"Lead sync failed for a source: {r}\nCheck PM2 logs for details.",
+                        level="error"
+                    )
+    finally:
+        if is_locked and redis_conn:
+            redis_conn.delete(lock_key)
 
 async def sync_daily_recovery():
-    """Daily safety sync that force-pulls the latest 24-hour window."""
-    results = await asyncio.gather(
-        _run_housing_sync(forced_lookback_seconds=86400),
-        _run_99acres_sync(forced_lookback_seconds=86400),
-        return_exceptions=True,
-    )
-    for r in results:
-        if isinstance(r, Exception):
-            logger.error(f"sync_daily_recovery: a source sync raised: {r}")
-            if settings.ENV == "production":
-                await alert_service.send_alert(
-                    f"Daily lead recovery failed: {r}",
-                    level="warning"
-                )
+    """Daily safety sync that force-pulls the latest 24-hour window.
+    Also uses a Redis lock to avoid redundant recovery runs.
+    """
+    from app.core.redis import redis_conn
+    
+    lock_key = "lock:daily_recovery_sync"
+    is_locked = False
+    
+    if redis_conn:
+        is_locked = redis_conn.set(lock_key, "locked", nx=True, ex=3600) # 1 hour lock for daily
+        if not is_locked:
+            logger.debug("Daily recovery sync skipped: another worker is already running it")
+            return
+
+    try:
+        results = await asyncio.gather(
+            _run_housing_sync(forced_lookback_seconds=86400),
+            _run_99acres_sync(forced_lookback_seconds=86400),
+            return_exceptions=True,
+        )
+        for r in results:
+            if isinstance(r, Exception):
+                logger.error(f"sync_daily_recovery: a source sync raised: {r}")
+                if settings.ENV == "production":
+                    await alert_service.send_alert(
+                        f"Daily lead recovery failed: {r}",
+                        level="warning"
+                    )
+    finally:
+        if is_locked and redis_conn:
+            redis_conn.delete(lock_key)
 
 
 # ---------------------------------------------------------------------------

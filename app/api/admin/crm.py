@@ -290,6 +290,18 @@ async def analytics(request: Request, db: Session = Depends(get_mysql_db)):
             .scalar()
         )
 
+        sync_meta = db.query(SyncMetadata).all()
+        sync_status = [
+            {
+                "source": s.source,
+                "last_sync": s.last_sync_at.isoformat() if s.last_sync_at else None,
+                "status": s.status,
+                "leads_fetched": s.leads_fetched,
+                "last_error": s.last_error,
+            }
+            for s in sync_meta
+        ]
+
         return {
             "total_leads": total_leads,
             "leads_linked_zoho": leads_linked_zoho,
@@ -310,6 +322,7 @@ async def analytics(request: Request, db: Session = Depends(get_mysql_db)):
             "duplicate_reentry_rate": duplicate_reentry_rate,
             "reentry_events_total": reentry_events_total,
             "csv_import_avg_success_rate_30d": float(csv_avg) if csv_avg is not None else None,
+            "sync_status": sync_status,
         }
 
     try:

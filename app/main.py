@@ -395,8 +395,10 @@ async def live():
 async def health():
     """Detailed health check endpoint."""
     from app.configs.db_config import mysql_engine
+    from app.core.redis import redis_conn
+    
+    # Check DB
     try:
-        # Check DB with a strict timeout
         from sqlalchemy import text
         with mysql_engine.connect() as conn:
             conn.execute(text("SELECT 1"))
@@ -405,12 +407,24 @@ async def health():
         logger.warning(f"Health check DB failure: {e}")
         db_status = "disconnected"
 
+    # Check Redis
+    try:
+        if redis_conn:
+            redis_conn.ping()
+            redis_status = "connected"
+        else:
+            redis_status = "not_configured"
+    except Exception as e:
+        logger.warning(f"Health check Redis failure: {e}")
+        redis_status = "disconnected"
+
     return {
-        "status": "healthy" if db_status == "connected" else "degraded",
+        "status": "healthy" if db_status == "connected" and redis_status == "connected" else "degraded",
         "service": "Realty API",
         "version": "1.0.0",
         "env": settings.ENV,
         "database": db_status,
+        "redis": redis_status,
         "scheduler": "running" if scheduler.running else "stopped"
     }
 
