@@ -7,6 +7,7 @@ def update_plot():
     plot_data = {
         "property_name": "Premium Residential Plot",
         "location": "Jigani, Anekal main road banglore",
+        "city": "bangalore",
         "starting_price": 3600000.0,
         "description": "Plots Size - 1200sq ft to 2400sq ft • Price - 3000/- per sq ft • Total 11 Plots available • Location - Jigani, Anekal main road banglore",
         "features": ["1200 - 2400 sq ft", "11 Plots Available", "₹3000/sq ft"],
