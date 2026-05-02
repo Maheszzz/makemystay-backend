@@ -78,6 +78,39 @@
    ```
    The API will be available at `http://localhost:8000`.
 
+## Database access via SSH tunnel
+
+Production MySQL often sits on a private IP (for example RDS). You reach it by SSH port forwarding through an EC2 instance that can see that address.
+
+### Private key (`.pem`)
+
+- Use the **private key file** from the EC2 key pair (for example `~/Downloads/makemystayrealty.pem`). It is not stored in this repository and cannot be recovered from AWS if you lose the file; you would need a new key pair or another access method (for example SSM).
+- Restrict permissions on the key: `chmod 600 /path/to/your.pem`
+- Never commit `.pem` files or paste private key contents into issues, chat, or CI logs.
+
+### Defaults in `deploy.sh`
+
+[`deploy.sh`](deploy.sh) uses:
+
+- **`DEPLOY_PEM`**: PEM path (default on this machine’s layout: `/Users/maheswaranm/Downloads/makemystayrealty.pem`). Override with `DEPLOY_PEM=/path/to/key.pem`.
+- **`DEPLOY_HOST`**: SSH target (default `13.126.149.224`). The deploy script also targets `13.201.61.117` in its server loop.
+- **User**: `ubuntu`
+
+### Example tunnel
+
+Forward local port `3336` to MySQL on the database host **as resolved from the EC2 box** (replace the private IP if yours differs):
+
+```bash
+ssh -i ~/Downloads/makemystayrealty.pem -L 3336:172.31.46.162:3306 ubuntu@13.126.149.224
+```
+
+Keep that session open. Then point your SQL client or app at **`127.0.0.1:3336`**. For local overrides when tunneling, see [`.env.example`](.env.example) (`DB_PORT=3336` is documented there).
+
+### Other repos / machines
+
+- Debug logs in this repo may reference paths like `makemystay-backend.pem` on Windows; that is not necessarily your local key path.
+- The frontend repo’s `deploy.sh` may default to a different PEM (for example `$HOME/.ssh/mmsr_deploy_key.pem`); that can differ from the key used for this backend / DB bastion.
+
 ## 📚 API Documentation
 
 Once the server is running, you can access the interactive API documentation:
