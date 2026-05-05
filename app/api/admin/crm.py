@@ -191,6 +191,18 @@ async def analytics(request: Request, db: Session = Depends(get_mysql_db)):
         today = func.date(Lead.created_at) == func.current_date()
         today_leads = db.query(Lead).filter(today).count()
         failed = db.query(Lead).filter(Lead.crm_status == "failed").count()
+        permanently_failed = db.query(Lead).filter(Lead.crm_status == "permanently_failed").count()
+
+        status_rows = db.query(Lead.crm_status, func.count(Lead.id)).group_by(Lead.crm_status).all()
+        crm_status_breakdown: dict = {str(row[0]): int(row[1]) for row in status_rows if row[0] is not None}
+
+        def _crm_count(key: str) -> int:
+            return int(crm_status_breakdown.get(key, 0))
+
+        crm_pending = _crm_count("pending")
+        crm_processing = _crm_count("processing")
+        crm_queued = _crm_count("queued")
+        crm_retrying = _crm_count("retrying")
 
         not_deleted = Property.is_deleted == False  # noqa: E712
         total_properties = db.query(Property).filter(not_deleted).count()
@@ -334,6 +346,12 @@ async def analytics(request: Request, db: Session = Depends(get_mysql_db)):
             "leads_linked_zoho": leads_linked_zoho,
             "today_leads": today_leads,
             "failed": failed,
+            "crm_permanently_failed": permanently_failed,
+            "crm_pending": crm_pending,
+            "crm_processing": crm_processing,
+            "crm_queued": crm_queued,
+            "crm_retrying": crm_retrying,
+            "crm_status_breakdown": crm_status_breakdown,
             "recent_leads": recent_leads,
             "sync_status": sync_status,
             "total_properties": total_properties,
@@ -370,6 +388,12 @@ async def analytics(request: Request, db: Session = Depends(get_mysql_db)):
             "leads_linked_zoho": 0,
             "today_leads": 0,
             "failed": 0,
+            "crm_permanently_failed": 0,
+            "crm_pending": 0,
+            "crm_processing": 0,
+            "crm_queued": 0,
+            "crm_retrying": 0,
+            "crm_status_breakdown": {},
             "failed_lead_ids": [],
             "total_properties": 0,
             "active_properties": 0,

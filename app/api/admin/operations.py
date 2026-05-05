@@ -4,7 +4,7 @@ Admin operations: stats, analytics, sync jobs, WhatsApp tools, payment analytics
 
 import time
 
-from fastapi import APIRouter, Depends, HTTPException, Request
+from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from loguru import logger
 from sqlalchemy import func
 from sqlalchemy.orm import Session
@@ -16,7 +16,7 @@ from app.core.rate_limit import limiter
 from app.core.redis import HISTORICAL_HOUSING_SYNC_LOCK, lead_queue, redis_conn
 from app.models.lead import Lead
 from app.schemas.whatsapp import WhatsAppBulkSendRequest, WhatsAppBulkSendResponse
-from app.tasks.lead_tasks import sync_lead_to_zoho_task
+from app.tasks.lead_tasks import sync_lead_to_zoho_task, sync_pending_leads_batch_task
 from app.tasks.whatsapp_tasks import send_whatsapp_bulk_task
 from app.services.email_service import sync_emails_job
 
@@ -58,6 +58,28 @@ async def retry_failed_syncs(
         "status": "ok",
         "requeued": requeued_count,
         "total_failed_remaining": db.query(Lead).filter(Lead.crm_status == "failed").count(),
+    }
+
+
+@router.post(
+    "/sync/zoho-pending-batch",
+    summary="Enqueue one Zoho bulk upsert for pending portal leads (99acres/housing batch path)",
+)
+@limiter.limit("5/minute")
+async def trigger_zoho_pending_batch(
+    request: Request,
+    limit: int = Query(100, ge=1, le=500, description="Max leads per batch (same as Celery task default)"),
+    _admin=Depends(security.admin_required),
+):
+    """Runs `sync_pending_leads_batch_task` once. Portal leads stay `pending` until this job runs;
+    normally Celery Beat schedules it every 60s — use this after Beat downtime or to drain backlog."""
+    sync_pending_leads_batch_task.delay(limit=limit)
+    logger.info("Admin triggered sync_pending_leads_batch_task | limit=%s", limit)
+    return {
+        "status": "ok",
+        "task": "sync_pending_leads_batch_task",
+        "limit": limit,
+        "hint": "Requires a running Celery worker consuming the default queue.",
     }
 
 

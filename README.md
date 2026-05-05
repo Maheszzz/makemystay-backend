@@ -111,6 +111,19 @@ Keep that session open. Then point your SQL client or app at **`127.0.0.1:3336`*
 - Debug logs in this repo may reference paths like `makemystay-backend.pem` on Windows; that is not necessarily your local key path.
 - The frontend repo’s `deploy.sh` may default to a different PEM (for example `$HOME/.ssh/mmsr_deploy_key.pem`); that can differ from the key used for this backend / DB bastion.
 
+## Portal leads → Zoho CRM (operations)
+
+**High-volume sources** (99acres, Housing.com, CSV imports) set `crm_status=pending` in MySQL. They are pushed to Zoho by the Celery task `sync_pending_leads_batch_task` (bulk upsert), which **Celery Beat** schedules every **60 seconds** ([`app/core/celery_app.py`](app/core/celery_app.py)). You must run:
+
+- `celery -A app.core.celery_app worker` (consumer)
+- `celery -A app.core.celery_app beat` (scheduler — without this, pending leads never reach Zoho)
+
+**99acres** typically sends leads with **POST** `/webhooks/99acres` (XML). Check logs for `99acres webhook` and `process_webhook_lead_task`. Validate the portal’s push URL and `X-API-Key` / query `api_key` match production.
+
+**Zoho list view:** Bulk upsert uses duplicate checks on **Phone** and **Email**. New inquiries often **update an existing lead**; **Created Time** may stay old—sort or search by **Modified Time** (or by phone).
+
+**Health:** From the repo root, `PYTHONPATH=. python scripts/check_sync_health.py` prints CRM status counts and “today” ingest (MySQL `CURRENT_DATE`). Admins can also **POST** `/api/v1/admin/sync/zoho-pending-batch` to enqueue one batch manually if Beat was offline.
+
 ## 📚 API Documentation
 
 Once the server is running, you can access the interactive API documentation:
