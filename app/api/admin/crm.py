@@ -36,6 +36,7 @@ from app.models.lead import Lead
 from app.models.lead_event import LeadEvent
 from app.models.retell_call import RetellCall
 from app.models.realty import Property
+from app.repo import realty as realty_repo
 from app.models.lead_activity import LeadActivity
 from app.models.lead_assignment import LeadAssignment
 from app.models.sync_metadata import SyncMetadata
@@ -324,22 +325,8 @@ async def analytics(request: Request, db: Session = Depends(get_mysql_db)):
             .scalar()
         )
 
-        # Property counts by category (UI filter tabs)
-        pg_count = db.query(Property).filter(not_deleted, Property.property_type.ilike("PG")).count()
-        plot_count = db.query(Property).filter(not_deleted, Property.property_type.ilike("Plot")).count()
-        # Rent: listing_type=rent but not PG or Plot
-        rent_count = db.query(Property).filter(
-            not_deleted, 
-            Property.listing_type == "rent",
-            ~Property.property_type.ilike("PG"),
-            ~Property.property_type.ilike("Plot")
-        ).count()
-        # Buy: listing_type=buy but not Plot
-        buy_count = db.query(Property).filter(
-            not_deleted,
-            Property.listing_type == "buy",
-            ~Property.property_type.ilike("Plot")
-        ).count()
+        # Property counts by category (UI filter tabs) — same logic as public listings API
+        property_counts = realty_repo.get_property_category_counts(db)
 
         return {
             "total_leads": total_leads,
@@ -369,13 +356,7 @@ async def analytics(request: Request, db: Session = Depends(get_mysql_db)):
             "reentry_events_total": reentry_events_total,
             "csv_import_avg_success_rate_30d": float(csv_avg) if csv_avg is not None else None,
             "sync_status": sync_status,
-            "property_counts": {
-                "all": total_properties,
-                "pg": pg_count,
-                "rent": rent_count,
-                "buy": buy_count,
-                "plot": plot_count
-            }
+            "property_counts": property_counts,
         }
 
     try:

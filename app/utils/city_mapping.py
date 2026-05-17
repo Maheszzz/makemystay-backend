@@ -81,6 +81,43 @@ LOCALITY_TO_CITY = {
     "koramangala 4th block": "bangalore",
     "koramangala 1st block": "bangalore",
     "hebbal kempapura": "bangalore",
+    # Aliases / common typos in imported listings
+    "munnekollal": "bangalore",
+    "silkboard": "bangalore",
+    "whitefeild": "bangalore",
+    "kadubeesanahalli": "bangalore",
+    "kadubesanahalli": "bangalore",
+    "kodbisanhalli": "bangalore",
+    "madiwala": "bangalore",
+    "marathalli": "bangalore",
+    "doddanekkundi": "bangalore",
+    "bommasandra": "bangalore",
+    "halasuru": "bangalore",
+    "hosapalaya": "bangalore",
+    "garvebhavi": "bangalore",
+    "garvebhavi palya": "bangalore",
+    "pattandur": "bangalore",
+    "pattandur agrahara": "bangalore",
+    "shajapur": "bangalore",
+    "embassy tech": "bangalore",
+    "embassy tec": "bangalore",
+    "neeladri": "bangalore",
+    "beml layout": "bangalore",
+    "brigade tech": "bangalore",
+    "new tippasandra": "bangalore",
+    "tippasandra": "bangalore",
+    "aecs": "bangalore",
+    "e city": "bangalore",
+    "ecity": "bangalore",
+    "chandapura": "bangalore",
+    "hebbagodi": "bangalore",
+    "muneshwara nagar": "bangalore",
+    "kammanahalli": "bangalore",
+    "kalyan nagar": "bangalore",
+    "gunjur": "bangalore",
+    "murugeshpalya": "bangalore",
+    "kaggadasapura": "bangalore",
+    "gm palya": "bangalore",
 
     # Hyderabad Localities
     "hitech city": "hyderabad",
@@ -108,6 +145,8 @@ def find_city_for_location(location: Optional[str]) -> Optional[str]:
     norm = str(location).lower().strip()
     
     # 1. Direct match with a major city
+    if "bengaluru" in norm:
+        return "bangalore"
     for city in ["bangalore", "hyderabad", "pune"]:
         if city in norm:
             return city

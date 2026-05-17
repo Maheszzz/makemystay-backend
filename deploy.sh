@@ -96,7 +96,7 @@ rsync -az --delete \
 
 # ===== PM2 DEPLOY ON EC2 =====
 echo "🚀 Starting PM2 zero-downtime reload..."
-$SSH "bash -sx" << ENDSSH
+$SSH "bash -s" << ENDSSH
 set -e
 cd $REMOTE_DIR
 
@@ -178,38 +178,55 @@ CLEANUP_CRON="0 3 * * * sudo journalctl --vacuum-time=2d && sudo rm -rf /tmp/* &
 echo "💾 Disk after deploy: \$(df / --output=pcent | tail -1 | tr -d ' ')"
 ENDSSH
 
+# True when /api/v1/live body has {"status":"ok"} (FastAPI may omit spaces in JSON).
+live_response_ok() {
+  local body="$1"
+  echo "$body" | grep -qE '"status"[[:space:]]*:[[:space:]]*"ok"' && return 0
+  echo "$body" | python3 -c 'import json,sys; d=json.load(sys.stdin); sys.exit(0 if d.get("status")=="ok" else 1)' 2>/dev/null
+}
+
 echo ""
 echo "🔍 Running post-deployment health check..."
-# Give PM2 a moment to spin up workers
 echo "⏳ Waiting for workers to initialize..."
-sleep 5
-MAX_RETRIES=5
-RETRY_DELAY=8
+sleep 10
+MAX_RETRIES=6
+RETRY_DELAY=6
 SUCCESS=0
 
+set +e
 for i in $(seq 1 $MAX_RETRIES); do
   echo "   Attempt $i/$MAX_RETRIES..."
-  # Check internal health via localhost to verify the specific instance
-  # Use -v to see the full response in case of 502
-  HEALTH_OUT=$(ssh -i "$PEM_KEY" -o StrictHostKeyChecking=no "$EC2_USER@$EC2_HOST" "curl -v -s http://127.0.0.1:8000/api/v1/live 2>&1")
-  if echo "$HEALTH_OUT" | grep -q "status\":\"ok"; then
-    echo "✅ Internal health check passed"
+  HEALTH_OUT=$(ssh -i "$PEM_KEY" -o StrictHostKeyChecking=no -o ConnectTimeout=15 \
+    "$EC2_USER@$EC2_HOST" \
+    'curl -sf --connect-timeout 5 --max-time 15 http://127.0.0.1:8000/api/v1/live 2>&1 || curl -sS --connect-timeout 5 --max-time 15 http://127.0.0.1:8000/api/v1/live 2>&1')
+  SSH_EXIT=$?
+  if [ "$SSH_EXIT" -ne 0 ]; then
+    echo "⚠️  SSH failed (exit $SSH_EXIT)."
+    HEALTH_OUT="ssh_error"
+  elif live_response_ok "$HEALTH_OUT"; then
+    echo "✅ Internal health check passed on $EC2_HOST"
     SUCCESS=1
     break
   else
     echo "⚠️  Health check attempt $i failed."
-    echo "--- Last 5 lines of health check output ---"
-    echo "$HEALTH_OUT" | tail -n 5
-    if [ $i -lt $MAX_RETRIES ]; then
-        echo "   Waiting $RETRY_DELAY seconds before retry..."
-        sleep $RETRY_DELAY
+    if [ -n "$HEALTH_OUT" ]; then
+      echo "--- Response ---"
+      echo "$HEALTH_OUT" | tail -n 3
+    fi
+    if [ "$i" -lt "$MAX_RETRIES" ]; then
+      echo "   Waiting ${RETRY_DELAY}s before retry..."
+      sleep "$RETRY_DELAY"
     fi
   fi
 done
+set -e
 
-if [ $SUCCESS -eq 0 ]; then
-  echo "❌ All health check attempts failed for $EC2_HOST. Showing PM2 logs on server:"
-  ssh -i "$PEM_KEY" -o StrictHostKeyChecking=no "$EC2_USER@$EC2_HOST" "pm2 logs makemystay-api --lines 20"
+if [ "$SUCCESS" -eq 0 ]; then
+  echo "❌ All health check attempts failed for $EC2_HOST."
+  echo "   PM2 status + recent API logs:"
+  ssh -i "$PEM_KEY" -o StrictHostKeyChecking=no -o ConnectTimeout=15 \
+    "$EC2_USER@$EC2_HOST" \
+    "pm2 status; pm2 logs makemystay-api --lines 40 --nostream 2>/dev/null || true"
   exit 1
 fi
 

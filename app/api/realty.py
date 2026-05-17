@@ -394,40 +394,24 @@ def list_properties(
         sort_by=sort_by,
         list_mode=True,
     )
-    from app.models.realty import Property as PropertyModel
-    from sqlalchemy import func
-
-    not_deleted = PropertyModel.is_deleted == False
-    
-    # Global counts for all categories (public UI tabs)
-    pg_count = db.query(PropertyModel).filter(not_deleted, PropertyModel.property_type.ilike("PG")).count()
-    plot_count = db.query(PropertyModel).filter(not_deleted, PropertyModel.property_type.ilike("Plot")).count()
-    rent_count = db.query(PropertyModel).filter(
-        not_deleted, 
-        PropertyModel.listing_type == "rent",
-        ~PropertyModel.property_type.ilike("PG"),
-        ~PropertyModel.property_type.ilike("Plot")
-    ).count()
-    buy_count = db.query(PropertyModel).filter(
-        not_deleted,
-        PropertyModel.listing_type == "buy",
-        ~PropertyModel.property_type.ilike("Plot")
-    ).count()
-
     items = [
         PropertyListItem.model_validate(p).model_dump(mode="json") for p in properties
     ]
 
+    # Tab badges must respect the same city/search/price filters as the listing query.
+    property_counts = realty_repo.get_property_category_counts(
+        db,
+        is_available=is_available,
+        search=search,
+        min_price=min_price,
+        max_price=max_price,
+        city=city,
+    )
+
     payload = {
         "items": items, 
         "total": total,
-        "property_counts": {
-            "all": db.query(PropertyModel).filter(not_deleted).count(),
-            "pg": pg_count,
-            "rent": rent_count,
-            "buy": buy_count,
-            "plot": plot_count
-        }
+        "property_counts": property_counts,
     }
     set_cached_properties_list(cache_key, payload)
     return JSONResponse(content=payload)

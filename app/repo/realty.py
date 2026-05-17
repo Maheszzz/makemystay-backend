@@ -190,6 +190,50 @@ def delete_contact(db: Session, db_contact: Contact) -> None:
 # ==================== PROPERTY REPO ====================
 
 
+def _apply_city_filter(query, city: Optional[str]):
+    """Match city column, Bangalore/Bengaluru in text, and known locality aliases."""
+    if not city:
+        return query
+    c_lower = city.lower().strip()
+    conditions = [
+        func.lower(func.coalesce(Property.city, "")) == c_lower,
+        Property.location.ilike(f"%{city}%"),
+    ]
+    if c_lower == "bangalore":
+        conditions.append(Property.location.ilike("%bengaluru%"))
+    from app.utils.city_mapping import get_localities_for_city
+
+    localities = get_localities_for_city(c_lower)
+    if localities:
+        conditions.append(or_(*[Property.location.ilike(f"%{loc}%") for loc in localities]))
+    return query.filter(or_(*conditions))
+
+
+def backfill_property_cities(db: Session, default_city: str = "bangalore") -> int:
+    """
+    Set Property.city from location mapping. Unresolved rows get default_city
+    (inventory is Bangalore-only until other metros are onboarded).
+    """
+    updated = 0
+    rows = (
+        db.query(Property)
+        .filter(func.coalesce(Property.is_deleted, False) == False)  # noqa: E712
+        .all()
+    )
+    default = default_city.lower().strip()
+    for prop in rows:
+        current = (prop.city or "").strip().lower()
+        if current in ("bangalore", "bengaluru", "hyderabad", "pune"):
+            continue
+        derived = find_city_for_location(prop.location) or default
+        if current != derived:
+            prop.city = derived
+            updated += 1
+    if updated:
+        db.commit()
+    return updated
+
+
 def _apply_property_category_tab(query, category: Optional[str]):
     """Filter by UI tab (pg / rent / buy / plot) — matches PropertyResponse.derive_category logic."""
     if not category:
@@ -208,6 +252,33 @@ def _apply_property_category_tab(query, category: Optional[str]):
             ~func.lower(Property.property_type).in_(["pg", "plot"])
         )
     return query
+
+
+def get_property_category_counts(
+    db: Session,
+    *,
+    is_available: Optional[bool] = None,
+    search: Optional[str] = None,
+    min_price: Optional[float] = None,
+    max_price: Optional[float] = None,
+    city: Optional[str] = None,
+) -> Dict[str, int]:
+    """Per-tab totals with the same filters as list_properties (city, search, price), excluding category."""
+    shared = dict(
+        is_available=is_available,
+        search=search,
+        min_price=min_price,
+        max_price=max_price,
+        city=city,
+        list_mode=True,
+    )
+    counts: Dict[str, int] = {}
+    for tab in ("pg", "rent", "buy", "plot"):
+        _, total = get_properties(db, skip=0, limit=1, category=tab, **shared)
+        counts[tab] = int(total or 0)
+    _, all_total = get_properties(db, skip=0, limit=1, **shared)
+    counts["all"] = int(all_total or 0)
+    return counts
 
 
 def get_properties(
@@ -261,21 +332,7 @@ def get_properties(
         query = query.filter(Property.is_available == is_available)
 
     if city:
-        # Match against the dedicated city column, the literal location string, 
-        # OR known sub-localities that belong to this city if the city column is empty.
-        c_lower = city.lower().strip()
-        conditions = [
-            Property.city == c_lower,
-            Property.location.ilike(f"%{city}%")
-        ]
-        
-        # If city is a major one (bangalore, hyderabad, pune), include its sub-localities
-        from app.utils.city_mapping import get_localities_for_city
-        localities = get_localities_for_city(c_lower)
-        if localities:
-            conditions.append(or_(*[Property.location.ilike(f"%{loc}%") for loc in localities]))
-            
-        query = query.filter(or_(*conditions))
+        query = _apply_city_filter(query, city)
 
     if min_price is not None:
         query = query.filter(Property.starting_price >= min_price)
@@ -355,7 +412,7 @@ def get_properties(
         if is_available is not None:
             fallback_query = fallback_query.filter(Property.is_available == is_available)
         if city:
-            fallback_query = fallback_query.filter(or_(Property.city == city.lower(), Property.location.ilike(f"%{city}%")))
+            fallback_query = _apply_city_filter(fallback_query, city)
         if min_price is not None:
             fallback_query = fallback_query.filter(Property.starting_price >= min_price)
         if max_price is not None:
@@ -706,9 +763,9 @@ def create_property(db: Session, property_data: dict) -> Property:
             property_data.get("location"),
         )
     
-    # Auto-populate city if missing
-    if not property_data.get("city") and property_data.get("location"):
-        property_data["city"] = find_city_for_location(property_data["location"])
+    # Auto-populate city from locality mapping (default Bangalore for unresolved locations)
+    if not property_data.get("city"):
+        property_data["city"] = find_city_for_location(property_data.get("location")) or "bangalore"
 
     try:
         db_property = Property(**property_data)
@@ -729,7 +786,7 @@ def update_property(db: Session, db_property: Property, update_data: dict) -> Pr
             
         # If location changed and city is not explicitly provided, re-derive city
         if "location" in update_data and "city" not in update_data:
-            db_property.city = find_city_for_location(update_data["location"])
+            db_property.city = find_city_for_location(update_data["location"]) or "bangalore"
             
         db.commit()
         db.refresh(db_property)
