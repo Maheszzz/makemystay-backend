@@ -340,31 +340,17 @@ def get_properties(
         query = query.filter(Property.starting_price <= max_price)
 
     if search:
-        search_parts = [s.strip().lower() for s in search.split(",") if s.strip()]
-        search_terms = []
-        NEARBY_MAPPING = {
-            "electronic city": ["bommasandra", "chandapura", "begur", "hebbagodi"],
-            "bommasandra": ["electronic city", "chandapura", "hebbagodi"],
-            "hsr layout": ["koramangala", "btm layout", "bellandur", "bommanahalli"],
-            "koramangala": ["hsr layout", "btm layout", "indiranagar", "ejipura"],
-            "whitefield": ["marathahalli", "bellandur", "mahadevapura", "itpl"],
-            "marathahalli": ["whitefield", "bellandur", "kadubeesanahalli", "munnekollal"],
-            "indiranagar": ["koramangala", "domlur", "hal", "cv raman nagar"],
-            "btm layout": ["hsr layout", "koramangala", "jayanagar", "jp nagar"],
-            "jayanagar": ["btm layout", "jp nagar", "basavanagudi", "banashankari"],
-            "jp nagar": ["jayanagar", "btm layout", "bannerghatta road", "banashankari"],
-        }
-        for part in search_parts:
-            search_terms.append(part)
-            for key, neighbors in NEARBY_MAPPING.items():
-                if key in part or part in key:
-                    search_terms.extend(neighbors)
+        from app.utils.search_expansion import expand_search_terms
+
+        search_parts = [s.strip() for s in search.split(",") if s.strip()]
+        search_terms = expand_search_terms(search_parts)
 
         conditions = []
-        for term in set(search_terms):
+        for term in search_terms:
             search_filter = f"%{term}%"
             conditions.append(Property.property_name.ilike(search_filter))
             conditions.append(Property.location.ilike(search_filter))
+            conditions.append(func.coalesce(Property.description, "").ilike(search_filter))
         query = query.filter(or_(*conditions))
 
     # Apply Sorting
@@ -564,84 +550,80 @@ def get_similar_properties(
     return results, len(results)
 
 
-def get_property_suggestions(db: Session, q: str) -> List[str]:
-    """Retrieve unique property names and locations matching the search term."""
-    q_parts = [s.strip().lower() for s in q.split(",") if s.strip()]
+def get_property_suggestions(db: Session, q: str) -> dict:
+    """Property names and area/location strings for autocomplete (grouped)."""
+    from app.utils.search_expansion import expand_search_terms
+
+    q_parts = [s.strip() for s in q.split(",") if s.strip()]
     if not q_parts:
-        return []
+        return {"properties": [], "places": []}
 
-    # Get suggestions for the LAST typed part of the query
     current_q = q_parts[-1]
+    search_terms = expand_search_terms([current_q])
+    active_filter = func.coalesce(Property.is_deleted, False) == False  # noqa: E712
 
-    search_terms = [current_q]
+    property_names: list[str] = []
+    place_labels: list[str] = []
 
-    # Simple nearby mapping for Bangalore
-    NEARBY_MAPPING = {
-        "electronic city": ["bommasandra", "chandapura", "begur", "hebbagodi"],
-        "bommasandra": ["electronic city", "chandapura", "hebbagodi"],
-        "hsr layout": ["koramangala", "btm layout", "bellandur", "bommanahalli"],
-        "koramangala": ["hsr layout", "btm layout", "indiranagar", "ejipura"],
-        "whitefield": ["marathahalli", "bellandur", "mahadevapura", "itpl"],
-        "marathahalli": ["whitefield", "bellandur", "kadubeesanahalli", "munnekollal"],
-        "indiranagar": ["koramangala", "domlur", "hal", "cv raman nagar"],
-        "btm layout": ["hsr layout", "koramangala", "jayanagar", "jp nagar"],
-        "jayanagar": ["btm layout", "jp nagar", "basavanagudi", "banashankari"],
-        "jp nagar": ["jayanagar", "btm layout", "bannerghatta road", "banashankari"],
-    }
-
-    for key, neighbors in NEARBY_MAPPING.items():
-        if key in current_q or current_q in key:
-            search_terms.extend(neighbors)
-
-    names = []
-    locations = []
-    for term in set(search_terms):
+    for term in search_terms:
         search_filter = f"%{term}%"
 
-        # Get unique property names
         name_q = (
             db.query(Property.property_name)
+            .filter(active_filter)
             .filter(Property.property_name.ilike(search_filter))
             .distinct()
-            .limit(5)
+            .limit(8)
         )
-        if False: # include_deleted is not defined here, defaulting to False behavior
-            name_q = name_q.filter(func.coalesce(Property.is_deleted, False) == False)
-
         try:
-            results = execute_with_retry(lambda: name_q.all())
-            names.extend(results)
+            property_names.extend(row[0] for row in execute_with_retry(lambda: name_q.all()) if row[0])
         except OperationalError as exc:
             if not _is_missing_soft_delete_column_error(exc):
                 raise
-            # Fallback for missing soft-delete col
-            fallback_q = db.query(Property.property_name).filter(Property.property_name.ilike(search_filter)).distinct().limit(5)
-            names.extend(execute_with_retry(lambda: fallback_q.all()))
+            fallback_q = (
+                db.query(Property.property_name)
+                .filter(Property.property_name.ilike(search_filter))
+                .distinct()
+                .limit(8)
+            )
+            property_names.extend(row[0] for row in execute_with_retry(lambda: fallback_q.all()) if row[0])
 
-        # Get unique locations
         loc_q = (
             db.query(Property.location)
+            .filter(active_filter)
             .filter(Property.location.ilike(search_filter))
             .distinct()
-            .limit(5)
+            .limit(8)
         )
-        if False: # include_deleted is not defined here, defaulting to False behavior
-            loc_q = loc_q.filter(func.coalesce(Property.is_deleted, False) == False)
-
         try:
-            results = execute_with_retry(lambda: loc_q.all())
-            locations.extend(results)
+            place_labels.extend(row[0] for row in execute_with_retry(lambda: loc_q.all()) if row[0])
         except OperationalError as exc:
             if not _is_missing_soft_delete_column_error(exc):
                 raise
-            fallback_q = db.query(Property.location).filter(Property.location.ilike(search_filter)).distinct().limit(5)
-            locations.extend(execute_with_retry(lambda: fallback_q.all()))
+            fallback_q = (
+                db.query(Property.location)
+                .filter(Property.location.ilike(search_filter))
+                .distinct()
+                .limit(8)
+            )
+            place_labels.extend(row[0] for row in execute_with_retry(lambda: fallback_q.all()) if row[0])
 
-    # Extract strings and combine
-    suggestions = [n[0] for n in names] + [loc[0] for loc in locations]
+    # Preserve order, dedupe case-insensitively
+    def dedupe_ordered(items: list[str]) -> list[str]:
+        seen: set[str] = set()
+        out: list[str] = []
+        for item in items:
+            key = item.strip().lower()
+            if not key or key in seen:
+                continue
+            seen.add(key)
+            out.append(item.strip())
+        return out
 
-    # Return unique sorted results
-    return sorted(list(set(suggestions)))
+    return {
+        "properties": dedupe_ordered(property_names)[:10],
+        "places": dedupe_ordered(place_labels)[:10],
+    }
 
 
 def get_property_by_id(

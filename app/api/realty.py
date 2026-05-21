@@ -47,6 +47,7 @@ from app.schemas.realty import (
     PropertyUpdate,
     ReviewCreate,
     ReviewResponse,
+    SearchSuggestionsResponse,
 )
 
 realty_router = APIRouter(tags=["Realty"])
@@ -417,13 +418,13 @@ def list_properties(
     return JSONResponse(content=payload)
 
 
-@realty_router.get("/realty/properties/suggestions", response_model=List[str])
+@realty_router.get("/realty/properties/suggestions", response_model=SearchSuggestionsResponse)
 def get_property_suggestions(
     q: str = Query(..., min_length=1, description="Search term for suggestions"),
     db: Session = Depends(get_mysql_db),
 ):
     """
-    Get dynamic search suggestions based on property names and locations.
+    Autocomplete grouped by property names and areas/landmarks.
 
     - **q**: The search term (minimum 1 character)
     """

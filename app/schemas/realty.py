@@ -404,3 +404,10 @@ class PaginatedPropertyResponse(BaseModel):
     items: List[PropertyListItem]
     total: int
     property_counts: Optional[dict] = None
+
+
+class SearchSuggestionsResponse(BaseModel):
+    """Grouped autocomplete: property names and areas/landmarks."""
+
+    properties: List[str] = Field(default_factory=list)
+    places: List[str] = Field(default_factory=list)
