@@ -155,17 +155,44 @@ class PropertyImageResponse(PropertyImageBase):
 # ==================== REVIEW SCHEMAS ====================
 
 
+class ReviewStatus(str, Enum):
+    pending = "pending"
+    approved = "approved"
+    rejected = "rejected"
+
+
 class ReviewBase(BaseModel):
     """Base schema for Review."""
 
     rating: int = Field(..., ge=1, le=5)
     user_name: str = Field(..., min_length=1, max_length=100)
     property_name: Optional[str] = Field(None, max_length=150)
-    comment: Optional[str] = None
+    comment: Optional[str] = Field(None, description="Review body (alias: review_text)")
+    review_text: Optional[str] = Field(None, description="Same as comment")
+    cleanliness_rating: Optional[int] = Field(None, ge=1, le=5)
+    wifi_rating: Optional[int] = Field(None, ge=1, le=5)
+    food_rating: Optional[int] = Field(None, ge=1, le=5)
+    safety_rating: Optional[int] = Field(None, ge=1, le=5)
+    review_images: Optional[List[str]] = None
+    verified_stay: bool = False
+
+    @model_validator(mode="after")
+    def merge_review_text(self):
+        if self.review_text and not self.comment:
+            self.comment = self.review_text
+        elif self.comment and not self.review_text:
+            self.review_text = self.comment
+        return self
 
 
 class ReviewCreate(ReviewBase):
-    """Schema for creating a new review."""
+    """Schema for creating a new review (public → pending moderation)."""
+
+
+class ReviewModerateUpdate(BaseModel):
+    status: ReviewStatus
+    owner_response: Optional[str] = None
+    verified_stay: Optional[bool] = None
 
 
 class ReviewResponse(ReviewBase):
@@ -173,9 +200,24 @@ class ReviewResponse(ReviewBase):
 
     id: int
     property_id: int
+    status: ReviewStatus = ReviewStatus.approved
+    owner_response: Optional[str] = None
     created_at: datetime
+    updated_at: Optional[datetime] = None
 
     model_config = {"from_attributes": True}
+
+
+class LocalityTrustStatsResponse(BaseModel):
+    """Aggregated trust metrics for a Bangalore locality slug."""
+
+    slug: str
+    name: str
+    average_rating: Optional[float] = None
+    review_count: int = 0
+    verified_review_count: int = 0
+    listing_count: int = 0
+    verified_listing_count: int = 0
 
 
 # ==================== PROPERTY SCHEMAS ====================
@@ -308,6 +350,9 @@ class PropertyListItem(BaseModel):
     images: List[PropertyImageResponse] = []
     average_rating: Optional[float] = 0.0
     review_count: Optional[int] = 0
+    last_verified_at: Optional[datetime] = None
+    last_booked_at: Optional[datetime] = None
+    last_review_at: Optional[datetime] = None
     category: Optional[str] = None
     features: Optional[List[str]] = None
 
@@ -365,6 +410,9 @@ class PropertyResponse(BaseModel):
     reviews: List[ReviewResponse] = []
     average_rating: Optional[float] = 0.0
     review_count: Optional[int] = 0
+    last_verified_at: Optional[datetime] = None
+    last_booked_at: Optional[datetime] = None
+    last_review_at: Optional[datetime] = None
     category: Optional[str] = None
     seo_about: Optional[str] = Field(
         None,

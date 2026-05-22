@@ -79,6 +79,9 @@ class Property(MySQLBase):
     # Denormalized from reviews — updated on review write; used for list sort + slim list payload.
     average_rating = Column("avg_rating", DECIMAL(4, 2), nullable=True)
     review_count = Column(Integer, nullable=False, server_default="0", default=0)
+    last_verified_at = Column(DateTime, nullable=True)
+    last_booked_at = Column(DateTime, nullable=True)
+    last_review_at = Column(DateTime, nullable=True)
     created_at = Column(DateTime, server_default=func.now(), nullable=True)
     updated_at = Column(
         DateTime, server_default=func.now(), onupdate=func.now(), nullable=True
@@ -127,11 +130,22 @@ class Review(MySQLBase):
         ForeignKey("properties.id", ondelete="CASCADE"),
         nullable=False,
     )
-    rating = Column(Integer, nullable=False)  # 1-5
+    rating = Column(Integer, nullable=False)  # 1-5 overall
+    cleanliness_rating = Column(Integer, nullable=True)
+    wifi_rating = Column(Integer, nullable=True)
+    food_rating = Column(Integer, nullable=True)
+    safety_rating = Column(Integer, nullable=True)
     user_name = Column(String(100), nullable=False)
     property_name = Column(String(150), nullable=True)
     comment = Column(Text, nullable=True)
+    owner_response = Column(Text, nullable=True)
+    review_images = Column(JSON, nullable=True)
+    verified_stay = Column(Boolean, nullable=False, default=False, server_default="0")
+    status = Column(String(20), nullable=False, default="pending", server_default="pending")
     created_at = Column(DateTime, server_default=func.now(), nullable=False)
+    updated_at = Column(
+        DateTime, server_default=func.now(), onupdate=func.now(), nullable=True
+    )
 
     # Relationship to property
     property = relationship("Property", back_populates="reviews")

@@ -10,6 +10,12 @@ from sqlalchemy.orm import Session, attributes, joinedload, selectinload
 from app.models.realty import Contact, Property, PropertyImage, Review
 from app.utils.city_mapping import find_city_for_location
 
+REVIEW_APPROVED_STATUSES = ("approved", None)
+
+
+def _approved_review_filter():
+    return or_(Review.status == "approved", Review.status.is_(None))
+
 
 def execute_with_retry(fn: Callable[[], Any], retries: int = 3, delay: float = 1.0) -> Any:
     """Robust wrapper for database operations to handle transient OperationalErrors."""
@@ -25,13 +31,14 @@ def execute_with_retry(fn: Callable[[], Any], retries: int = 3, delay: float = 1
 
 
 def refresh_property_review_stats(db: Session, property_id: int) -> None:
-    """Recompute materialized avg_rating / review_count from the reviews table."""
+    """Recompute materialized avg_rating / review_count from approved reviews only."""
     r = (
-        db.query(func.avg(Review.rating), func.count(Review.id))
+        db.query(func.avg(Review.rating), func.count(Review.id), func.max(Review.created_at))
         .filter(Review.property_id == property_id)
+        .filter(_approved_review_filter())
         .first()
     )
-    avg_v, cnt_v = (r[0], r[1]) if r else (None, 0)
+    avg_v, cnt_v, last_rev = (r[0], r[1], r[2]) if r else (None, 0, None)
     cnt = int(cnt_v or 0)
     avg_float = float(avg_v) if cnt and avg_v is not None else None
     try:
@@ -39,6 +46,7 @@ def refresh_property_review_stats(db: Session, property_id: int) -> None:
             {
                 Property.average_rating: avg_float,
                 Property.review_count: cnt,
+                Property.last_review_at: last_rev,
             },
             synchronize_session=False,
         )
@@ -46,6 +54,14 @@ def refresh_property_review_stats(db: Session, property_id: int) -> None:
     except SQLAlchemyError:
         db.rollback()
         raise
+
+
+def filter_property_approved_reviews(prop: Property) -> None:
+    """Strip non-approved reviews from an in-memory property (public API)."""
+    if not prop or not getattr(prop, "reviews", None):
+        return
+    approved = [r for r in prop.reviews if (r.status or "approved") == "approved"]
+    attributes.set_committed_value(prop, "reviews", approved)
 
 
 def _attach_property_images_bulk(
@@ -652,12 +668,7 @@ def get_property_by_id(
         )
 
     if p:
-        p.review_count = len(p.reviews)
-        p.average_rating = (
-            sum(r.rating for r in p.reviews) / p.review_count
-            if p.review_count > 0
-            else 0.0
-        )
+        filter_property_approved_reviews(p)
 
     return p
 
@@ -688,12 +699,7 @@ def get_property_by_slug(
         )
 
     if p:
-        p.review_count = len(p.reviews)
-        p.average_rating = (
-            sum(r.rating for r in p.reviews) / p.review_count
-            if p.review_count > 0
-            else 0.0
-        )
+        filter_property_approved_reviews(p)
 
     return p
 
@@ -885,30 +891,158 @@ def delete_property_image(db: Session, db_image: PropertyImage) -> None:
 # ==================== REVIEW REPO ====================
 
 
-def get_reviews_by_property_id(db: Session, property_id: int) -> List[Review]:
-    """Retrieve all reviews for a property."""
+def get_reviews_by_property_id(
+    db: Session, property_id: int, *, approved_only: bool = True
+) -> List[Review]:
+    """Retrieve reviews for a property (public: approved only)."""
+    q = db.query(Review).filter(Review.property_id == property_id)
+    if approved_only:
+        q = q.filter(_approved_review_filter())
+    return q.order_by(Review.created_at.desc()).all()
+
+
+def get_reviews_for_moderation(
+    db: Session, status: str = "pending", limit: int = 50
+) -> List[Review]:
     return (
         db.query(Review)
-        .filter(Review.property_id == property_id)
+        .filter(Review.status == status)
         .order_by(Review.created_at.desc())
+        .limit(limit)
         .all()
     )
 
 
-def create_review(db: Session, review_data: dict, property_id: int) -> Review:
-    """Create a new review with transaction safety."""
+def get_review_by_id(db: Session, review_id: int) -> Optional[Review]:
+    return db.query(Review).filter(Review.id == review_id).first()
+
+
+def moderate_review(
+    db: Session,
+    review_id: int,
+    *,
+    status: str,
+    owner_response: Optional[str] = None,
+    verified_stay: Optional[bool] = None,
+) -> Optional[Review]:
+    review = get_review_by_id(db, review_id)
+    if not review:
+        return None
     try:
-        # Automatically populate property_name if not provided
+        review.status = status
+        if owner_response is not None:
+            review.owner_response = owner_response
+        if verified_stay is not None:
+            review.verified_stay = verified_stay
+        db.commit()
+        db.refresh(review)
+        if status == "approved":
+            refresh_property_review_stats(db, review.property_id)
+        elif status == "rejected":
+            refresh_property_review_stats(db, review.property_id)
+        return review
+    except SQLAlchemyError:
+        db.rollback()
+        raise
+
+
+def touch_property_verified(db: Session, property_id: int) -> None:
+    """Mark listing as field-verified (freshness signal)."""
+    from datetime import datetime
+
+    try:
+        db.query(Property).filter(Property.id == property_id).update(
+            {Property.last_verified_at: datetime.utcnow()},
+            synchronize_session=False,
+        )
+        db.commit()
+    except SQLAlchemyError:
+        db.rollback()
+        raise
+
+
+def touch_property_booked(db: Session, property_id: int) -> None:
+    from datetime import datetime
+
+    try:
+        db.query(Property).filter(Property.id == property_id).update(
+            {Property.last_booked_at: datetime.utcnow()},
+            synchronize_session=False,
+        )
+        db.commit()
+    except SQLAlchemyError:
+        db.rollback()
+        raise
+
+
+def get_locality_trust_stats(db: Session, slug: str, display_name: str) -> dict:
+    """Aggregate ratings and listing counts for a locality hub slug."""
+    tokens = [t for t in re.split(r"[-\s]+", (slug or "").lower()) if len(t) > 2]
+    if display_name:
+        tokens.append(display_name.lower().replace(" layout", "").strip())
+    tokens = list(dict.fromkeys(tokens))[:4]
+    if not tokens:
+        return {
+            "slug": slug,
+            "name": display_name,
+            "average_rating": None,
+            "review_count": 0,
+            "verified_review_count": 0,
+            "listing_count": 0,
+            "verified_listing_count": 0,
+        }
+
+    loc_filters = [func.lower(Property.location).like(f"%{t}%") for t in tokens]
+    props = (
+        db.query(Property)
+        .filter(Property.is_deleted == False)  # noqa: E712
+        .filter(or_(*loc_filters))
+        .all()
+    )
+    listing_count = len(props)
+    verified_listing_count = sum(1 for p in props if p.last_verified_at is not None)
+    total_reviews = sum(int(p.review_count or 0) for p in props)
+    ratings = [float(p.average_rating) for p in props if p.average_rating]
+    avg = round(sum(ratings) / len(ratings), 2) if ratings else None
+
+    verified_review_count = (
+        db.query(func.count(Review.id))
+        .join(Property, Review.property_id == Property.id)
+        .filter(_approved_review_filter())
+        .filter(Review.verified_stay == True)  # noqa: E712
+        .filter(or_(*loc_filters))
+        .scalar()
+        or 0
+    )
+
+    return {
+        "slug": slug,
+        "name": display_name,
+        "average_rating": avg,
+        "review_count": int(total_reviews),
+        "verified_review_count": int(verified_review_count),
+        "listing_count": listing_count,
+        "verified_listing_count": verified_listing_count,
+    }
+
+
+def create_review(db: Session, review_data: dict, property_id: int) -> Review:
+    """Create a new review with transaction safety (public → pending)."""
+    try:
         if not review_data.get("property_name"):
             prop = db.query(Property).filter(Property.id == property_id).first()
             if prop:
                 review_data["property_name"] = prop.property_name
 
+        review_data.pop("review_text", None)
+        review_data.setdefault("status", "pending")
+        if review_data.get("verified_stay"):
+            review_data["verified_stay"] = True
+
         db_review = Review(**review_data, property_id=property_id)
         db.add(db_review)
         db.commit()
         db.refresh(db_review)
-        refresh_property_review_stats(db, property_id)
         return db_review
     except SQLAlchemyError:
         db.rollback()

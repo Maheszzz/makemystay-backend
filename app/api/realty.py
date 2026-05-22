@@ -47,6 +47,7 @@ from app.schemas.realty import (
     PropertyUpdate,
     ReviewCreate,
     ReviewResponse,
+    LocalityTrustStatsResponse,
     SearchSuggestionsResponse,
 )
 
@@ -533,6 +534,7 @@ def update_property(
         out = realty_repo.update_property(
             db, db_property, property_data.model_dump(exclude_unset=True)
         )
+        realty_repo.touch_property_verified(db, property_id)
         bump_properties_list_cache()
         return _property_response_from_orm(out)
     except SQLAlchemyError as e:
@@ -747,8 +749,27 @@ def add_property_review(
         raise NotFoundException("Property", property_id)
 
     try:
-        out = realty_repo.create_review(db, review.model_dump(), property_id)
+        payload = review.model_dump(exclude_none=True)
+        out = realty_repo.create_review(db, payload, property_id)
         bump_properties_list_cache()
         return out
     except SQLAlchemyError as e:
         raise DatabaseError(f"Failed to add review: {str(e)}")
+
+
+@realty_router.get(
+    "/realty/localities/{slug}/trust-stats",
+    response_model=LocalityTrustStatsResponse,
+)
+def locality_trust_stats(slug: str, db: Session = Depends(get_mysql_db)):
+    """
+    Aggregated ratings and verified counts for a Bangalore locality hub slug.
+    Used for locality QuickAnswer, headers, and JSON-LD.
+    """
+    name = slug.replace("-", " ").title()
+    if slug == "hsr-layout":
+        name = "HSR Layout"
+    elif slug == "btm":
+        name = "BTM Layout"
+    stats = realty_repo.get_locality_trust_stats(db, slug.lower(), name)
+    return LocalityTrustStatsResponse(**stats)
