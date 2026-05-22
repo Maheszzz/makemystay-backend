@@ -27,6 +27,7 @@ echo "🚀 Starting Backend Deployment..."
 # We have a Load Balancer (ELB) with two targets. We must deploy to BOTH.
 ALL_SERVERS=("13.126.149.224" "13.201.61.117")
 
+SEED_DONE=0
 for EC2_HOST in "${ALL_SERVERS[@]}"; do
     echo "--------------------------------------------------------"
     echo "📍 Target Host: $EC2_HOST"
@@ -94,6 +95,13 @@ rsync -az --delete \
     app alembic scripts alembic.ini requirements.txt .env.production ecosystem.config.js \
     $EC2_USER@$EC2_HOST:$REMOTE_DIR/
 
+# Seed runs once (shared DB) on the first host only when RUN_SEED_REVIEWS=1
+REMOTE_RUN_SEED=0
+if [ "${RUN_SEED_REVIEWS:-0}" = "1" ] && [ "$SEED_DONE" -eq 0 ]; then
+  REMOTE_RUN_SEED=1
+  SEED_DONE=1
+fi
+
 # ===== PM2 DEPLOY ON EC2 =====
 echo "🚀 Starting PM2 zero-downtime reload..."
 $SSH "bash -s" << ENDSSH
@@ -158,6 +166,11 @@ PY
 fi
 
 alembic upgrade head
+
+if [ "${REMOTE_RUN_SEED}" = "1" ]; then
+  echo "🌱 Seeding trust reviews (once per deploy; shared RDS)..."
+  python3 scripts/seed_trust_reviews.py --limit 8 --reviews-per 2
+fi
 
 echo "🔄 Reloading PM2 workers..."
 # Install pm2 if missing, though it should be there
