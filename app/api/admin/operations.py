@@ -3,6 +3,7 @@ Admin operations: stats, analytics, sync jobs, WhatsApp tools, payment analytics
 """
 
 import time
+from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from loguru import logger
@@ -309,102 +310,50 @@ async def clear_whatsapp_flow_session(
     summary="Get global payment analytics",
 )
 async def get_payment_analytics(
+    month: Optional[str] = Query(None, description="Scope breakdown to calendar month YYYY-MM"),
     db: Session = Depends(get_mysql_db),
     _user=Depends(security.admin_or_employee_required),
 ):
-    from datetime import datetime, timedelta, timezone
+    from app.services.payment_analytics import payment_analytics_summary
+    from app.services.payment_transaction_query import parse_month_range
 
-    from sqlalchemy import func
-    from app.models.payment import Payment
-    from app.models.payment_webhook_event import PaymentWebhookEvent
-    from app.models.reconciliation import ReconciliationIssue
+    if month:
+        try:
+            parse_month_range(month)
+        except ValueError as e:
+            raise HTTPException(status_code=400, detail=str(e)) from e
 
-    now = datetime.now(timezone.utc)
-    today_start = now.replace(hour=0, minute=0, second=0, microsecond=0)
-    month_start = now.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+    return payment_analytics_summary(db, month=month)
 
-    success_all = db.query(func.sum(Payment.amount)).filter(Payment.status == "success").scalar() or 0
-    success_today = (
-        db.query(func.sum(Payment.amount))
-        .filter(Payment.status == "success", Payment.created_at >= today_start)
-        .scalar()
-        or 0
-    )
-    success_month = (
-        db.query(func.sum(Payment.amount))
-        .filter(Payment.status == "success", Payment.created_at >= month_start)
-        .scalar()
-        or 0
-    )
 
-    counts = db.query(Payment.status, func.count(Payment.id)).group_by(Payment.status).all()
-    count_dict = {str(status).lower(): count for status, count in counts}
+@router.get(
+    "/payments/analytics/series",
+    summary="Payment revenue time-series and insights for charts",
+)
+async def get_payment_analytics_series(
+    granularity: str = Query("daily", description="daily | weekly | monthly"),
+    date_from: Optional[str] = None,
+    date_to: Optional[str] = None,
+    month: Optional[str] = Query(None, description="Scope to calendar month YYYY-MM"),
+    db: Session = Depends(get_mysql_db),
+    _user=Depends(security.admin_or_employee_required),
+):
+    from app.services.payment_analytics import payment_analytics_series
+    from app.services.payment_transaction_query import parse_month_range
 
-    refunded_count = count_dict.get("refunded", 0)
+    if month:
+        try:
+            parse_month_range(month)
+        except ValueError as e:
+            raise HTTPException(status_code=400, detail=str(e)) from e
 
-    alert_window_start = now - timedelta(days=14)
-    risky_ignored_reasons = {
-        "identifiers_missing",
-        "payment_creation_failed",
-        "event_not_mapped",
-    }
-    # These event types have no payment identifiers by design (account/settlement level)
-    # or are now handled natively (refunds). Exclude from the operational alert.
-    benign_event_prefixes = ("settlement.", "test.", "account.", "route.", "refund.")
-    ignored_webhooks = (
-        db.query(func.count(PaymentWebhookEvent.id))
-        .filter(
-            PaymentWebhookEvent.status == "ignored",
-            PaymentWebhookEvent.reason.in_(risky_ignored_reasons),
-            PaymentWebhookEvent.created_at >= alert_window_start,
-            ~PaymentWebhookEvent.event.like("settlement.%"),
-            ~PaymentWebhookEvent.event.like("test.%"),
-            ~PaymentWebhookEvent.event.like("account.%"),
-            ~PaymentWebhookEvent.event.like("route.%"),
-            ~PaymentWebhookEvent.event.like("refund.%"),
+    try:
+        return payment_analytics_series(
+            db,
+            granularity=granularity,
+            date_from=date_from,
+            date_to=date_to,
+            month=month,
         )
-        .scalar()
-        or 0
-    )
-    # Only `error` = operational failure (e.g. secret not configured, DB log failure).
-    # `rejected` = missing/invalid signature or bad JSON — normal internet noise; do not alert.
-    failed_webhooks = (
-        db.query(func.count(PaymentWebhookEvent.id))
-        .filter(
-            PaymentWebhookEvent.status == "error",
-            PaymentWebhookEvent.created_at >= alert_window_start,
-        )
-        .scalar()
-        or 0
-    )
-    rejected_inbound_webhooks = (
-        db.query(func.count(PaymentWebhookEvent.id))
-        .filter(
-            PaymentWebhookEvent.status == "rejected",
-            PaymentWebhookEvent.created_at >= alert_window_start,
-        )
-        .scalar()
-        or 0
-    )
-    reconciliation_mismatches = (
-        db.query(func.count(ReconciliationIssue.id)).filter(ReconciliationIssue.resolved == False).scalar() or 0
-    )
-
-    return {
-        "revenue_total_all_time": float(success_all),
-        "revenue_today": float(success_today),
-        "revenue_this_month": float(success_month),
-        "payments_breakdown": {
-            "success": count_dict.get("success", 0),
-            "pending": count_dict.get("pending", 0),
-            "failed": count_dict.get("failed", 0),
-            "refunded": refunded_count,
-            "expired": count_dict.get("expired", 0),
-        },
-        "alerts": {
-            "ignored_webhooks": ignored_webhooks,
-            "failed_webhooks": failed_webhooks,
-            "rejected_inbound_webhooks": rejected_inbound_webhooks,
-            "reconciliation_mismatches": reconciliation_mismatches,
-        },
-    }
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e)) from e

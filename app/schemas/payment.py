@@ -1,5 +1,5 @@
 from datetime import datetime
-from typing import Optional
+from typing import List, Optional
 
 from pydantic import BaseModel
 
@@ -67,3 +67,27 @@ class PaymentTransactionSchema(BaseModel):
     payment_type: Optional[str] = None
     detail_url: Optional[str] = None
     source: Optional[str] = None
+    property_id: Optional[int] = None
+    property_name: Optional[str] = None
+    property_city: Optional[str] = None
+    gst_amount: Optional[float] = None
+
+
+class PaymentTransactionListResponse(BaseModel):
+    items: List[PaymentTransactionSchema]
+    total: int
+    skip: int
+    limit: int
+
+
+class PaymentTimelineEventSchema(BaseModel):
+    id: int
+    event: Optional[str] = None
+    status: Optional[str] = None
+    reason: Optional[str] = None
+    created_at: datetime
+
+
+class PaymentTransactionDetailResponse(BaseModel):
+    transaction: PaymentTransactionSchema
+    timeline: List[PaymentTimelineEventSchema] = []

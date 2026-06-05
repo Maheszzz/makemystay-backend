@@ -27,9 +27,17 @@ from app.models.payment_webhook_event import PaymentWebhookEvent
 from app.services.payment_normalization import _map_status, normalize_transaction
 from app.schemas.payment import (
     PaymentSchema,
+    PaymentTransactionDetailResponse,
+    PaymentTransactionListResponse,
     PaymentTransactionSchema,
+    PaymentTimelineEventSchema,
     ServiceFeeValidationRequest,
     ValidationResponse,
+)
+from app.services.payment_transaction_query import (
+    build_payment_transactions_query,
+    enrich_transaction_row,
+    parse_month_range,
 )
 from app.services.whatsapp_service import send_text_whatsapp
 
@@ -753,88 +761,65 @@ def get_payments(db: Session = Depends(get_db)):
     return payments
 
 
-@router.get("/payments/transactions", response_model=List[PaymentTransactionSchema])
-def get_payment_transactions(
-    skip: int = 0,
-    limit: int = 100,
-    status: Optional[str] = None,
-    source: Optional[str] = None,
-    sync_from_gateway: bool = Query(
-        True,
-        description=(
-            "When true, for orders with no webhook audit row, fetch Razorpay order/payments "
-            "to reconcile stuck pending rows (capped per request; avoids N+1 on full history)."
-        ),
-    ),
-    db: Session = Depends(get_db),
-):
-    """
-    Return transaction rows shaped for Razorpay-like admin listing.
-    """
-    limit = max(1, min(limit, 200))
-    source_filter = (source or "all").strip().lower()
-    if source_filter not in {"all", "gateway", "webhook", "db"}:
-        raise HTTPException(status_code=400, detail="Invalid source filter")
-
-    query = db.query(Payment).order_by(Payment.created_at.desc())
-    if status:
-        query = query.filter(Payment.status == status)
-    webhook_exists = (
-        db.query(PaymentWebhookEvent.id)
+def _load_latest_webhooks_by_order(
+    db: Session, order_ids: List[str]
+) -> Dict[str, PaymentWebhookEvent]:
+    if not order_ids:
+        return {}
+    latest_webhook_ids = (
+        db.query(
+            PaymentWebhookEvent.order_id.label("order_id"),
+            func.max(PaymentWebhookEvent.id).label("max_id"),
+        )
         .filter(
             PaymentWebhookEvent.order_id.isnot(None),
-            PaymentWebhookEvent.order_id == Payment.order_id,
+            PaymentWebhookEvent.order_id.in_(order_ids),
         )
-        .exists()
+        .group_by(PaymentWebhookEvent.order_id)
+        .subquery()
     )
-    if source_filter == "webhook":
-        query = query.filter(webhook_exists)
-    elif source_filter == "db":
-        query = query.filter(~webhook_exists)
+    webhook_rows = (
+        db.query(PaymentWebhookEvent)
+        .join(latest_webhook_ids, PaymentWebhookEvent.id == latest_webhook_ids.c.max_id)
+        .all()
+    )
+    return {
+        str(webhook_row.order_id): webhook_row
+        for webhook_row in webhook_rows
+        if webhook_row.order_id is not None
+    }
 
-    rows = query.offset(skip).limit(limit).all()
+
+def _process_transaction_rows(
+    db: Session,
+    row_tuples: List[Any],
+    *,
+    source_filter: str,
+    method_filter: Optional[str],
+    sync_from_gateway: bool,
+) -> tuple[List[PaymentTransactionSchema], bool]:
+    """Normalize payment rows; apply post-DB source/method filters."""
     transactions: List[PaymentTransactionSchema] = []
     has_db_updates = False
-    latest_webhook_by_order: Dict[str, PaymentWebhookEvent] = {}
+    payment_rows = [t[0] for t in row_tuples]
+    bookings_by_order = {str(t[0].order_id): t[1] for t in row_tuples if t[0].order_id}
+    properties_by_order = {str(t[0].order_id): t[2] for t in row_tuples if t[0].order_id}
 
-    order_ids = [str(r.order_id) for r in rows if r.order_id is not None]
-    if order_ids:
-        latest_webhook_ids = (
-            db.query(
-                PaymentWebhookEvent.order_id.label("order_id"),
-                func.max(PaymentWebhookEvent.id).label("max_id"),
-            )
-            .filter(
-                PaymentWebhookEvent.order_id.isnot(None),
-                PaymentWebhookEvent.order_id.in_(order_ids),
-            )
-            .group_by(PaymentWebhookEvent.order_id)
-            .subquery()
-        )
-        webhook_rows = (
-            db.query(PaymentWebhookEvent)
-            .join(latest_webhook_ids, PaymentWebhookEvent.id == latest_webhook_ids.c.max_id)
-            .all()
-        )
-        latest_webhook_by_order = {
-            str(webhook_row.order_id): webhook_row
-            for webhook_row in webhook_rows
-            if webhook_row.order_id is not None
-        }
+    order_ids = [str(r.order_id) for r in payment_rows if r.order_id is not None]
+    latest_webhook_by_order = _load_latest_webhooks_by_order(db, order_ids)
 
     gateway_sync_budget = 25 if sync_from_gateway else 0
     gateway_sync_used = 0
     gateway_cache: Dict[str, Optional[Dict[str, Any]]] = {}
+    method_norm = (method_filter or "").strip().lower() or None
 
-    for row in rows:
+    for row in payment_rows:
         db_payment_id = str(row.payment_id) if row.payment_id is not None else None
         db_order_id = str(row.order_id) if row.order_id is not None else ""
 
         latest_webhook = latest_webhook_by_order.get(db_order_id)
         selected_gateway_payment: Optional[Dict[str, Any]] = None
-        selected_webhook = latest_webhook
 
-        # Priority: webhook (truth) -> gateway (reconcile when no webhook) -> db.
         if sync_from_gateway and latest_webhook is None and db_order_id:
             st = str(row.status or "").lower()
             needs_reconcile = st in ("pending", "created", "") or row.payment_id is None
@@ -848,7 +833,7 @@ def get_payment_transactions(
 
         normalized = normalize_transaction(
             payment=selected_gateway_payment,
-            webhook=selected_webhook,
+            webhook=latest_webhook,
             db_row=row,
         )
 
@@ -858,6 +843,19 @@ def get_payment_transactions(
                     continue
             elif normalized["source"] != source_filter:
                 continue
+
+        if method_norm:
+            row_method = str(normalized.get("method") or "").lower()
+            if row_method != method_norm:
+                continue
+
+        booking = bookings_by_order.get(db_order_id)
+        property_row = properties_by_order.get(db_order_id)
+        normalized = enrich_transaction_row(
+            normalized,
+            booking=booking,
+            property_row=property_row,
+        )
 
         normalized_payment_id = normalized.get("payment_id")
         if normalized_payment_id and db_payment_id is None:
@@ -874,10 +872,149 @@ def get_payment_transactions(
 
         transactions.append(PaymentTransactionSchema(**normalized))
 
+    return transactions, has_db_updates
+
+
+@router.get("/payments/transactions", response_model=PaymentTransactionListResponse)
+def get_payment_transactions(
+    skip: int = 0,
+    limit: int = 50,
+    status: Optional[str] = None,
+    source: Optional[str] = None,
+    month: Optional[str] = None,
+    date_from: Optional[str] = None,
+    date_to: Optional[str] = None,
+    min_amount: Optional[float] = None,
+    max_amount: Optional[float] = None,
+    method: Optional[str] = None,
+    property_id: Optional[int] = None,
+    city: Optional[str] = None,
+    search: Optional[str] = None,
+    sync_from_gateway: bool = Query(
+        True,
+        description=(
+            "When true, for orders with no webhook audit row, fetch Razorpay order/payments "
+            "to reconcile stuck pending rows (capped per request; avoids N+1 on full history)."
+        ),
+    ),
+    db: Session = Depends(get_db),
+):
+    """
+    Return paginated transaction rows shaped for Razorpay-like admin listing.
+    """
+    limit = max(1, min(limit, 200))
+    skip = max(0, skip)
+    source_filter = (source or "all").strip().lower()
+    if source_filter not in {"all", "gateway", "webhook", "db"}:
+        raise HTTPException(status_code=400, detail="Invalid source filter")
+
+    if month:
+        try:
+            parse_month_range(month)
+        except ValueError as e:
+            raise HTTPException(status_code=400, detail=str(e)) from e
+
+    query = build_payment_transactions_query(
+        db,
+        status=status,
+        month=month,
+        date_from=date_from,
+        date_to=date_to,
+        min_amount=min_amount,
+        max_amount=max_amount,
+        property_id=property_id,
+        city=city,
+        search=search,
+    )
+
+    webhook_exists = (
+        db.query(PaymentWebhookEvent.id)
+        .filter(
+            PaymentWebhookEvent.order_id.isnot(None),
+            PaymentWebhookEvent.order_id == Payment.order_id,
+        )
+        .exists()
+    )
+    if source_filter == "webhook":
+        query = query.filter(webhook_exists)
+    elif source_filter == "db":
+        query = query.filter(~webhook_exists)
+
+    total = query.count()
+
+    # When post-filtering by gateway source or method, fetch a larger window then trim.
+    needs_post_filter = source_filter == "gateway" or bool(method)
+    fetch_limit = limit * 3 if needs_post_filter else limit
+    row_tuples = query.offset(skip).limit(fetch_limit).all()
+
+    transactions, has_db_updates = _process_transaction_rows(
+        db,
+        row_tuples,
+        source_filter=source_filter,
+        method_filter=method,
+        sync_from_gateway=sync_from_gateway,
+    )
+
+    if needs_post_filter:
+        transactions = transactions[:limit]
+        total = len(transactions) + skip if len(transactions) < limit else total
+
     if has_db_updates:
         db.commit()
 
-    return transactions
+    return PaymentTransactionListResponse(
+        items=transactions,
+        total=total,
+        skip=skip,
+        limit=limit,
+    )
+
+
+@router.get(
+    "/payments/transactions/{order_id}",
+    response_model=PaymentTransactionDetailResponse,
+)
+def get_payment_transaction_detail(
+    order_id: str,
+    sync_from_gateway: bool = Query(True),
+    db: Session = Depends(get_db),
+):
+    """Single transaction with webhook timeline for admin detail drawer."""
+    query = build_payment_transactions_query(db).filter(Payment.order_id == order_id)
+    row_tuple = query.first()
+    if not row_tuple:
+        raise HTTPException(status_code=404, detail="Transaction not found")
+
+    items, has_db_updates = _process_transaction_rows(
+        db,
+        [row_tuple],
+        source_filter="all",
+        method_filter=None,
+        sync_from_gateway=sync_from_gateway,
+    )
+    if has_db_updates:
+        db.commit()
+    if not items:
+        raise HTTPException(status_code=404, detail="Transaction not found")
+
+    timeline_rows = (
+        db.query(PaymentWebhookEvent)
+        .filter(PaymentWebhookEvent.order_id == order_id)
+        .order_by(PaymentWebhookEvent.created_at.asc())
+        .all()
+    )
+    timeline = [
+        PaymentTimelineEventSchema(
+            id=row.id,
+            event=row.event,
+            status=row.status,
+            reason=row.reason,
+            created_at=row.created_at,
+        )
+        for row in timeline_rows
+    ]
+
+    return PaymentTransactionDetailResponse(transaction=items[0], timeline=timeline)
 
 
 @router.get("/payments/webhook-events")

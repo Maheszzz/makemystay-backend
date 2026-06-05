@@ -199,6 +199,13 @@ _app.dependency_overrides[get_db] = _override_get_db
 client = TestClient(_app, raise_server_exceptions=True)
 
 
+def _items(body):
+    """Paginated list response or legacy bare array."""
+    if isinstance(body, dict) and "items" in body:
+        return body["items"], body.get("total", len(body["items"]))
+    return body, len(body)
+
+
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
@@ -261,7 +268,8 @@ def test_transactions_returns_db_source_when_no_webhook():
 
     r = client.get("/api/v1/payments/transactions")
     assert r.status_code == 200
-    rows = r.json()
+    rows, total = _items(r.json())
+    assert total == 1
     assert len(rows) == 1
     assert rows[0]["source"] == "db"
     assert rows[0]["order_id"] == "order_db_only"
@@ -281,7 +289,7 @@ def test_transactions_webhook_source_and_status_captured_becomes_success():
 
     r = client.get("/api/v1/payments/transactions")
     assert r.status_code == 200
-    rows = r.json()
+    rows, _ = _items(r.json())
     assert len(rows) == 1
     row = rows[0]
     assert row["source"] == "webhook"
@@ -303,7 +311,7 @@ def test_transactions_authorized_status_is_pending_not_success():
 
     r = client.get("/api/v1/payments/transactions")
     assert r.status_code == 200
-    rows = r.json()
+    rows, _ = _items(r.json())
     assert rows[0]["status"] == "pending"
 
 
@@ -322,7 +330,7 @@ def test_transactions_bank_rrn_from_webhook_acquirer_data():
 
     r = client.get("/api/v1/payments/transactions")
     assert r.status_code == 200
-    rows = r.json()
+    rows, _ = _items(r.json())
     assert rows[0]["bank_rrn"] == "RRN9876543"
 
 
@@ -341,7 +349,7 @@ def test_transactions_bank_rrn_fallback_to_upi_transaction_id():
 
     r = client.get("/api/v1/payments/transactions")
     assert r.status_code == 200
-    rows = r.json()
+    rows, _ = _items(r.json())
     assert rows[0]["bank_rrn"] == "UPI12345"
 
 
@@ -360,7 +368,7 @@ def test_transactions_source_filter_webhook_only():
 
     r = client.get("/api/v1/payments/transactions?source=webhook")
     assert r.status_code == 200
-    rows = r.json()
+    rows, _ = _items(r.json())
     assert len(rows) == 1
     assert rows[0]["order_id"] == "order_filter_wh"
     assert rows[0]["source"] == "webhook"
@@ -381,7 +389,7 @@ def test_transactions_source_filter_db_only():
 
     r = client.get("/api/v1/payments/transactions?source=db")
     assert r.status_code == 200
-    rows = r.json()
+    rows, _ = _items(r.json())
     assert all(row["source"] == "db" for row in rows)
     order_ids = [row["order_id"] for row in rows]
     assert "order_filter_db2" in order_ids
@@ -411,7 +419,7 @@ def test_transactions_sync_from_gateway_reconciles_pending_without_webhook(monke
 
     r = client.get("/api/v1/payments/transactions")
     assert r.status_code == 200
-    rows = r.json()
+    rows, _ = _items(r.json())
     assert len(rows) == 1
     row = rows[0]
     assert row["source"] == "gateway"
@@ -423,3 +431,95 @@ def test_transactions_sync_from_gateway_reconciles_pending_without_webhook(monke
     assert p.status == "success"
     assert p.payment_id == "pay_gw_recon_1"
     db2.close()
+
+
+def test_transactions_paginated_response_shape():
+    db = _TestSession()
+    for i in range(3):
+        _make_payment(db, order_id=f"order_page_{i}")
+    db.close()
+
+    r = client.get("/api/v1/payments/transactions?skip=0&limit=2")
+    assert r.status_code == 200
+    body = r.json()
+    assert body["total"] == 3
+    assert body["skip"] == 0
+    assert body["limit"] == 2
+    assert len(body["items"]) == 2
+
+
+def test_transactions_month_filter():
+    db = _TestSession()
+    _make_payment(
+        db,
+        order_id="order_may",
+        status="success",
+        amount=1000.0,
+    )
+    p_may = db.query(Payment).filter(Payment.order_id == "order_may").one()
+    p_may.created_at = datetime(2026, 5, 15, 12, 0, 0, tzinfo=timezone.utc)
+    _make_payment(
+        db,
+        order_id="order_apr",
+        status="success",
+        amount=2000.0,
+    )
+    p_apr = db.query(Payment).filter(Payment.order_id == "order_apr").one()
+    p_apr.created_at = datetime(2026, 4, 10, 12, 0, 0, tzinfo=timezone.utc)
+    db.commit()
+    db.close()
+
+    r = client.get("/api/v1/payments/transactions?month=2026-05")
+    assert r.status_code == 200
+    rows, total = _items(r.json())
+    assert total == 1
+    assert rows[0]["order_id"] == "order_may"
+
+
+def test_transactions_gst_and_property_from_booking():
+    from app.models.realty import Property
+
+    db = _TestSession()
+    prop = Property(
+        property_name="HSR PG Alpha",
+        city="Bangalore",
+        listing_type="rent",
+    )
+    db.add(prop)
+    db.flush()
+    _make_payment(db, order_id="order_prop_1", status="success", amount=1180.0)
+    booking = Booking(
+        order_id="order_prop_1",
+        property_id=prop.id,
+        customer_name="Tenant",
+        amount=1180.0,
+    )
+    db.add(booking)
+    db.commit()
+    db.close()
+
+    r = client.get("/api/v1/payments/transactions")
+    assert r.status_code == 200
+    rows, _ = _items(r.json())
+    assert rows[0]["property_name"] == "HSR PG Alpha"
+    assert rows[0]["property_city"] == "Bangalore"
+    assert rows[0]["gst_amount"] == 180.0
+
+
+def test_transaction_detail_with_timeline():
+    db = _TestSession()
+    _make_payment(db, order_id="order_detail_1", status="pending")
+    _make_webhook(db, "order_detail_1", "payment.captured", {
+        "id": "pay_detail_1",
+        "order_id": "order_detail_1",
+        "amount": 50000,
+        "status": "captured",
+        "currency": "INR",
+    })
+    db.close()
+
+    r = client.get("/api/v1/payments/transactions/order_detail_1")
+    assert r.status_code == 200
+    body = r.json()
+    assert body["transaction"]["order_id"] == "order_detail_1"
+    assert len(body["timeline"]) >= 1
