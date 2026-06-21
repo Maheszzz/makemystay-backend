@@ -2,7 +2,7 @@
 
 from typing import List, Optional, Tuple
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, BackgroundTasks
 from fastapi.responses import JSONResponse
 from loguru import logger
 from sqlalchemy.exc import SQLAlchemyError
@@ -225,6 +225,7 @@ def get_contact(contact_id: int, db: Session = Depends(get_mysql_db), current_us
 @realty_router.post("/realty/contacts", response_model=ContactResponse, status_code=201)
 def create_contact(
     contact: ContactCreate,
+    background_tasks: BackgroundTasks,
     db: Session = Depends(get_mysql_db),
 ):
     """
@@ -239,21 +240,15 @@ def create_contact(
     try:
         new_contact = realty_repo.create_contact(db, contact.model_dump(by_alias=False))
 
-        # Offload all processing to RQ
-        from app.core.redis import lead_queue
-        if lead_queue:
-            try:
-                from app.tasks.lead_tasks import process_contact_notifications_task
-                lead_queue.enqueue(
-                    process_contact_notifications_task,
-                    contact.model_dump(by_alias=False),
-                    new_contact.id
-                )
-                logger.info(f"Contact #{new_contact.id} queued for background processing")
-            except Exception as re:
-                logger.error(f"Failed to enqueue contact #{new_contact.id} to Redis: {re}")
-        else:
-            logger.warning(f"Contact #{new_contact.id} background tasks skipped - Redis not available")
+        from app.services.contact_notifications import run_contact_notifications
+        
+        # Always use BackgroundTasks to guarantee execution (bypassing Redis worker dependency)
+        background_tasks.add_task(
+            run_contact_notifications,
+            contact.model_dump(by_alias=False),
+            new_contact.id
+        )
+        logger.info(f"Contact #{new_contact.id} queued via FastAPI BackgroundTasks to guarantee execution")
 
         return new_contact
     except SQLAlchemyError as e:
