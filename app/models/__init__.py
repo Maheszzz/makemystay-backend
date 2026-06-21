@@ -21,3 +21,4 @@ from app.models.sync_job import SyncJob
 from app.models.sync_metadata import SyncMetadata
 from app.models.zoho_webhook_event import ZohoWebhookEvent
 from app.models.user import User
+from app.models.whatsapp_lead import WhatsAppLead

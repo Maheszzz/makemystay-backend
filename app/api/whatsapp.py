@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from app.schemas.whatsapp_lead import WhatsAppWidgetLeadCreate, WhatsAppWidgetLeadResponse
+
 import json
 import re
 import time
@@ -9,6 +11,7 @@ from typing import Any, Dict, Optional
 from fastapi import APIRouter, Depends, Request, HTTPException, Header
 from fastapi.responses import PlainTextResponse
 from loguru import logger
+from sqlalchemy.exc import SQLAlchemyError, IntegrityError
 from sqlalchemy.orm import Session
 from twilio.request_validator import RequestValidator
 
@@ -581,6 +584,54 @@ async def twilio_whatsapp_inbound(request: Request, db: Session = Depends(get_my
     _send_text_checked(to=phone, body=_ask_interest())
     _set_session(phone, _default_session(lead_id))
     return PlainTextResponse("ok")
+
+
+@whatsapp_router.post(
+    "/whatsapp/widget-lead",
+    tags=["WhatsApp"],
+    summary="Capture a lead from the WhatsApp floating widget form",
+)
+async def submit_whatsapp_widget_lead(
+    payload: WhatsAppWidgetLeadCreate,
+    db: Session = Depends(get_mysql_db),
+):
+    """
+    Public endpoint — no authentication required.
+
+    Saves the details submitted via the website's WhatsApp floating widget
+    (name, phone, email, preferred location, property type, message) as a
+    new row in the `whatsapp_leads` table with source = "Website - WhatsApp Widget".
+    """
+    from app.repo import whatsapp_lead as whatsapp_lead_repo
+
+    lead_data = {
+        "name": payload.name,
+        "phone": payload.phone,
+        "email": payload.email or None,
+        "preferred_location": payload.preferred_location or None,
+        "property_type": payload.property_type or None,
+        "message": payload.message or None,
+        "source": payload.source,
+    }
+
+    try:
+        new_lead = whatsapp_lead_repo.create_whatsapp_lead(db, lead_data)
+        logger.info(
+            f"WhatsApp widget lead captured: id={new_lead.id} "
+            f"phone={payload.phone} source={payload.source!r}"
+        )
+        return WhatsAppWidgetLeadResponse(
+            success=True,
+            message="Lead captured successfully",
+            lead_id=new_lead.id,
+        )
+    except Exception as e:
+        logger.error(f"Failed to save WhatsApp widget lead for phone={payload.phone}: {e}")
+        return WhatsAppWidgetLeadResponse(
+            success=False,
+            message="Lead could not be saved, but you may still chat on WhatsApp.",
+            lead_id=None,
+        )
 
 
 @whatsapp_router.post("/whatsapp/status", include_in_schema=False, dependencies=[Depends(verify_twilio)])
