@@ -243,6 +243,16 @@ class PropertyBase(BaseModel):
     listing_type: ListingType = ListingType.rent
     is_available: Optional[bool] = True
     slug: Optional[str] = None
+    property_code: Optional[str] = Field(None, max_length=50)
+    gender_preference: Optional[str] = Field(None, max_length=50)
+    property_category: Optional[str] = Field(None, max_length=100)
+    locality: Optional[str] = Field(None, max_length=150)
+    latitude: Optional[float] = None
+    longitude: Optional[float] = None
+    available_beds: Optional[int] = None
+    metadata_json: Optional[dict] = Field(None, alias="metadata")
+
+    model_config = {"populate_by_name": True}
 
     @field_validator("property_name")
     @classmethod
@@ -304,6 +314,14 @@ class PropertyUpdate(BaseModel):
     starting_price: Optional[float] = Field(None, ge=0)
     listing_type: Optional[ListingType] = None
     is_available: Optional[bool] = None
+    property_code: Optional[str] = Field(None, max_length=50)
+    gender_preference: Optional[str] = Field(None, max_length=50)
+    property_category: Optional[str] = Field(None, max_length=100)
+    locality: Optional[str] = Field(None, max_length=150)
+    latitude: Optional[float] = None
+    longitude: Optional[float] = None
+    available_beds: Optional[int] = None
+    metadata_json: Optional[dict] = Field(None, alias="metadata")
 
     @field_validator("property_name", "location")
     @classmethod
@@ -345,6 +363,14 @@ class PropertyListItem(BaseModel):
     listing_type: str
     is_available: Optional[bool] = None
     slug: Optional[str] = None
+    property_code: Optional[str] = None
+    gender_preference: Optional[str] = None
+    property_category: Optional[str] = None
+    locality: Optional[str] = None
+    latitude: Optional[float] = None
+    longitude: Optional[float] = None
+    available_beds: Optional[int] = None
+    metadata: Optional[dict] = Field(None, alias="metadata_json")
     created_at: datetime
     updated_at: datetime
     images: List[PropertyImageResponse] = []
@@ -404,6 +430,14 @@ class PropertyResponse(BaseModel):
     listing_type: str
     is_available: Optional[bool] = None
     slug: Optional[str] = None
+    property_code: Optional[str] = None
+    gender_preference: Optional[str] = None
+    property_category: Optional[str] = None
+    locality: Optional[str] = None
+    latitude: Optional[float] = None
+    longitude: Optional[float] = None
+    available_beds: Optional[int] = None
+    metadata: Optional[dict] = Field(None, alias="metadata_json")
     created_at: datetime
     updated_at: datetime
     images: List[PropertyImageResponse] = []

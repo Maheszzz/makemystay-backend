@@ -501,7 +501,11 @@ def create_property(
     - **listing_type**: Listing type (buy, rent - defaults to rent)
     """
     try:
-        out = realty_repo.create_property(db, property_data.model_dump())
+        payload = property_data.model_dump()
+        if not payload.get("property_code"):
+            import uuid
+            payload["property_code"] = f"MMS-{uuid.uuid4().hex[:8].upper()}"
+        out = realty_repo.create_property(db, payload)
         bump_properties_list_cache()
         return _property_response_from_orm(out)
     except SQLAlchemyError as e:
