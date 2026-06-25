@@ -1,5 +1,11 @@
 import base64
 import hashlib
+# Ensure xhtml2pdf is available for PDF generation (pure Python)
+try:
+    import xhtml2pdf
+except ImportError:
+    # The module will be lazily imported in create_receipt_pdf; this import is optional.
+    pass
 import hmac
 import os
 from datetime import datetime, timezone
@@ -11,7 +17,7 @@ import jinja2
 import qrcode
 import razorpay
 import httpx
-from fastapi import APIRouter, Depends, HTTPException, Query, Request
+from fastapi import APIRouter, Depends, HTTPException, Query, Request, BackgroundTasks
 from fastapi.responses import FileResponse
 from loguru import logger
 from pydantic import BaseModel
@@ -260,18 +266,21 @@ async def verify_payment(req: Request, db: Session = Depends(get_db)):
             db.query(Payment).filter(Payment.order_id == razorpay_order_id).first()
         )
         if payment:
+            PaymentStatus = None
             payment.status = "success"
             payment.payment_id = razorpay_payment_id
             payment.signature = razorpay_signature
             db.commit()
 
         return {"status": "success", "payment_id": razorpay_payment_id}
+    # pyrefly: ignore [implicit-import]
     except razorpay.errors.SignatureVerificationError:
         # Update DB to failed if possible
         payment = (
             db.query(Payment).filter(Payment.order_id == razorpay_order_id).first()
         )
         if payment:
+            # pyrefly: ignore [bad-assignment]
             payment.status = "failed"
             payment.payment_id = razorpay_payment_id
             payment.signature = razorpay_signature
@@ -350,6 +359,7 @@ def handle_failed_payment_async(order_id: str, payment_id: str):
         send_whatsapp_retry(payment, retry_link)
 
         # Mark as sent
+        # pyrefly: ignore [bad-assignment]
         payment.recovery_sent = True
         db.commit()
     except Exception as e:
@@ -439,6 +449,7 @@ def process_webhook_async(
                 
                 notes = payment_entity.get("notes")
                 if isinstance(notes, dict):
+                    # pyrefly: ignore [bad-assignment]
                     payment.payer_name = notes.get("name")
                     
                 db.add(payment)
@@ -467,6 +478,7 @@ def process_webhook_async(
             return
 
         if event in success_events:
+            # pyrefly: ignore [bad-assignment]
             payment.status = "success"
             
             # Create Ledger Entry to mathematically log the credit
@@ -484,6 +496,7 @@ def process_webhook_async(
             pass
 
         elif event in failed_events:
+            # pyrefly: ignore [bad-assignment]
             payment.status = "failed"
             _cancel_booking(db, payment=payment)
 
@@ -491,6 +504,7 @@ def process_webhook_async(
             # Refund events: update the payment status to refunded.
             # refund.failed / refund.speed_changed don't change the captured status.
             if event in {"refund.created", "refund.processed"} and cur_status != "refunded":
+                # pyrefly: ignore [bad-assignment]
                 payment.status = "refunded"
                 logger.info(f"Payment {payment_id} marked refunded via {event}.")
             else:
@@ -536,9 +550,12 @@ def _confirm_booking(db: Session, *, payment: Payment, payment_id: Optional[str]
             db.add(booking)
             logger.info(f"Created new Booking for order_id={payment.order_id}")
 
+        # pyrefly: ignore [bad-assignment]
         booking.payment_status = "paid"
+        # pyrefly: ignore [bad-assignment]
         booking.status = "confirmed"
         if payment_id:
+            # pyrefly: ignore [bad-assignment]
             booking.payment_id = payment_id
 
         logger.info(
@@ -555,7 +572,9 @@ def _cancel_booking(db: Session, *, payment: Payment) -> None:
     try:
         booking = db.query(Booking).filter(Booking.order_id == payment.order_id).first()
         if booking:
+            # pyrefly: ignore [bad-assignment]
             booking.payment_status = "failed"
+            # pyrefly: ignore [bad-assignment]
             booking.status = "cancelled"
             logger.info(f"Booking cancelled: order_id={payment.order_id}")
     except Exception as exc:
@@ -564,7 +583,8 @@ def _cancel_booking(db: Session, *, payment: Payment) -> None:
 
 @router.post("/payments/webhook")
 async def razorpay_webhook(
-    req: Request, 
+    req: Request,
+    background_tasks: BackgroundTasks,
     db: Session = Depends(get_db)
 ):
     """Handle Razorpay server-to-server webhook events asynchronously."""
@@ -645,28 +665,27 @@ async def razorpay_webhook(
 
 
 def create_receipt_pdf(payment: Payment):
+    """Generate a PDF receipt using xhtml2pdf (pure Python, no system deps)."""
     os.makedirs("receipts", exist_ok=True)
     file_path = f"receipts/{payment.payment_id}.pdf"
 
     try:
-        from weasyprint import HTML
+        from xhtml2pdf import pisa
     except ImportError as e:
-        logger.error(
-            f"WeasyPrint is not currently installed or configured properly (requires Pango/Cairo): {e}"
-        )
+        logger.error(f"xhtml2pdf is not installed: {e}")
         raise HTTPException(
             status_code=500,
-            detail="PDF generation currently unavailable due to missing system dependencies.",
+            detail="PDF generation unavailable. Please install xhtml2pdf.",
         )
 
     try:
         date_str = (
-            payment.created_at.strftime("%d %b %Y")
+            payment.created_at.strftime("%d %b %Y, %I:%M %p")
             if payment.created_at is not None
-            else datetime.now().strftime("%d %b %Y")
+            else datetime.now().strftime("%d %b %Y, %I:%M %p")
         )
     except Exception:
-        date_str = datetime.now().strftime("%d %b %Y")
+        date_str = datetime.now().strftime("%d %b %Y, %I:%M %p")
 
     receipt_id = (
         f"MMS-{datetime.now().year}-{payment.id:04d}"
@@ -675,21 +694,21 @@ def create_receipt_pdf(payment: Payment):
     )
 
     # Generate QR Code
-    qr_data = f"https://makemystay.com/receipt/{payment.payment_id}"
+    qr_data = f"https://makemystay.ai/receipt/{payment.payment_id}"
     qr = qrcode.make(qr_data)
     buffer = BytesIO()
     qr.save(buffer, format="PNG")
     qr_base64 = base64.b64encode(buffer.getvalue()).decode("utf-8")
 
-    # Load Logo
-    logo_base64 = None
+    # Load Logo (base64)
+    logo_base64 = ""
     logo_path = os.path.join(os.path.dirname(__file__), "../templates/logo.svg")
     try:
         if os.path.exists(logo_path):
             with open(logo_path, "rb") as image_file:
                 logo_base64 = base64.b64encode(image_file.read()).decode("utf-8")
     except Exception as e:
-        logger.warning(f"Failed to load or encode logo.svg: {e}")
+        logger.warning(f"Failed to load logo: {e}")
 
     # Load Jinja2 Template
     try:
@@ -700,15 +719,7 @@ def create_receipt_pdf(payment: Payment):
         logger.error(f"Error loading receipt template: {e}")
         raise e
 
-    # Load Logo
-    try:
-        with open("./app/templates/logo.svg", "rb") as f:
-            logo_base64 = base64.b64encode(f.read()).decode("utf-8")
-    except Exception as e:
-        logger.error(f"Error loading logo: {e}")
-        logo_base64 = ""
-
-    # Render HTML template with context
+    # Render HTML
     try:
         html_out = template.render(
             receipt_id=receipt_id,
@@ -726,12 +737,19 @@ def create_receipt_pdf(payment: Payment):
         logger.error(f"Error rendering receipt template: {e}")
         raise e
 
-    # Convert HTML to PDF using WeasyPrint
+    # Convert HTML → PDF using xhtml2pdf (pure Python, no libgobject needed)
     try:
-        HTML(string=html_out).write_pdf(file_path)
+        from xhtml2pdf import pisa
+        with open(file_path, "wb") as pdf_file:
+            pisa_status = pisa.CreatePDF(html_out, dest=pdf_file)
+        if pisa_status.err:
+            logger.error(f"xhtml2pdf error for {payment.payment_id}: {pisa_status.err}")
+            raise HTTPException(status_code=500, detail="PDF generation failed.")
+    except HTTPException:
+        raise
     except Exception as e:
-        logger.error(f"Error generating PDF from HTML: {e}")
-        raise e
+        logger.error(f"Error generating PDF: {e}")
+        raise HTTPException(status_code=500, detail=f"PDF generation error: {str(e)}")
 
     return file_path
 
