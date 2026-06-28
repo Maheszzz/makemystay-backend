@@ -587,9 +587,10 @@ async def twilio_whatsapp_inbound(request: Request, db: Session = Depends(get_my
 
 
 @whatsapp_router.post(
-    "/whatsapp/widget-lead",
+    "/leads/widget",
     tags=["WhatsApp"],
     summary="Capture a lead from the WhatsApp floating widget form",
+    status_code=201,
 )
 async def submit_whatsapp_widget_lead(
     payload: WhatsAppWidgetLeadCreate,
@@ -627,10 +628,9 @@ async def submit_whatsapp_widget_lead(
         )
     except Exception as e:
         logger.error(f"Failed to save WhatsApp widget lead for phone={payload.phone}: {e}")
-        return WhatsAppWidgetLeadResponse(
-            success=False,
-            message="Lead could not be saved, but you may still chat on WhatsApp.",
-            lead_id=None,
+        raise HTTPException(
+            status_code=500,
+            detail="We couldn't save your enquiry. Please try again."
         )
 
 

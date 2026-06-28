@@ -2,6 +2,7 @@ import base64
 import hashlib
 # Ensure xhtml2pdf is available for PDF generation (pure Python)
 try:
+    # pyrefly: ignore [missing-import]
     import xhtml2pdf
 except ImportError:
     # The module will be lazily imported in create_receipt_pdf; this import is optional.
@@ -69,6 +70,7 @@ class CreateOrderRequest(BaseModel):
 def _map_webhook_event_to_status(event_name: Optional[str]) -> Optional[str]:
     if not event_name:
         return None
+    # pyrefly: ignore [unnecessary-type-conversion]
     event = str(event_name).strip().lower()
     if event in {"payment.captured", "order.paid", "payment_link.paid"}:
         return "captured"
@@ -267,6 +269,7 @@ async def verify_payment(req: Request, db: Session = Depends(get_db)):
         )
         if payment:
             PaymentStatus = None
+            # pyrefly: ignore [bad-assignment]
             payment.status = "success"
             payment.payment_id = razorpay_payment_id
             payment.signature = razorpay_signature
@@ -670,6 +673,7 @@ def create_receipt_pdf(payment: Payment):
     file_path = f"receipts/{payment.payment_id}.pdf"
 
     try:
+        # pyrefly: ignore [missing-import]
         from xhtml2pdf import pisa
     except ImportError as e:
         logger.error(f"xhtml2pdf is not installed: {e}")
@@ -697,6 +701,7 @@ def create_receipt_pdf(payment: Payment):
     qr_data = f"https://makemystay.ai/receipt/{payment.payment_id}"
     qr = qrcode.make(qr_data)
     buffer = BytesIO()
+    # pyrefly: ignore [unexpected-keyword]
     qr.save(buffer, format="PNG")
     qr_base64 = base64.b64encode(buffer.getvalue()).decode("utf-8")
 
@@ -739,6 +744,7 @@ def create_receipt_pdf(payment: Payment):
 
     # Convert HTML → PDF using xhtml2pdf (pure Python, no libgobject needed)
     try:
+        # pyrefly: ignore [missing-import]
         from xhtml2pdf import pisa
         with open(file_path, "wb") as pdf_file:
             pisa_status = pisa.CreatePDF(html_out, dest=pdf_file)

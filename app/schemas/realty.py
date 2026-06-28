@@ -54,9 +54,13 @@ class PropertyCategoryTab(str, Enum):
 class ContactBase(BaseModel):
     """Base schema for Contact with validation."""
 
+    # pyrefly: ignore [bad-assignment]
     name_: str = Field(..., min_length=1, max_length=100, alias="name")
+    # pyrefly: ignore [bad-assignment]
     phone: str = Field(..., pattern=r"^[6-9]\d{9}$")
+    # pyrefly: ignore [bad-assignment]
     email: EmailStr = Field(..., max_length=150)
+    # pyrefly: ignore [bad-assignment]
     message: str = Field(..., max_length=250)
     location: Optional[str] = Field(None, max_length=100)
     property_type: Optional[str] = Field(None, max_length=50)
@@ -113,6 +117,7 @@ class ContactResponse(BaseModel):
 class PropertyImageBase(BaseModel):
     """Base schema for PropertyImage."""
 
+    # pyrefly: ignore [bad-assignment]
     image_url: str = Field(..., max_length=1000)
     is_primary: bool = False
     sort_order: int = Field(default=0, ge=0)
@@ -164,7 +169,9 @@ class ReviewStatus(str, Enum):
 class ReviewBase(BaseModel):
     """Base schema for Review."""
 
+    # pyrefly: ignore [bad-assignment]
     rating: int = Field(..., ge=1, le=5)
+    # pyrefly: ignore [bad-assignment]
     user_name: str = Field(..., min_length=1, max_length=100)
     property_name: Optional[str] = Field(None, max_length=150)
     comment: Optional[str] = Field(None, description="Review body (alias: review_text)")
@@ -226,6 +233,7 @@ class LocalityTrustStatsResponse(BaseModel):
 class PropertyBase(BaseModel):
     """Base schema for Property with validation."""
 
+    # pyrefly: ignore [bad-assignment]
     property_name: str = Field(..., min_length=1, max_length=150)
     location: Optional[str] = Field(None, max_length=150)
     city: Optional[str] = Field(None, max_length=50)
@@ -239,6 +247,7 @@ class PropertyBase(BaseModel):
     single_price: Optional[float] = Field(None, ge=0)
     double_price: Optional[float] = Field(None, ge=0)
     triple_price: Optional[float] = Field(None, ge=0)
+    # pyrefly: ignore [bad-assignment]
     starting_price: float = Field(..., ge=0)
     listing_type: ListingType = ListingType.rent
     is_available: Optional[bool] = True
