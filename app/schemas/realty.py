@@ -465,6 +465,7 @@ class PropertyResponse(BaseModel):
     )
     canonical_path: Optional[str] = None
     canonical_url: Optional[str] = None
+    seo_engine: Optional[dict] = None
 
     model_config = {"from_attributes": True}
 

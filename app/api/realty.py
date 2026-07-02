@@ -19,6 +19,7 @@ from app.utils.property_image_mime import (
     normalize_content_type_for_compare,
     verify_s3_object_head,
 )
+from app.utils.property_seo_engine import build_property_seo_engine
 from app.utils.s3_client import get_s3_client
 from app.utils.s3_magic_bytes import detect_image_mime_from_s3_range
 from app.services.upload_alerts import emit_upload_event, increment_upload_counter
@@ -55,7 +56,7 @@ from app.schemas.realty import (
 realty_router = APIRouter(tags=["Realty"])
 
 
-def _property_response_from_orm(property_obj) -> PropertyResponse:
+def _property_response_from_orm(property_obj, related_properties=None) -> PropertyResponse:
     """ORM row → PropertyResponse, with server-generated long-form `seo_about` for PDP SEO."""
     p = PropertyResponse.model_validate(property_obj)
     return p.model_copy(
@@ -63,6 +64,11 @@ def _property_response_from_orm(property_obj) -> PropertyResponse:
             "seo_about": build_property_seo_about(property_obj),
             "canonical_path": canonical_property_path(property_obj),
             "canonical_url": canonical_property_url(settings.SITE_URL, property_obj),
+            "seo_engine": build_property_seo_engine(
+                settings.SITE_URL,
+                property_obj,
+                related_properties=related_properties or [],
+            ),
         }
     )
 
@@ -476,7 +482,8 @@ def get_property(property_id: int, db: Session = Depends(get_mysql_db)):
     property_obj = realty_repo.get_property_by_id(db, property_id)
     if not property_obj:
         raise NotFoundException("Property", property_id)
-    return _property_response_from_orm(property_obj)
+    related, _ = realty_repo.get_similar_properties(db, property_id, limit=6) or ([], 0)
+    return _property_response_from_orm(property_obj, related_properties=related)
 
 
 @realty_router.get(
@@ -494,7 +501,8 @@ def get_property_by_slug(
     property_obj = realty_repo.get_property_by_slug(db, property_type, slug)
     if not property_obj:
         raise NotFoundException("Property", f"{property_type}/{slug}")
-    return _property_response_from_orm(property_obj)
+    related, _ = realty_repo.get_similar_properties(db, property_obj.id, limit=6) or ([], 0)
+    return _property_response_from_orm(property_obj, related_properties=related)
 
 
 @realty_router.post(
