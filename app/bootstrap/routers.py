@@ -17,6 +17,7 @@ from app.api.meta_whatsapp import meta_whatsapp_router
 from app.api.payment import router as payment_router, razorpay_webhook
 from app.api.realty import realty_router
 from app.api.retell import retell_router
+from app.api.seo import seo_router
 from app.api.upload import router as upload_router
 from app.api.webhooks import webhooks_router
 from app.api.whatsapp import whatsapp_router
@@ -28,6 +29,7 @@ API_PREFIX = "/api/v1"
 
 def register_routers(app: FastAPI) -> None:
     """Mount all API routers on the application."""
+    app.include_router(seo_router)
     app.include_router(realty_router, prefix=API_PREFIX)
     app.include_router(auth_router, prefix=API_PREFIX)
     app.include_router(upload_router, prefix=API_PREFIX)

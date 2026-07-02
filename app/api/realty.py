@@ -29,6 +29,7 @@ from app.services.property_list_cache import (
     set_cached_properties_list,
 )
 from app.utils.property_seo_narrative import build_property_seo_about
+from app.utils.seo import canonical_property_path, canonical_property_url
 from app.schemas.realty import (
     ContactCreate,
     ContactResponse,
@@ -57,7 +58,23 @@ realty_router = APIRouter(tags=["Realty"])
 def _property_response_from_orm(property_obj) -> PropertyResponse:
     """ORM row → PropertyResponse, with server-generated long-form `seo_about` for PDP SEO."""
     p = PropertyResponse.model_validate(property_obj)
-    return p.model_copy(update={"seo_about": build_property_seo_about(property_obj)})
+    return p.model_copy(
+        update={
+            "seo_about": build_property_seo_about(property_obj),
+            "canonical_path": canonical_property_path(property_obj),
+            "canonical_url": canonical_property_url(settings.SITE_URL, property_obj),
+        }
+    )
+
+
+def _property_list_item_from_orm(property_obj) -> dict:
+    item = PropertyListItem.model_validate(property_obj).model_copy(
+        update={
+            "canonical_path": canonical_property_path(property_obj),
+            "canonical_url": canonical_property_url(settings.SITE_URL, property_obj),
+        }
+    )
+    return item.model_dump(mode="json")
 
 
 def _merge_head_and_mime_for_image_url(url: str) -> Tuple[str, bool, Optional[int]]:
@@ -391,9 +408,7 @@ def list_properties(
         sort_by=sort_by,
         list_mode=True,
     )
-    items = [
-        PropertyListItem.model_validate(p).model_dump(mode="json") for p in properties
-    ]
+    items = [_property_list_item_from_orm(p) for p in properties]
 
     # Tab badges must respect the same city/search/price filters as the listing query.
     property_counts = realty_repo.get_property_category_counts(
@@ -447,9 +462,7 @@ def list_similar_properties(
     if out is None:
         raise NotFoundException("Property", property_id)
     properties, total = out
-    items = [
-        PropertyListItem.model_validate(p).model_dump(mode="json") for p in properties
-    ]
+    items = [_property_list_item_from_orm(p) for p in properties]
     return JSONResponse(content={"items": items, "total": total})
 
 

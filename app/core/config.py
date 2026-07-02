@@ -13,6 +13,8 @@ class Settings(BaseSettings):
     DB_NAME: str
 
     ENV: str = "production"
+    SITE_URL: str = "https://makemystay.co.in"
+    SEO_SITEMAP_MAX_URLS: int = 50_000
     # Comma-separated extra browser origins for CORS (e.g. staging admin URL).
     CORS_EXTRA_ORIGINS: str = ""
     # Dev-only: run SQLAlchemy create_all on startup. Production should use Alembic only.

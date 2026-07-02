@@ -389,6 +389,8 @@ class PropertyListItem(BaseModel):
     last_booked_at: Optional[datetime] = None
     last_review_at: Optional[datetime] = None
     category: Optional[str] = None
+    canonical_path: Optional[str] = None
+    canonical_url: Optional[str] = None
     features: Optional[List[str]] = None
 
     model_config = {"from_attributes": True}
@@ -461,6 +463,8 @@ class PropertyResponse(BaseModel):
         None,
         description="Long-form (~500 words) SEO narrative for PDPs; server-generated from listing data.",
     )
+    canonical_path: Optional[str] = None
+    canonical_url: Optional[str] = None
 
     model_config = {"from_attributes": True}
 
