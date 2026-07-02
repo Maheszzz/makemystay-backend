@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import re
 from datetime import datetime, timezone
+from decimal import Decimal
 from typing import Any, Optional
 from urllib.parse import quote
 
@@ -59,6 +60,43 @@ def canonical_property_path(property_obj: Any) -> str:
 
 def canonical_property_url(site_url: str, property_obj: Any) -> str:
     return f"{normalize_site_url(site_url)}{canonical_property_path(property_obj)}"
+
+
+def public_url(site_url: str, path: str) -> str:
+    normalized_path = path if path.startswith("/") else f"/{path}"
+    return f"{normalize_site_url(site_url)}{normalized_path}"
+
+
+def truncate_text(value: Optional[str], limit: int) -> str:
+    text = re.sub(r"\s+", " ", value or "").strip()
+    if len(text) <= limit:
+        return text
+    return text[: max(0, limit - 1)].rstrip() + "..."
+
+
+def money_value(value: Any) -> Optional[float]:
+    if value is None:
+        return None
+    if isinstance(value, Decimal):
+        return float(value)
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        return None
+
+
+def primary_image_url(property_obj: Any) -> Optional[str]:
+    images = list(getattr(property_obj, "images", None) or [])
+    if not images:
+        return None
+    images.sort(
+        key=lambda img: (
+            not bool(getattr(img, "is_primary", False)),
+            getattr(img, "sort_order", 0) or 0,
+            getattr(img, "id", 0) or 0,
+        )
+    )
+    return getattr(images[0], "image_url", None)
 
 
 def xml_datetime(value: Any) -> str:
