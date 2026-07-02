@@ -22,10 +22,17 @@ import json
 import time
 import socket
 from collections import defaultdict
+from time import perf_counter
 
 from app.core.config import settings
 from app.core.log_dedupe import should_log_once
 from app.configs.db_config import get_mysql_db
+from app.utils.performance import (
+    PRIVATE_NO_STORE,
+    PUBLIC_CRAWLER_CACHE,
+    PUBLIC_SHORT_CACHE,
+    apply_security_and_timing_headers,
+)
 
 # --- Settings & Logging ---
 load_dotenv()
@@ -194,6 +201,41 @@ app.state.limiter = limiter
 app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 
 # --- Middleware ---
+PUBLIC_CACHEABLE_PREFIXES = (
+    "/api/v1/seo/",
+)
+PUBLIC_CRAWLER_FILES = (
+    "/robots.txt",
+    "/sitemap.xml",
+    "/sitemap-properties.xml",
+    "/sitemap-cities.xml",
+    "/sitemap-locations.xml",
+    "/sitemap-blog.xml",
+    "/sitemap-static.xml",
+)
+
+
+@app.middleware("http")
+async def performance_headers_middleware(request: Request, call_next):
+    started_at = perf_counter()
+    response = await call_next(request)
+    apply_security_and_timing_headers(response, started_at)
+
+    path = request.url.path
+    method = request.method.upper()
+    if method in {"GET", "HEAD"}:
+        if path in PUBLIC_CRAWLER_FILES:
+            response.headers.setdefault("Cache-Control", PUBLIC_CRAWLER_CACHE)
+            response.headers.setdefault("Vary", "Accept-Encoding")
+        elif path.startswith(PUBLIC_CACHEABLE_PREFIXES):
+            response.headers.setdefault("Cache-Control", PUBLIC_SHORT_CACHE)
+            response.headers.setdefault("Vary", "Accept-Encoding")
+    elif path.startswith("/api/"):
+        response.headers.setdefault("Cache-Control", PRIVATE_NO_STORE)
+
+    return response
+
+
 @app.middleware("http")
 async def log_request_headers(request: Request, call_next):
     if "/uploads/binary" in request.url.path:
@@ -300,6 +342,11 @@ async def standardize_response_middleware(request: Request, call_next):
         "/metrics",
         "/robots.txt",
         "/sitemap.xml",
+        "/sitemap-properties.xml",
+        "/sitemap-cities.xml",
+        "/sitemap-locations.xml",
+        "/sitemap-blog.xml",
+        "/sitemap-static.xml",
     ) or p.startswith("/docs") or p.startswith("/openapi") or p.startswith("/api/v1/internal"):
         return await call_next(request)
 

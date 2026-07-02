@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from typing import Any, Optional
 
+from app.utils.blog_content_engine import blog_links_for_context
 from app.utils.property_seo_narrative import build_property_seo_about
 from app.utils.seo import canonical_property_path, canonical_property_type, canonical_property_url, money_value
 
@@ -161,6 +162,7 @@ def _internal_links(site_url: str, prop: Any, related_properties: Optional[list[
                 "reason": "locality_cluster",
             }
         )
+    links.extend(blog_links_for_context(site_url, locality=location, category=category, limit=4))
     for related in (related_properties or [])[:6]:
         links.append(
             {
