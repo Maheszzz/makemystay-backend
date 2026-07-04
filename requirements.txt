@@ -22,6 +22,7 @@ sentry-sdk
 razorpay
 qrcode[pil]
 jinja2
+reportlab==3.6.13
 xhtml2pdf==0.2.13
 fastapi-mail
 pytz

@@ -728,11 +728,13 @@ def create_receipt_pdf(payment: Payment):
     try:
         html_out = template.render(
             receipt_id=receipt_id,
-            payment_id=payment.payment_id,
+            payment_id=payment.payment_id or "N/A",
+            order_id=payment.order_id or "N/A",
+            payment_type=str(payment.payment_type or "booking").capitalize(),
             date=date_str,
             status=str(payment.status).capitalize(),
             customer_name=payment.payer_name or "N/A",
-            customer_phone=payment.payer_phone or "N/A",
+            customer_phone=payment.payer_phone or "",
             customer_email=payment.payer_email or "",
             amount=float(payment.amount or 0),
             qr_code_base64=qr_base64,
