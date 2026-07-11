@@ -370,16 +370,30 @@ def get_properties(
         query = query.filter(or_(*conditions))
 
     # Apply Sorting
+    order_clauses = []
+    if search:
+        from sqlalchemy import case
+        exact_filter = f"%{search.strip()}%"
+        exact_match_score = case(
+            (Property.location.ilike(exact_filter), 2),
+            (Property.property_name.ilike(exact_filter), 2),
+            (func.coalesce(Property.description, "").ilike(exact_filter), 1),
+            else_=0
+        )
+        order_clauses.append(exact_match_score.desc())
+
     if sort_by == "price_asc":
-        query = query.order_by(Property.starting_price.asc())
+        order_clauses.append(Property.starting_price.asc())
     elif sort_by == "price_desc":
-        query = query.order_by(Property.starting_price.desc())
+        order_clauses.append(Property.starting_price.desc())
     elif sort_by == "newest":
-        query = query.order_by(Property.created_at.desc())
+        order_clauses.append(Property.created_at.desc())
     elif sort_by == "review_count_desc":
-        query = query.order_by(desc(func.coalesce(Property.review_count, 0)))
+        order_clauses.append(desc(func.coalesce(Property.review_count, 0)))
     else:  # rating_desc (default)
-        query = query.order_by(desc(func.coalesce(Property.average_rating, 0)))
+        order_clauses.append(desc(func.coalesce(Property.average_rating, 0)))
+
+    query = query.order_by(*order_clauses)
 
     # Set query statement timeout to 5 seconds to prevent hanging
     try:
@@ -945,7 +959,7 @@ def moderate_review(
         db.rollback()
         raise
 
-
+        
 def touch_property_verified(db: Session, property_id: int) -> None:
     """Mark listing as field-verified (freshness signal)."""
     from datetime import datetime
@@ -967,7 +981,7 @@ def touch_property_booked(db: Session, property_id: int) -> None:
     try:
         db.query(Property).filter(Property.id == property_id).update(
             {Property.last_booked_at: datetime.utcnow()},
-            synchronize_session=False,
+            synchronize_session=False, 
         )
         db.commit()
     except SQLAlchemyError:

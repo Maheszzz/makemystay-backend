@@ -48,11 +48,15 @@ def _add_neighbors(terms: Set[str], token: str) -> None:
     if not token:
         return
     terms.add(token)
+    
+    if len(token) < 3:
+        return
+        
     for key, neighbors in NEARBY_MAPPING.items():
-        if key in token or token in key:
+        if key == token or token in key.split() or key in token:
             terms.update(neighbors)
     for key, aliases in LANDMARK_ALIASES.items():
-        if key in token or token in key:
+        if key == token or token in key.split() or key in token:
             terms.update(aliases)
 
 
