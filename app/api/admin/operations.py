@@ -12,6 +12,8 @@ from sqlalchemy.orm import Session
 
 from app.configs.db_config import get_mysql_db
 from app.core import security
+from sqlalchemy import or_
+from app.models.realty import Property
 from app.core.config import settings
 from app.core.rate_limit import limiter
 from app.core.redis import HISTORICAL_HOUSING_SYNC_LOCK, lead_queue, redis_conn
@@ -201,6 +203,36 @@ async def get_job_status(job_id: str, db: Session = Depends(get_mysql_db), _admi
     except Exception as e:
         logger.error(f"Redis Job fetch failed: {e}")
         raise HTTPException(status_code=503, detail="Error fetching job status from Redis")
+
+
+@router.get("/search", summary="Global search for Admin")
+async def global_search(
+    q: str = Query(..., min_length=2),
+    db: Session = Depends(get_mysql_db),
+    _admin=Depends(security.admin_or_employee_required),
+):
+    search_term = f"%{q}%"
+    
+    properties = db.query(Property).filter(
+        or_(
+            Property.property_name.ilike(search_term),
+            Property.location.ilike(search_term),
+            Property.city.ilike(search_term)
+        )
+    ).limit(10).all()
+    
+    leads = db.query(Lead).filter(
+        or_(
+            Lead.name.ilike(search_term),
+            Lead.phone.ilike(search_term),
+            Lead.email.ilike(search_term)
+        )
+    ).limit(10).all()
+    
+    return {
+        "properties": properties,
+        "leads": leads
+    }
 
 
 @router.get(

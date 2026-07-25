@@ -256,16 +256,16 @@ def _apply_property_category_tab(query, category: Optional[str]):
         return query
     c = category.strip().lower()
     if c == "pg":
-        return query.filter(func.lower(Property.property_type) == "pg")
+        return query.filter(func.lower(Property.property_type).in_(["pg", "co-living", "hostel"]))
     if c == "plot":
         return query.filter(func.lower(Property.property_type) == "plot")
     if c == "rent":
         return query.filter(Property.listing_type == "rent").filter(
-            ~func.lower(Property.property_type).in_(["pg", "plot"])
+            func.lower(Property.property_type).notin_(["pg", "plot", "co-living", "hostel"])
         )
     if c == "buy":
-        return query.filter(Property.listing_type == "buy").filter(
-            ~func.lower(Property.property_type).in_(["pg", "plot"])
+        return query.filter(Property.listing_type.in_(["buy", "sale"])).filter(
+            func.lower(Property.property_type).notin_(["pg", "plot", "co-living", "hostel"])
         )
     return query
 
@@ -336,13 +336,13 @@ def get_properties(
 
     if category:
         query = _apply_property_category_tab(query, category)
-    else:
-        if property_type:
-            query = query.filter(Property.property_type == property_type)
-        if exclude_property_type:
-            query = query.filter(Property.property_type != exclude_property_type)
-        if listing_type:
-            query = query.filter(Property.listing_type == listing_type)
+    
+    if property_type:
+        query = query.filter(Property.property_type == property_type)
+    if exclude_property_type:
+        query = query.filter(Property.property_type != exclude_property_type)
+    if listing_type:
+        query = query.filter(Property.listing_type == listing_type)
 
     if is_available is not None:
         query = query.filter(Property.is_available == is_available)
@@ -417,13 +417,13 @@ def get_properties(
 
         if category:
             fallback_query = _apply_property_category_tab(fallback_query, category)
-        else:
-            if property_type:
-                fallback_query = fallback_query.filter(Property.property_type == property_type)
-            if exclude_property_type:
-                fallback_query = fallback_query.filter(Property.property_type != exclude_property_type)
-            if listing_type:
-                fallback_query = fallback_query.filter(Property.listing_type == listing_type)
+        
+        if property_type:
+            fallback_query = fallback_query.filter(Property.property_type == property_type)
+        if exclude_property_type:
+            fallback_query = fallback_query.filter(Property.property_type != exclude_property_type)
+        if listing_type:
+            fallback_query = fallback_query.filter(Property.listing_type == listing_type)
 
         if is_available is not None:
             fallback_query = fallback_query.filter(Property.is_available == is_available)
