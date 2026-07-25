@@ -50,6 +50,7 @@ async def retry_failed_syncs(
     for lead in failed_leads:
         try:
             lead_queue.enqueue(sync_lead_to_zoho_task, lead.id, job_id=f"retry_sync_zoho_{lead.id}")
+            # pyrefly: ignore [bad-assignment]
             lead.crm_status = "queued"
             requeued_count += 1
         except Exception as e:
@@ -153,6 +154,7 @@ async def get_job_status(job_id: str, db: Session = Depends(get_mysql_db), _admi
         }
         return {
             "id": celery_job.task_id,
+            # pyrefly: ignore [no-matching-overload]
             "status": status_map.get(celery_job.status, celery_job.status),
             "result": celery_job.result,
             "error": celery_job.error,
