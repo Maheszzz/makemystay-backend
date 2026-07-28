@@ -11,6 +11,8 @@ from sqlalchemy import (
 from sqlalchemy.orm import relationship
 from sqlalchemy.sql import func
 
+from sqlalchemy.dialects.mysql import INTEGER as MYSQL_INTEGER
+
 from app.configs.db_config import MySQLBase
 
 
@@ -24,7 +26,7 @@ class RetellCall(MySQLBase):
 
     id = Column(Integer, primary_key=True, index=True, autoincrement=True)
     lead_id = Column(Integer, ForeignKey("leads.id"), nullable=True, index=True)
-    contact_id = Column(Integer, ForeignKey("contacts.id"), nullable=True, index=True)
+    contact_id = Column(MYSQL_INTEGER(unsigned=True), ForeignKey("contacts.id"), nullable=True, index=True)
     
     retell_call_id = Column(String(100), unique=True, index=True, nullable=True)
     to_phone = Column(String(50), nullable=False, index=True)

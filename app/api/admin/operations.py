@@ -45,7 +45,7 @@ async def retry_failed_syncs(
         raise HTTPException(status_code=503, detail="Redis Queue not available")
 
     failed_leads = db.query(Lead).filter(Lead.crm_status == "failed").all()
-
+   
     requeued_count = 0
     for lead in failed_leads:
         try:

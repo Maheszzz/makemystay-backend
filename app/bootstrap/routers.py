@@ -22,6 +22,11 @@ from app.api.upload import router as upload_router
 from app.api.webhooks import webhooks_router
 from app.api.whatsapp import whatsapp_router
 from app.api.websockets import ws_router
+from app.api.properties_enterprise import router as properties_enterprise_router
+from app.api.property_media import router as property_media_router
+from app.api.property_amenities_api import router as property_amenities_router
+from app.api.property_nearby_api import router as property_nearby_router
+from app.api.property_analytics_api import router as property_analytics_router
 
 
 API_PREFIX = "/api/v1"
@@ -56,7 +61,14 @@ def register_routers(app: FastAPI) -> None:
     app.include_router(webhooks_router)
 
     app.include_router(admin_router, prefix=f"{API_PREFIX}/admin")
-    
+
     app.include_router(ws_router, prefix=API_PREFIX)
     app.include_router(agent_router, prefix=API_PREFIX)
     app.include_router(internal_ops_router, prefix=API_PREFIX)
+
+    # Phase 3 – Enterprise Real Estate CMS Routers (Sprints 3, 5, 6, 7, 8, 9, 10 + 3 Special Features)
+    app.include_router(properties_enterprise_router, prefix=API_PREFIX, tags=["Enterprise Properties"])
+    app.include_router(property_media_router, prefix=API_PREFIX, tags=["Property Media & Documents"])
+    app.include_router(property_amenities_router, prefix=API_PREFIX, tags=["Property Amenities"])
+    app.include_router(property_nearby_router, prefix=API_PREFIX, tags=["Property Nearby Places"])
+    app.include_router(property_analytics_router, prefix=API_PREFIX, tags=["Property Analytics & Leads"])

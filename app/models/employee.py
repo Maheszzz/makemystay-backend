@@ -1,4 +1,4 @@
-from sqlalchemy import Column, DateTime, ForeignKey, Integer, String, text
+from sqlalchemy import Boolean, Column, DateTime, ForeignKey, Integer, String, text
 from sqlalchemy.orm import relationship
 from sqlalchemy.sql import func
 
@@ -26,6 +26,9 @@ class Employee(MySQLBase):
         server_default=func.now(),
         onupdate=func.now(),
     )
+    created_by = Column(String(100), nullable=True)
+    updated_by = Column(String(100), nullable=True)
+    is_deleted = Column(Boolean, default=False, nullable=False, index=True)
 
     user = relationship("User", foreign_keys=[user_id])
     leads = relationship("Lead", back_populates="assigned_employee")

@@ -31,6 +31,12 @@ async def test_upload_router():
     return {"status": "router_active"}
 
 @router.post("/uploads/binary")
+@router.post("/upload/image")
+@router.post("/upload/document")
+@router.post("/upload/video-thumbnail")
+@router.post("/uploads/image")
+@router.post("/uploads/document")
+@router.post("/uploads/video-thumbnail")
 async def proxy_upload_to_s3(
     request: Request,
     property_id: Optional[str] = Form(None),
@@ -38,9 +44,9 @@ async def proxy_upload_to_s3(
     current_user=Depends(security.admin_or_employee_required)
 ):
     """
-    Absolute Ingestion Fix: Proxy browser upload through backend to eliminate S3 signature/CORS issues.
+    Absolute Ingestion Fix & Sprint 4 Upload System: Proxy browser upload through backend to eliminate S3 signature/CORS issues.
+    Supports images, PDFs, and video thumbnails.
     """
-    # FINAL DIAGNOSTIC: Print ALL headers to stdout (visible in pm2 logs)
     print(f"DEBUG: ALL HEADERS RECEIVED: {dict(request.headers)}")
     logger.info(f"PROXY HIT | auth={request.headers.get('authorization', 'MISSING')[:15]}... | type={request.headers.get('content-type')}")
     logger.info(f"PROXY START | file={file.filename} property_id={property_id} user={current_user.id}")
@@ -62,13 +68,15 @@ async def proxy_upload_to_s3(
         c = (ctype or "").strip().lower()
         if c == "image/jpg": c = "image/jpeg"
         # Allowed types
-        if c in ["image/jpeg", "image/png", "image/webp"]: return c
+        if c in ["image/jpeg", "image/png", "image/webp", "application/pdf", "image/gif", "image/svg+xml"]:
+            return c
         # Fallback to extension
         ext = name.rsplit(".", 1)[-1].lower() if "." in name else ""
         if ext in ["jpg", "jpeg"]: return "image/jpeg"
         if ext == "png": return "image/png"
         if ext == "webp": return "image/webp"
-        return "image/jpeg"
+        if ext == "pdf": return "application/pdf"
+        return "application/octet-stream" if ext in ["pdf", "doc", "docx"] else "image/jpeg"
 
     normalized_type = get_normalized_mime(file.filename, file.content_type)
 
@@ -113,6 +121,11 @@ async def proxy_upload_to_s3(
         logger.info(f"Successful Proxy Upload: {unique_filename} via user {current_user.id}")
         
         return {
+            "url": public_url,
+            "filename": file.filename,
+            "size": len(contents),
+            "mime_type": normalized_type,
+            # Backwards-compatible aliases
             "file_key": unique_filename,
             "public_url": public_url,
             "content_type": normalized_type,
