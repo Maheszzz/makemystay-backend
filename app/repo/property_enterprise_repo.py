@@ -160,13 +160,14 @@ def create_property_enterprise(
     # Add Images
     if data.images:
         from app.models.realty import PropertyImage
+        has_primary = any(getattr(i, "is_primary", False) for i in data.images)
         for idx, img in enumerate(data.images):
             db.add(
                 PropertyImage(
                     property_id=new_prop.id,
                     image_url=img.image_url or img.public_url or "",
-                    is_primary=img.is_primary or (idx == 0),
-                    sort_order=img.sort_order or idx,
+                    is_primary=img.is_primary if has_primary else (idx == 0),
+                    sort_order=img.sort_order if img.sort_order is not None else idx,
                     category=img.category or "Bedroom",
                     alt_text=img.alt_text or new_prop.property_name,
                     caption=img.caption,
@@ -360,13 +361,14 @@ def update_property_enterprise(
     if data.images is not None:
         from app.models.realty import PropertyImage
         db.query(PropertyImage).filter(PropertyImage.property_id == prop.id).delete()
+        has_primary = any(getattr(i, "is_primary", False) for i in data.images)
         for idx, img in enumerate(data.images):
             db.add(
                 PropertyImage(
                     property_id=prop.id,
                     image_url=img.image_url or img.public_url or "",
-                    is_primary=img.is_primary or (idx == 0),
-                    sort_order=img.sort_order or idx,
+                    is_primary=img.is_primary if has_primary else (idx == 0),
+                    sort_order=img.sort_order if img.sort_order is not None else idx,
                     category=img.category or "Bedroom",
                     alt_text=img.alt_text or prop.property_name,
                     caption=img.caption,

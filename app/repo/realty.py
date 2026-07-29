@@ -833,11 +833,15 @@ def restore_property(db: Session, db_property: Property) -> Property:
 
 
 def get_property_images(db: Session, property_id: int) -> List[PropertyImage]:
-    """Retrieve all images for a property, ordered by sort_order."""
+    """Retrieve all images for a property, ordered by primary first then sort_order."""
     return (
         db.query(PropertyImage)
         .filter(PropertyImage.property_id == property_id)
-        .order_by(PropertyImage.sort_order)
+        .order_by(
+            PropertyImage.is_primary.desc(),
+            PropertyImage.sort_order,
+            PropertyImage.id,
+        )
         .all()
     )
 
@@ -852,6 +856,11 @@ def create_property_image(
 ) -> PropertyImage:
     """Create a new property image with transaction safety. Deletes existing duplicate if present."""
     try:
+        if image_data.get("is_primary") is True:
+            db.query(PropertyImage).filter(
+                PropertyImage.property_id == property_id,
+            ).update({"is_primary": False}, synchronize_session="fetch")
+
         # Check for existing image with same URL for this property
         existing_img = (
             db.query(PropertyImage)
@@ -882,6 +891,12 @@ def update_property_image(
 ) -> PropertyImage:
     """Update an existing property image with transaction safety."""
     try:
+        if update_data.get("is_primary") is True:
+            db.query(PropertyImage).filter(
+                PropertyImage.property_id == db_image.property_id,
+                PropertyImage.id != db_image.id,
+            ).update({"is_primary": False}, synchronize_session="fetch")
+
         for field, value in update_data.items():
             setattr(db_image, field, value)
         db.commit()

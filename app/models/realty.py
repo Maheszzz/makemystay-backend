@@ -107,7 +107,10 @@ class Property(MySQLBase):
 
     # Relationships
     images = relationship(
-        "PropertyImage", back_populates="property", cascade="all, delete-orphan"
+        "PropertyImage",
+        back_populates="property",
+        cascade="all, delete-orphan",
+        order_by="[PropertyImage.is_primary.desc(), PropertyImage.sort_order, PropertyImage.id]",
     )
     reviews = relationship(
         "Review", back_populates="property", cascade="all, delete-orphan"
