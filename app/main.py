@@ -265,12 +265,14 @@ async def csrf_protect(request: Request, call_next):
             "/api/v1/whatsapp/",
             "/api/v1/meta-whatsapp/",
             "/api/v1/demo/",
+            "/api/v1/schedule-demo",
             "/api/v1/public",
             "/api/v1/properties",
             "/api/v1/enterprise/properties",
             "/api/v1/documents",
             "/api/v1/upload",
             "/api/v1/uploads",
+            "/api/v1/leads/widget",
         ]
         path = request.url.path
         if any(path.startswith(p) for p in exempt_prefixes):
