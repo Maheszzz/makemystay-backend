@@ -67,7 +67,7 @@ class ContactBase(BaseModel):
     source: Optional[str] = Field("Website", max_length=100)
     status: Optional[ContactStatus] = ContactStatus.new
 
-    model_config = {"populate_by_name": True}
+    model_config = {"populate_by_name": True, "use_enum_values": True}
 
 
 class ContactCreate(ContactBase):
@@ -85,7 +85,7 @@ class ContactUpdate(BaseModel):
     property_type: Optional[str] = Field(None, max_length=50)
     status: Optional[ContactStatus] = None
 
-    model_config = {"populate_by_name": True}
+    model_config = {"populate_by_name": True, "use_enum_values": True}
 
 
 class ContactResponse(BaseModel):
@@ -261,7 +261,7 @@ class PropertyBase(BaseModel):
     available_beds: Optional[int] = None
     metadata_json: Optional[dict] = Field(None, alias="metadata")
 
-    model_config = {"populate_by_name": True}
+    model_config = {"populate_by_name": True, "use_enum_values": True}
 
     @field_validator("property_name")
     @classmethod
