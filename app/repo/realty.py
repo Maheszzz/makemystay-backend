@@ -757,7 +757,9 @@ def generate_unique_slug(
 
 def create_property(db: Session, property_data: dict) -> Property:
     """Create a new property with transaction safety."""
-    if not property_data.get("slug") and property_data.get("property_name"):
+    if property_data.get("slug"):
+        property_data["slug"] = generate_unique_slug(db, property_data["slug"])
+    elif property_data.get("property_name"):
         property_data["slug"] = generate_unique_slug(
             db,
             property_data["property_name"],
@@ -783,6 +785,15 @@ def create_property(db: Session, property_data: dict) -> Property:
 def update_property(db: Session, db_property: Property, update_data: dict) -> Property:
     """Update an existing property with transaction safety."""
     try:
+        if "slug" in update_data and update_data["slug"] and update_data["slug"] != db_property.slug:
+            base_slug = _slugify_fragment(update_data["slug"])
+            slug = base_slug
+            counter = 1
+            while db.query(Property).filter(Property.slug == slug, Property.id != db_property.id).first():
+                slug = f"{base_slug}-{counter}"
+                counter += 1
+            update_data["slug"] = slug
+
         for field, value in update_data.items():
             setattr(db_property, field, value)
             
