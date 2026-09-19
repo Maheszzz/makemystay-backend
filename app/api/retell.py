@@ -239,7 +239,6 @@ async def retell_webhook(request: Request, db: Session = Depends(get_mysql_db)):
         else:
             test_row.status = "called"  # Updated according to spec
 
-        # Parse SUMMARY line if present:
         # SUMMARY: interested=<true|false>, location=<...>, budget=<...>, move_in=<...>
         interested: Optional[bool] = None
         location: Optional[str] = None
@@ -284,51 +283,6 @@ async def retell_webhook(request: Request, db: Session = Depends(get_mysql_db)):
                 if location:
                     contact.location = location
 
-        if test_row.lead_id:
-            from app.models.lead import Lead
-            lead = db.query(Lead).filter(Lead.id == test_row.lead_id).first()
-            if lead:
-                lead.is_ai_called = True
-                if interested is True:
-                    lead.lead_stage = "interested"
-                    lead.status = "Interested (Call Success)"
-                elif interested is False:
-                    lead.lead_stage = "not_interested"
-                    lead.status = "Not Interested (Call)"
-                
-                if location:
-                    lead.location = location
-        # SUMMARY: interested=<true|false>, location=<...>, budget=<...>, move_in=<...>
-        interested: Optional[bool] = None
-        location: Optional[str] = None
-        budget: Optional[str] = None
-        move_in: Optional[str] = None
-
-        summary_match = re.search(
-            r"SUMMARY:\s*interested\s*=\s*(true|false)\s*,\s*location\s*=\s*(.*?)\s*,\s*budget\s*=\s*(.*?)\s*,\s*move_in\s*=\s*(.*)$",
-            transcript_str,
-            flags=re.IGNORECASE | re.DOTALL,
-        )
-        if summary_match:
-            interested = summary_match.group(1).lower() == "true"
-            location = summary_match.group(2).strip()
-            budget = summary_match.group(3).strip()
-            move_in = summary_match.group(4).strip()
-        else:
-            # Fallback to simpler extraction
-            it = re.search(r"interested\s*=\s*(true|false)", transcript_str, flags=re.I)
-            if it:
-                interested = it.group(1).lower() == "true"
-            loc = re.search(r"location\s*=\s*([^,]+)", transcript_str, flags=re.I)
-            bd = re.search(r"budget\s*=\s*([^,]+)", transcript_str, flags=re.I)
-            mv = re.search(r"move_in\s*=\s*(.+)$", transcript_str, flags=re.I | re.DOTALL)
-            if loc:
-                location = loc.group(1).strip()
-            if bd:
-                budget = bd.group(1).strip()
-            if mv:
-                move_in = mv.group(1).strip()
-
         if transcript_str:
             test_row.transcript = transcript_str
         test_row.summary_interested = interested
@@ -337,14 +291,6 @@ async def retell_webhook(request: Request, db: Session = Depends(get_mysql_db)):
         test_row.summary_move_in = move_in
 
         db.commit()
-
-        # Trigger Zoho CRM sync for the contact to update AI tags
-        if test_row.lead_id:
-            try:
-                from app.tasks.lead_tasks import sync_lead_to_zoho_task
-                sync_lead_to_zoho_task.delay(test_row.lead_id)
-            except Exception as e:
-                logger.error(f"Failed to trigger Zoho sync for lead after AI call: {e}")
 
         return {"status": "updated"}
 

@@ -23,5 +23,3 @@ class User(MySQLBase):
         DateTime, server_default=func.now(), onupdate=func.now(), nullable=True
     )
 
-    # Relationships
-    leads = relationship("Lead", back_populates="owner")

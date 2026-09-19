@@ -6,7 +6,6 @@ from __future__ import annotations
 
 from fastapi import APIRouter, FastAPI
 
-from app.api.agent_routes import router as agent_router
 from app.api.admin import admin_router
 from app.api.auth import router as auth_router
 from app.api.demo import router as demo_router
@@ -52,7 +51,6 @@ def register_routers(app: FastAPI) -> None:
     app.include_router(admin_router, prefix=f"{API_PREFIX}/admin")
 
     app.include_router(ws_router, prefix=API_PREFIX)
-    app.include_router(agent_router, prefix=API_PREFIX)
 
 
     # Phase 3 – Enterprise Real Estate CMS Routers (Sprints 3, 5, 6, 7, 8, 9, 10 + 3 Special Features)

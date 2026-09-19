@@ -1,5 +1,4 @@
 # Registry of all models for Alembic to detect and generate schemas from
-from app.models.agent import Agent
 from app.models.booking import Booking
 from app.models.demo import DemoBooking
 from app.models.failed_job import FailedJob
