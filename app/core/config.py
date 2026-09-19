@@ -14,6 +14,8 @@ class Settings(BaseSettings):
 
     ENV: str = "production"
     SITE_URL: str = "https://makemystay.co.in"
+    FRONTEND_REVALIDATE_URL: Optional[str] = None
+    FRONTEND_REVALIDATE_SECRET: Optional[str] = None
     SEO_SITEMAP_MAX_URLS: int = 50_000
     # Comma-separated extra browser origins for CORS (e.g. staging admin URL).
     CORS_EXTRA_ORIGINS: str = ""
@@ -179,6 +181,7 @@ class Settings(BaseSettings):
     ACRES_SYNC_INTERVAL_SECONDS: int = 120  # default: every 2 minutes
 
     # Alerting (Slack/Discord/Webhook)
+    # pyrefly: ignore [redefinition]
     ALERT_WEBHOOK_URL: str = ""
 
     # Load env files in increasing priority (later files override earlier ones).

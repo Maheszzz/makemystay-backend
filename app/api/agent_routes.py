@@ -9,7 +9,6 @@ from app.configs.db_config import get_mysql_db
 from app.core import security
 from app.repo import agent_repo
 from app.schemas.agent_schema import AgentCreate, AgentResponse, AgentUpdate
-from app.services.lead_service import update_lead_status
 
 router = APIRouter(prefix="/agents", tags=["Agents"])
 
@@ -94,36 +93,4 @@ def update_agent_details(
     return agent_repo.update_agent(db, db_agent, update_data)
 
 
-# ────────────────────────────────────────────────────────────────────
-#  Lead Status Update (with agent load management)
-# ────────────────────────────────────────────────────────────────────
-@router.patch("/leads/{lead_id}/status")
-def update_lead_status_endpoint(
-    lead_id: int,
-    status: str = Query(..., description="New status: new, contacted, converted, lost"),
-    db: Session = Depends(get_mysql_db),
-    current_admin=Depends(security.admin_required),
-):
-    """
-    Update a lead's status.
 
-    When status becomes 'converted' or 'lost', the assigned agent's load
-    is automatically decremented.
-    """
-    valid_statuses = {"new", "contacted", "converted", "lost"}
-    if status not in valid_statuses:
-        raise HTTPException(
-            status_code=400,
-            detail=f"Invalid status. Must be one of: {', '.join(sorted(valid_statuses))}",
-        )
-
-    updated = update_lead_status(db, lead_id, status)
-    if not updated:
-        raise HTTPException(status_code=404, detail="Lead not found")
-
-    return {
-        "status": "ok",
-        "lead_id": updated.id,
-        "new_status": updated.status,
-        "assigned_to": updated.assigned_to,
-    }

@@ -17,20 +17,7 @@ load_alembic_env()
 # for 'autogenerate' support
 from app.configs.db_config import MYSQL_DATABASE_URL, Base
 
-from app.models.assignment_batch import AssignmentBatch
-from app.models.lead import Lead
-from app.models.lead_activity import LeadActivity
-from app.models.lead_assignment import LeadAssignment
-from app.models.retell_call import RetellCall
-from app.models.realty import Contact, Property, PropertyImage, Review
-from app.models.sync_metadata import SyncMetadata
-from app.models.user import User
-from app.models.payment import Payment
-from app.models.demo import DemoBooking
-from app.models.lead_event import LeadEvent
-from app.models.agent import Agent
-from app.models.failed_webhook_lead import FailedWebhookLead
-from app.models.failed_zoho_task import FailedZohoTask  # noqa: F401
+import app.models  # Imports all models from registry
 
 # this is the Alembic Config object, which provides
 # access to the values within the .ini file in use.

@@ -14,7 +14,10 @@ def load_alembic_env():
     env_production = root_dir / ".env.production"
     env_standard = root_dir / ".env"
     
-    if env_production.exists():
+    if os.environ.get("ENV") != "production" and env_standard.exists():
+        logger.info(f"Alembic: Loading environment from {env_standard}")
+        load_dotenv(env_standard)
+    elif env_production.exists():
         logger.info(f"Alembic: Loading production environment from {env_production}")
         load_dotenv(env_production)
     elif env_standard.exists():

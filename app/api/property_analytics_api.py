@@ -9,9 +9,7 @@ from sqlalchemy.orm import Session
 
 from app.configs.db_config import get_mysql_db
 from app.core import security
-from app.models.realty_enterprise import PropertyView, PropertyDownload, PropertyLead
-from app.services.lead_capture_service import capture_document_download_lead
-
+from app.models.realty_enterprise import PropertyView, PropertyDownload
 router = APIRouter()
 
 
@@ -62,13 +60,7 @@ def get_property_analytics(
         .scalar()
         or 0
     )
-    total_leads = (
-        db.query(func.count(PropertyLead.id))
-        .filter(PropertyLead.property_id == property_id, PropertyLead.is_deleted == False)
-        .scalar()
-        or 0
-    )
-
+    total_leads = 0
     return {
         "property_id": property_id,
         "views": int(total_views),

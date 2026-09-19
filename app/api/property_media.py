@@ -16,7 +16,6 @@ from app.schemas.property_enterprise import (
     PropertyDocumentSchema,
     PropertyVideoSchema,
 )
-from app.services.lead_capture_service import capture_document_download_lead
 
 router = APIRouter()
 
@@ -79,17 +78,7 @@ def download_property_document_with_lead_capture(
     if not doc:
         raise HTTPException(status_code=404, detail="Document not found")
 
-    # Auto-generate CRM lead
-    capture_document_download_lead(
-        db=db,
-        property_id=doc.property_id,
-        document_type=doc.document_type,
-        user_name=user_name,
-        user_phone=user_phone,
-        user_email=user_email,
-        user_company=user_company,
-        purpose=purpose,
-    )
+
     return {
         "status": "success",
         "document_id": doc.id,
@@ -165,6 +154,7 @@ def delete_property_video(
     if not vid:
         raise HTTPException(status_code=404, detail="Video not found")
     vid.is_deleted = True
+    # pyrefly: ignore [bad-assignment]
     vid.updated_by = str(current_user.id)
     db.commit()
     return None

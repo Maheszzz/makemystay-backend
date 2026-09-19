@@ -2,6 +2,8 @@
 Admin operations: stats, analytics, sync jobs, WhatsApp tools, payment analytics.
 """
 
+from app.core.redis import lead_queue
+from app.core.redis import HISTORICAL_HOUSING_SYNC_LOCK
 import time
 from typing import Optional
 
@@ -16,12 +18,8 @@ from sqlalchemy import or_
 from app.models.realty import Property
 from app.core.config import settings
 from app.core.rate_limit import limiter
-from app.core.redis import HISTORICAL_HOUSING_SYNC_LOCK, lead_queue, redis_conn
-from app.models.lead import Lead
-from app.schemas.whatsapp import WhatsAppBulkSendRequest, WhatsAppBulkSendResponse
-from app.tasks.lead_tasks import sync_lead_to_zoho_task, sync_pending_leads_batch_task
-from app.tasks.whatsapp_tasks import send_whatsapp_bulk_task
-from app.services.email_service import sync_emails_job
+from app.core.redis import redis_conn
+
 
 from app.api.admin.schemas import ClearWhatsAppFlowSessionRequest
 
@@ -35,68 +33,7 @@ def _normalize_phone(phone: str) -> str:
     return raw
 
 
-@router.post("/retry-failed", summary="Retry failed CRM syncs")
-async def retry_failed_syncs(
-    db: Session = Depends(get_mysql_db),
-    _user=Depends(security.admin_or_employee_required),
-):
-    """Requeues leads with crm_status=failed for Zoho sync (admin or employee JWT)."""
-    if not lead_queue:
-        raise HTTPException(status_code=503, detail="Redis Queue not available")
 
-    failed_leads = db.query(Lead).filter(Lead.crm_status == "failed").all()
-   
-    requeued_count = 0
-    for lead in failed_leads:
-        try:
-            lead_queue.enqueue(sync_lead_to_zoho_task, lead.id, job_id=f"retry_sync_zoho_{lead.id}")
-            # pyrefly: ignore [bad-assignment]
-            lead.crm_status = "queued"
-            requeued_count += 1
-        except Exception as e:
-            logger.error(f"Failed to requeue lead {lead.id}: {e}")
-
-    db.commit()
-
-    return {
-        "status": "ok",
-        "requeued": requeued_count,
-        "total_failed_remaining": db.query(Lead).filter(Lead.crm_status == "failed").count(),
-    }
-
-
-@router.post(
-    "/sync/zoho-pending-batch",
-    summary="Enqueue one Zoho bulk upsert for pending portal leads (99acres/housing batch path)",
-)
-@limiter.limit("5/minute")
-async def trigger_zoho_pending_batch(
-    request: Request,
-    limit: int = Query(100, ge=1, le=500, description="Max leads per batch (same as Celery task default)"),
-    _admin=Depends(security.admin_required),
-):
-    """Runs `sync_pending_leads_batch_task` once. Portal leads stay `pending` until this job runs;
-    normally Celery Beat schedules it every 60s — use this after Beat downtime or to drain backlog."""
-    sync_pending_leads_batch_task.delay(limit=limit)
-    logger.info("Admin triggered sync_pending_leads_batch_task | limit=%s", limit)
-    return {
-        "status": "ok",
-        "task": "sync_pending_leads_batch_task",
-        "limit": limit,
-        "hint": "Requires a running Celery worker consuming the default queue.",
-    }
-
-
-@router.post(
-    "/sync/email-leads",
-    summary="Trigger IMAP email lead sync now",
-)
-async def trigger_email_lead_sync(
-    _admin=Depends(security.admin_required),
-):
-    """Manually run one email-ingestion cycle for Housing/99acres fallback."""
-    summary = await sync_emails_job()
-    return {"message": "Email lead sync cycle completed", **summary}
 
 
 @router.post(
@@ -121,6 +58,7 @@ async def trigger_historical_housing_sync(
     if acquired is not True:
         raise HTTPException(status_code=409, detail="A historical sync is already running.")
 
+    # pyrefly: ignore [missing-import]
     from app.tasks.lead_tasks import sync_historical_housing_task
 
     try:
@@ -223,17 +161,9 @@ async def global_search(
         )
     ).limit(10).all()
     
-    leads = db.query(Lead).filter(
-        or_(
-            Lead.name.ilike(search_term),
-            Lead.phone.ilike(search_term),
-            Lead.email.ilike(search_term)
-        )
-    ).limit(10).all()
-    
     return {
         "properties": properties,
-        "leads": leads
+        "leads": []
     }
 
 
@@ -258,50 +188,7 @@ async def get_all_jobs(db: Session = Depends(get_mysql_db), _admin=Depends(secur
     ]
 
 
-@router.post(
-    "/whatsapp/bulk",
-    summary="Send bulk WhatsApp template messages (queued)",
-    response_model=WhatsAppBulkSendResponse,
-)
-async def send_whatsapp_bulk(
-    req: WhatsAppBulkSendRequest,
-    db: Session = Depends(get_mysql_db),
-    _admin=Depends(security.admin_required),
-):
-    """
-    Queues a bulk WhatsApp template send via RQ.
-    Requires admin auth.
-    """
-    if req.dry_run:
-        return WhatsAppBulkSendResponse(
-            queued=False,
-            job_id=None,
-            total=len(req.leads),
-            dry_run=True,
-        )
 
-    if not lead_queue:
-        raise HTTPException(status_code=503, detail="Redis Queue not available")
-
-    content_sid = req.content_sid or settings.TWILIO_WHATSAPP_TEMPLATE_SID
-    if not content_sid:
-        raise HTTPException(status_code=400, detail="content_sid is required (or set TWILIO_WHATSAPP_TEMPLATE_SID)")
-
-    payload = [l.model_dump() for l in req.leads]
-    job = lead_queue.enqueue(
-        send_whatsapp_bulk_task,
-        leads=payload,
-        content_sid=content_sid,
-        per_message_delay_ms=req.per_message_delay_ms,
-        job_id=f"whatsapp_bulk_{int(time.time())}",
-    )
-
-    return WhatsAppBulkSendResponse(
-        queued=True,
-        job_id=job.id,
-        total=len(req.leads),
-        dry_run=False,
-    )
 
 
 @router.post(

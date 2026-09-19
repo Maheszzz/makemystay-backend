@@ -1,16 +1,8 @@
 # Registry of all models for Alembic to detect and generate schemas from
 from app.models.agent import Agent
-from app.models.assignment_batch import AssignmentBatch
 from app.models.booking import Booking
-from app.models.csv_import import CsvImport
 from app.models.demo import DemoBooking
-from app.models.employee import Employee
 from app.models.failed_job import FailedJob
-from app.models.failed_zoho_task import FailedZohoTask
-from app.models.lead import Lead
-from app.models.lead_activity import LeadActivity
-from app.models.lead_assignment import LeadAssignment
-from app.models.lead_event import LeadEvent
 from app.models.ledger import LedgerEntry
 from app.models.payment import Payment
 from app.models.payment_webhook_event import PaymentWebhookEvent
@@ -29,12 +21,8 @@ from app.models.realty_enterprise import (
     PropertyTag,
     PropertyView,
     PropertyDownload,
-    PropertyLead,
 )
 from app.models.reconciliation import ReconciliationIssue
 from app.models.retell_call import RetellCall
 from app.models.sync_job import SyncJob
-from app.models.sync_metadata import SyncMetadata
-from app.models.zoho_webhook_event import ZohoWebhookEvent
 from app.models.user import User
-from app.models.whatsapp_lead import WhatsAppLead

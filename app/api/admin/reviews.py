@@ -43,7 +43,7 @@ def moderate_review(
         )
         if not out:
             raise NotFoundException("Review", review_id)
-        bump_properties_list_cache()
+        bump_properties_list_cache(out.property_id, out.property.slug if out.property else None)
         return out
     except SQLAlchemyError as e:
         raise DatabaseError(f"Failed to moderate review: {str(e)}")
@@ -59,4 +59,4 @@ def mark_property_verified(
     if not prop:
         raise NotFoundException("Property", property_id)
     realty_repo.touch_property_verified(db, property_id)
-    bump_properties_list_cache()
+    bump_properties_list_cache(prop.id, prop.slug)

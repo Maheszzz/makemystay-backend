@@ -67,8 +67,6 @@ from datetime import datetime
 
 from apscheduler.schedulers.background import BackgroundScheduler
 
-from app.services.lead_sync_service import sync_all_sources, sync_daily_recovery
-from app.services.email_service import sync_emails_job
 from app.services.s3_orphan_cleanup import run_s3_uploads_orphan_cleanup
 
 scheduler = BackgroundScheduler()
@@ -90,18 +88,7 @@ if settings.SENTRY_DSN:
         )
         logger.info("Sentry initialization complete")
 
-def sync_all_job():
-    """APScheduler wrapper for the unified sync function."""
-    asyncio.run(sync_all_sources())
 
-
-def daily_recovery_sync_job():
-    """Daily safety-net sync for last 24h lead window."""
-    asyncio.run(sync_daily_recovery())
-
-def email_sync_wrapper_job():
-    """APScheduler wrapper for the IMAP email sync function."""
-    asyncio.run(sync_emails_job())
 
 
 def s3_orphan_cleanup_job():
@@ -120,36 +107,7 @@ async def lifespan(app: FastAPI):
     except Exception as e:
         logger.error(f"Database initialization helper failed: {e}")
 
-    # Housing / 99acres pull sync requires MySQL; disable when DB is unavailable locally (see LEAD_PULL_SYNC_ENABLED).
-    if getattr(settings, "RUN_SCHEDULER", False) and getattr(settings, "LEAD_PULL_SYNC_ENABLED", False):
-        scheduler.add_job(
-            sync_all_job,
-            "interval",
-            seconds=settings.HOUSING_SYNC_INTERVAL_SECONDS,
-            id="sync_all_job",
-            next_run_time=datetime.now(),
-        )
-    else:
-        logger.warning(
-            "LEAD_PULL_SYNC_ENABLED=false or RUN_SCHEDULER=false — sync not scheduled."
-        )
-    if getattr(settings, "RUN_SCHEDULER", False) and settings.LEAD_DAILY_SYNC_ENABLED and getattr(settings, "LEAD_PULL_SYNC_ENABLED", False):
-        scheduler.add_job(
-            daily_recovery_sync_job,
-            "cron",
-            hour=settings.LEAD_DAILY_SYNC_HOUR_UTC,
-            minute=settings.LEAD_DAILY_SYNC_MINUTE_UTC,
-            id="daily_recovery_sync_job",
-        )
 
-    if getattr(settings, "RUN_SCHEDULER", False) and getattr(settings, "EMAIL_POLL_INTERVAL_MINUTES", 0) > 0:
-        scheduler.add_job(
-            email_sync_wrapper_job,
-            "interval",
-            minutes=settings.EMAIL_POLL_INTERVAL_MINUTES,
-            id="email_sync_job",
-            next_run_time=datetime.now(),
-        )
 
     if getattr(settings, "RUN_SCHEDULER", False) and getattr(settings, "S3_ORPHAN_CLEANUP_ENABLED", False):
         scheduler.add_job(
@@ -164,17 +122,7 @@ async def lifespan(app: FastAPI):
         scheduler.start()
     else:
         logger.info("Background scheduler disabled for this instance (RUN_SCHEDULER=false)")
-    if getattr(settings, "LEAD_PULL_SYNC_ENABLED", False):
-        logger.info(
-            f"APScheduler: sync_all_job every {settings.HOUSING_SYNC_INTERVAL_SECONDS}s"
-        )
-    if settings.LEAD_DAILY_SYNC_ENABLED and getattr(settings, "LEAD_PULL_SYNC_ENABLED", False):
-        logger.info(
-            "Daily recovery sync enabled at "
-            f"{settings.LEAD_DAILY_SYNC_HOUR_UTC:02d}:{settings.LEAD_DAILY_SYNC_MINUTE_UTC:02d} UTC"
-        )
-    if getattr(settings, "EMAIL_POLL_INTERVAL_MINUTES", 0) > 0:
-        logger.info(f"Email sync job scheduled every {settings.EMAIL_POLL_INTERVAL_MINUTES}m")
+
     if getattr(settings, "S3_ORPHAN_CLEANUP_ENABLED", False):
         logger.info(
             "S3 orphan cleanup (uploads/) scheduled daily at "

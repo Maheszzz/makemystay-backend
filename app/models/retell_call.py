@@ -25,7 +25,7 @@ class RetellCall(MySQLBase):
     __tablename__ = "retell_calls"
 
     id = Column(Integer, primary_key=True, index=True, autoincrement=True)
-    lead_id = Column(Integer, ForeignKey("leads.id"), nullable=True, index=True)
+
     contact_id = Column(MYSQL_INTEGER(unsigned=True), ForeignKey("contacts.id"), nullable=True, index=True)
     
     retell_call_id = Column(String(100), unique=True, index=True, nullable=True)
@@ -56,5 +56,4 @@ class RetellCall(MySQLBase):
     )
 
     # Relationships
-    lead = relationship("Lead", back_populates="retell_calls")
     contact = relationship("Contact", back_populates="retell_calls")

@@ -97,7 +97,6 @@ class Property(MySQLBase):
     owner_name = Column(String(150), nullable=True)
     owner_phone = Column(String(32), nullable=True)
     owner_email = Column(String(150), nullable=True)
-    assigned_employee_id = Column(Integer, ForeignKey("employees.id", ondelete="SET NULL"), nullable=True)
     created_at = Column(DateTime, server_default=func.now(), nullable=True)
     updated_at = Column(
         DateTime, server_default=func.now(), onupdate=func.now(), nullable=True
@@ -145,9 +144,7 @@ class Property(MySQLBase):
     tags = relationship(
         "PropertyTag", back_populates="property", cascade="all, delete-orphan"
     )
-    leads_history = relationship(
-        "PropertyLead", back_populates="property", cascade="all, delete-orphan"
-    )
+
 
 
 class PropertyImage(MySQLBase):

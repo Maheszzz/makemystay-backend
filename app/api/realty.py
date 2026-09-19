@@ -2,8 +2,9 @@
 
 from typing import List, Optional, Tuple
 
-from fastapi import APIRouter, Depends, HTTPException, Query, BackgroundTasks
+from fastapi import APIRouter, Depends, HTTPException, Query, BackgroundTasks, Response
 from fastapi.responses import JSONResponse
+from app.utils.performance import set_public_cache_headers, PUBLIC_SHORT_CACHE
 from loguru import logger
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
@@ -263,6 +264,7 @@ def create_contact(
     try:
         new_contact = realty_repo.create_contact(db, contact.model_dump(by_alias=False))
 
+        # pyrefly: ignore [missing-import]
         from app.services.contact_notifications import run_contact_notifications
         
         # Always use BackgroundTasks to guarantee execution (bypassing Redis worker dependency)
@@ -396,7 +398,7 @@ def list_properties(
     cache_key = properties_list_cache_key(cache_payload)
     cached = get_cached_properties_list(cache_key)
     if cached is not None:
-        return JSONResponse(content=cached)
+        return set_public_cache_headers(JSONResponse(content=cached), cache_control=PUBLIC_SHORT_CACHE)
 
     properties, total = realty_repo.get_properties(
         db,
@@ -432,7 +434,7 @@ def list_properties(
         "property_counts": property_counts,
     }
     set_cached_properties_list(cache_key, payload)
-    return JSONResponse(content=payload)
+    return set_public_cache_headers(JSONResponse(content=payload), cache_control=PUBLIC_SHORT_CACHE)
 
 
 @realty_router.get("/realty/properties/suggestions", response_model=SearchSuggestionsResponse)
@@ -469,11 +471,11 @@ def list_similar_properties(
         raise NotFoundException("Property", property_id)
     properties, total = out
     items = [_property_list_item_from_orm(p) for p in properties]
-    return JSONResponse(content={"items": items, "total": total})
+    return set_public_cache_headers(JSONResponse(content={"items": items, "total": total}), cache_control=PUBLIC_SHORT_CACHE)
 
 
 @realty_router.get("/realty/properties/{property_id}", response_model=PropertyResponse)
-def get_property(property_id: int, db: Session = Depends(get_mysql_db)):
+def get_property(property_id: int, response: Response, db: Session = Depends(get_mysql_db)):
     """
     Get a specific property by ID with its images.
 
@@ -483,6 +485,7 @@ def get_property(property_id: int, db: Session = Depends(get_mysql_db)):
     if not property_obj:
         raise NotFoundException("Property", property_id)
     related, _ = realty_repo.get_similar_properties(db, property_id, limit=6) or ([], 0)
+    set_public_cache_headers(response, cache_control=PUBLIC_SHORT_CACHE)
     return _property_response_from_orm(property_obj, related_properties=related)
 
 
@@ -490,7 +493,7 @@ def get_property(property_id: int, db: Session = Depends(get_mysql_db)):
     "/realty/properties/by-slug/{property_type}/{slug}", response_model=PropertyResponse
 )
 def get_property_by_slug(
-    property_type: str, slug: str, db: Session = Depends(get_mysql_db)
+    property_type: str, slug: str, response: Response, db: Session = Depends(get_mysql_db)
 ):
     """
     Get a specific property by type and slug.
@@ -502,6 +505,7 @@ def get_property_by_slug(
     if not property_obj:
         raise NotFoundException("Property", f"{property_type}/{slug}")
     related, _ = realty_repo.get_similar_properties(db, property_obj.id, limit=6) or ([], 0)
+    set_public_cache_headers(response, cache_control=PUBLIC_SHORT_CACHE)
     return _property_response_from_orm(property_obj, related_properties=related)
 
 
@@ -527,7 +531,7 @@ def create_property(
             import uuid
             payload["property_code"] = f"MMS-{uuid.uuid4().hex[:8].upper()}"
         out = realty_repo.create_property(db, payload)
-        bump_properties_list_cache()
+        bump_properties_list_cache(out.id, out.slug)
         return _property_response_from_orm(out)
     except SQLAlchemyError as e:
         raise DatabaseError(f"Failed to create property: {str(e)}")
@@ -555,7 +559,7 @@ def update_property(
             db, db_property, property_data.model_dump(exclude_unset=True)
         )
         realty_repo.touch_property_verified(db, property_id)
-        bump_properties_list_cache()
+        bump_properties_list_cache(out.id, out.slug)
         return _property_response_from_orm(out)
     except SQLAlchemyError as e:
         raise DatabaseError(f"Failed to update property: {str(e)}")
@@ -578,7 +582,7 @@ def delete_property(
 
     try:
         realty_repo.delete_property(db, db_property)
-        bump_properties_list_cache()
+        bump_properties_list_cache(db_property.id, db_property.slug)
     except SQLAlchemyError as e:
         raise DatabaseError(f"Failed to delete property: {str(e)}")
     return None
@@ -601,7 +605,7 @@ def restore_property(
 
     try:
         out = realty_repo.restore_property(db, db_property)
-        bump_properties_list_cache()
+        bump_properties_list_cache(out.id, out.slug)
         return _property_response_from_orm(out)
     except SQLAlchemyError as e:
         raise DatabaseError(f"Failed to restore property: {str(e)}")
@@ -661,7 +665,7 @@ def add_property_image(
         if payload.get("file_size") is None and size_from_head is not None:
             payload["file_size"] = size_from_head
         out = realty_repo.create_property_image(db, payload, property_id)
-        bump_properties_list_cache()
+        bump_properties_list_cache(property_obj.id, property_obj.slug)
         return out
     except HTTPException:
         raise
@@ -696,7 +700,7 @@ def update_property_image(
             if update_data.get("file_size") is None and sz_h is not None:
                 update_data["file_size"] = sz_h
         out = realty_repo.update_property_image(db, db_image, update_data)
-        bump_properties_list_cache()
+        bump_properties_list_cache(db_image.property_id)
         return out
     except HTTPException:
         raise
@@ -721,7 +725,7 @@ def delete_property_image(
 
     try:
         realty_repo.delete_property_image(db, db_image)
-        bump_properties_list_cache()
+        bump_properties_list_cache(db_image.property_id)
     except SQLAlchemyError as e:
         raise DatabaseError(f"Failed to delete property image: {str(e)}")
     return None
@@ -771,7 +775,7 @@ def add_property_review(
     try:
         payload = review.model_dump(exclude_none=True)
         out = realty_repo.create_review(db, payload, property_id)
-        bump_properties_list_cache()
+        bump_properties_list_cache(property_obj.id, property_obj.slug)
         return out
     except SQLAlchemyError as e:
         raise DatabaseError(f"Failed to add review: {str(e)}")

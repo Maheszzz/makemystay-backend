@@ -7,6 +7,7 @@ import json
 from typing import Any, List, Optional
 
 from app.core.redis import redis_conn
+from app.services.frontend_revalidate import revalidate_frontend_cache_sync
 
 CACHE_VERSION_KEY = "cache:realty:properties:list:ver"
 KEY_PREFIX = "cache:realty:properties:list"
@@ -23,13 +24,21 @@ def _cache_version() -> str:
         return "0"
 
 
-def bump_properties_list_cache() -> None:
-    """Invalidate logical list cache (new version makes old keys unreachable)."""
+def bump_properties_list_cache(property_id: Optional[int] = None, slug: Optional[str] = None) -> None:
+    """Invalidate logical list cache (new version makes old keys unreachable) and trigger Next.js revalidate webhook."""
     if redis_conn:
         try:
             redis_conn.incr(CACHE_VERSION_KEY)
         except Exception:
             pass
+            
+    tags = ["properties-list", "properties"]
+    if property_id:
+        tags.append(f"property-{property_id}")
+    if slug:
+        tags.append(f"property-{slug}")
+        
+    revalidate_frontend_cache_sync(tags)
 
 
 def properties_list_cache_key(payload: dict[str, Any]) -> str:

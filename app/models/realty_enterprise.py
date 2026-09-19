@@ -399,37 +399,3 @@ class PropertyDownload(MySQLBase):
     updated_by = Column(String(100), nullable=True)
     is_deleted = Column(Boolean, default=False, nullable=False, index=True)
 
-
-class PropertyLead(MySQLBase):
-    """
-    Auto-generated CRM lead connection when a user downloads a brochure/pricing/WAP
-    or books a visit (Sprint 9).
-    """
-
-    __tablename__ = "property_leads"
-
-    id = Column(Integer, primary_key=True, index=True, autoincrement=True)
-    property_id = Column(
-        Integer, ForeignKey("properties.id", ondelete="CASCADE"), nullable=False, index=True
-    )
-    lead_id = Column(
-        Integer, ForeignKey("leads.id", ondelete="SET NULL"), nullable=True, index=True
-    )
-    source = Column(
-        String(64),
-        nullable=False,
-        doc="brochure_download, pricing_download, wap_download, book_visit, whatsapp_click, call_click",
-    )
-    assigned_employee_id = Column(
-        Integer, ForeignKey("employees.id", ondelete="SET NULL"), nullable=True, index=True
-    )
-    status = Column(String(64), default="New", nullable=False)
-
-    # Soft Delete & Audit
-    created_at = Column(DateTime, server_default=func.now(), nullable=False)
-    updated_at = Column(DateTime, server_default=func.now(), onupdate=func.now(), nullable=True)
-    created_by = Column(String(100), nullable=True)
-    updated_by = Column(String(100), nullable=True)
-    is_deleted = Column(Boolean, default=False, nullable=False, index=True)
-
-    property = relationship("Property", back_populates="leads_history")
