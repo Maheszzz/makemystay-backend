@@ -2,7 +2,7 @@
 
 from datetime import datetime
 from enum import Enum
-from typing import List, Optional
+from typing import List, Optional, Union
 
 from pydantic import BaseModel, EmailStr, Field, field_validator, model_validator
 
@@ -135,6 +135,17 @@ class PropertyImageUpdate(BaseModel):
     is_primary: Optional[bool] = None
     sort_order: Optional[int] = Field(None, ge=0)
     file_size: Optional[int] = Field(None, ge=1, le=MAX_IMAGE_UPLOAD_BYTES)
+
+
+class PropertyImageSync(BaseModel):
+    """Schema for syncing property images (creation/update/deletion)."""
+
+    id: Optional[Union[int, str]] = None
+    image_url: str = Field(..., max_length=1000)
+    file_key: Optional[str] = None
+    is_primary: bool = False
+    sort_order: int = 0
+    alt_text: Optional[str] = None
 
 
 class PropertyImageResponse(PropertyImageBase):
@@ -302,11 +313,13 @@ class PropertyBase(BaseModel):
 
 class PropertyCreate(PropertyBase):
     """Schema for creating a new property."""
+    images: Optional[List[PropertyImageSync]] = None
 
 
 class PropertyUpdate(BaseModel):
     """Schema for updating an existing property (all fields optional)."""
 
+    images: Optional[List[PropertyImageSync]] = None
     property_name: Optional[str] = Field(None, min_length=1, max_length=150)
     location: Optional[str] = Field(None, min_length=1, max_length=150)
     city: Optional[str] = Field(None, max_length=50)

@@ -32,6 +32,7 @@ from app.services.property_list_cache import (
 )
 from app.utils.property_seo_narrative import build_property_seo_about
 from app.utils.seo import canonical_property_path, canonical_property_url
+from app.models.realty import PropertyImage
 from app.schemas.realty import (
     ContactCreate,
     ContactResponse,
@@ -527,10 +528,35 @@ def create_property(
     """
     try:
         payload = property_data.model_dump()
+        images_data = payload.pop("images", None)
         if not payload.get("property_code"):
             import uuid
             payload["property_code"] = f"MMS-{uuid.uuid4().hex[:8].upper()}"
         out = realty_repo.create_property(db, payload)
+
+        if images_data is not None:
+            for idx, img_data in enumerate(images_data):
+                if not isinstance(img_data, dict): continue
+                is_primary = img_data.get("is_primary", False)
+                sort_order = img_data.get("sort_order", idx)
+                image_url = img_data.get("image_url")
+                if not image_url: continue
+                
+                ct, mv, sz_h = _merge_head_and_mime_for_image_url(image_url)
+                new_img = PropertyImage(
+                    property_id=out.id,
+                    image_url=image_url,
+                    is_primary=is_primary,
+                    sort_order=sort_order,
+                    alt_text=img_data.get("alt_text"),
+                    content_type=ct,
+                    mime_validated=mv,
+                    file_size=sz_h
+                )
+                db.add(new_img)
+            db.commit()
+            db.refresh(out)
+
         bump_properties_list_cache(out.id, out.slug)
         return _property_response_from_orm(out)
     except SQLAlchemyError as e:
@@ -555,9 +581,52 @@ def update_property(
         raise NotFoundException("Property", property_id)
 
     try:
-        out = realty_repo.update_property(
-            db, db_property, property_data.model_dump(exclude_unset=True)
-        )
+        payload = property_data.model_dump(exclude_unset=True)
+        images_data = payload.pop("images", None)
+        
+        out = realty_repo.update_property(db, db_property, payload)
+
+        if images_data is not None:
+            existing_images = {img.id: img for img in db_property.images if not img.is_deleted}
+            incoming_ids = []
+            
+            for idx, img_data in enumerate(images_data):
+                if not isinstance(img_data, dict): continue
+                img_id = img_data.get("id")
+                is_primary = img_data.get("is_primary", False)
+                sort_order = img_data.get("sort_order", idx)
+                image_url = img_data.get("image_url")
+                if not image_url: continue
+                
+                if isinstance(img_id, int) or (isinstance(img_id, str) and img_id.isdigit()):
+                    img_id = int(img_id)
+                    if img_id in existing_images:
+                        existing_img = existing_images[img_id]
+                        existing_img.is_primary = is_primary
+                        existing_img.sort_order = sort_order
+                        existing_img.image_url = image_url
+                        incoming_ids.append(img_id)
+                else:
+                    ct, mv, sz_h = _merge_head_and_mime_for_image_url(image_url)
+                    new_img = PropertyImage(
+                        property_id=out.id,
+                        image_url=image_url,
+                        is_primary=is_primary,
+                        sort_order=sort_order,
+                        alt_text=img_data.get("alt_text"),
+                        content_type=ct,
+                        mime_validated=mv,
+                        file_size=sz_h
+                    )
+                    db.add(new_img)
+            
+            for img_id, img in existing_images.items():
+                if img_id not in incoming_ids:
+                    db.delete(img)
+            
+            db.commit()
+            db.refresh(out)
+
         realty_repo.touch_property_verified(db, property_id)
         bump_properties_list_cache(out.id, out.slug)
         return _property_response_from_orm(out)
