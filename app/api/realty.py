@@ -589,6 +589,8 @@ def update_property(
         if images_data is not None:
             existing_images = {img.id: img for img in db_property.images if not img.is_deleted}
             incoming_ids = []
+            deleted_ids = []
+            new_photo_count = 0
             
             for idx, img_data in enumerate(images_data):
                 if not isinstance(img_data, dict): continue
@@ -619,13 +621,18 @@ def update_property(
                         file_size=sz_h
                     )
                     db.add(new_img)
+                    new_photo_count += 1
             
             for img_id, img in existing_images.items():
                 if img_id not in incoming_ids:
+                    deleted_ids.append(img_id)
                     db.delete(img)
             
             db.commit()
             db.refresh(out)
+
+            final_ids = [img.id for img in out.images if not img.is_deleted]
+            logger.info(f"Property Sync [ID: {property_id}] | Existing IDs: {list(existing_images.keys())} | Incoming Existing IDs: {incoming_ids} | Deleted: {deleted_ids} | New Photos: {new_photo_count} | Final IDs: {final_ids}")
 
         realty_repo.touch_property_verified(db, property_id)
         bump_properties_list_cache(out.id, out.slug)
