@@ -243,7 +243,7 @@ def backfill_property_cities(db: Session, default_city: str = "bangalore") -> in
             continue
         derived = find_city_for_location(prop.location) or default
         if current != derived:
-            prop.city = derived
+            prop.city = derived  # type: ignore
             updated += 1
     if updated:
         db.commit()
@@ -291,9 +291,9 @@ def get_property_category_counts(
     counts: Dict[str, int] = {}
     for tab in ("pg", "rent", "buy", "plot"):
         _, total = get_properties(db, skip=0, limit=1, category=tab, **shared)
-        counts[tab] = int(total or 0)
+        counts[tab] = (total or 0)
     _, all_total = get_properties(db, skip=0, limit=1, **shared)
-    counts["all"] = int(all_total or 0)
+    counts["all"] = (all_total or 0)
     return counts
 
 
@@ -371,6 +371,30 @@ def get_properties(
 
     # Apply Sorting
     order_clauses = []
+    
+    from sqlalchemy import case
+    
+    # Priority property IDs mapped to their explicit rank (1 to 14)
+    PRIORITY_PROPERTY_IDS = {
+        239: 1,   # Lorven Heights
+        272: 2,   # Maruthi manor
+        286: 3,   # BGS Nilaya
+        349: 4,   # Stay Homes
+        218: 5,   # Eden Homes (Eden premium studio rooms)
+        307: 6,   # Sanchi Homes (Saanchi Delite Homes)
+        155: 7,   # Akshaya Residence (Akshayam Residency)
+        # Stay Bloom (8) - NOT FOUND
+        # JCR Urban (9) - NOT FOUND
+        144: 10,  # Lakshmana Durga (1BHK)
+        331: 11,  # Sushi Residency
+        326: 12,  # Ekta ATS
+        237: 13,  # LivX (LivX Building)
+        381: 14   # Karthikeya Residency (Karthikey studio apartments)
+    }
+    
+    priority_cases = [(Property.id == pid, rank) for pid, rank in PRIORITY_PROPERTY_IDS.items()]
+    priority_score = case(*priority_cases, else_=999)
+    order_clauses.append(priority_score.asc())
     if search:
         from sqlalchemy import case
         exact_filter = f"%{search.strip()}%"
@@ -446,16 +470,42 @@ def get_properties(
                 conditions.append(Property.location.ilike(search_filter))
             fallback_query = fallback_query.filter(or_(*conditions))
 
+        from sqlalchemy import case
+        
+        PRIORITY_PROPERTY_IDS = {
+            239: 1,   # Lorven Heights
+            272: 2,   # Maruthi manor
+            286: 3,   # BGS Nilaya
+            349: 4,   # Stay Homes
+            218: 5,   # Eden Homes (Eden premium studio rooms)
+            307: 6,   # Sanchi Homes (Saanchi Delite Homes)
+            155: 7,   # Akshaya Residence (Akshayam Residency)
+            # Stay Bloom (8) - NOT FOUND
+            # JCR Urban (9) - NOT FOUND
+            144: 10,  # Lakshmana Durga (1BHK)
+            331: 11,  # Sushi Residency
+            326: 12,  # Ekta ATS
+            237: 13,  # LivX (LivX Building)
+            381: 14   # Karthikeya Residency (Karthikey studio apartments)
+        }
+        
+        priority_cases = [(Property.id == pid, rank) for pid, rank in PRIORITY_PROPERTY_IDS.items()]
+        priority_score = case(*priority_cases, else_=999)
+        
+        fallback_order_clauses = [priority_score.asc()]
+
         if sort_by == "price_asc":
-            fallback_query = fallback_query.order_by(Property.starting_price.asc())
+            fallback_order_clauses.append(Property.starting_price.asc())
         elif sort_by == "price_desc":
-            fallback_query = fallback_query.order_by(Property.starting_price.desc())
+            fallback_order_clauses.append(Property.starting_price.desc())
         elif sort_by == "newest":
-            fallback_query = fallback_query.order_by(Property.created_at.desc())
+            fallback_order_clauses.append(Property.created_at.desc())
         elif sort_by == "review_count_desc":
-            fallback_query = fallback_query.order_by(desc(func.coalesce(Property.review_count, 0)))
+            fallback_order_clauses.append(desc(func.coalesce(Property.review_count, 0)))
         else:
-            fallback_query = fallback_query.order_by(desc(func.coalesce(Property.average_rating, 0)))
+            fallback_order_clauses.append(desc(func.coalesce(Property.average_rating, 0)))
+            
+        fallback_query = fallback_query.order_by(*fallback_order_clauses)
 
         properties = _query_all_with_connection_retry(db, fallback_query, skip, limit)
         total_count = fallback_query.count()
@@ -498,9 +548,9 @@ _SIMILAR_NEARBY_LOCALITIES: Dict[str, List[str]] = {
 
 def _similar_locality_terms(location: Optional[str]) -> List[str]:
     """First segment of location + neighbor areas (same idea as listing search)."""
-    if not location or not str(location).strip():
+    if not location or not location.strip():
         return []
-    first = str(location).split(",")[0].strip().lower()
+    first = location.split(",")[0].strip().lower()
     if not first:
         return []
     terms: set = {first}
@@ -573,7 +623,7 @@ def get_similar_properties(
     for p in results:
         if p.average_rating is not None:
             p.average_rating = float(p.average_rating)
-        if p.review_count is None:
+        if getattr(p, "review_count", None) is None:
             p.review_count = 0
         attributes.set_committed_value(p, "reviews", [])
 
@@ -974,25 +1024,27 @@ def moderate_review(
             review.owner_response = owner_response
         if verified_stay is not None:
             review.verified_stay = verified_stay
-        db.commit()
+        
+        # Flush to DB so the aggregation query below sees the new review status
+        db.flush()
+        
+        # This will calculate stats and then db.commit() the entire transaction atomically
+        refresh_property_review_stats(db, review.property_id)
+        
         db.refresh(review)
-        if status == "approved":
-            refresh_property_review_stats(db, review.property_id)
-        elif status == "rejected":
-            refresh_property_review_stats(db, review.property_id)
         return review
     except SQLAlchemyError:
         db.rollback()
         raise
 
-        
+
 def touch_property_verified(db: Session, property_id: int) -> None:
     """Mark listing as field-verified (freshness signal)."""
-    from datetime import datetime
+    from sqlalchemy import func
 
     try:
         db.query(Property).filter(Property.id == property_id).update(
-            {Property.last_verified_at: datetime.utcnow()},
+            {Property.last_verified_at: func.now()},
             synchronize_session=False,
         )
         db.commit()
@@ -1002,11 +1054,11 @@ def touch_property_verified(db: Session, property_id: int) -> None:
 
 
 def touch_property_booked(db: Session, property_id: int) -> None:
-    from datetime import datetime
+    from sqlalchemy import func
 
     try:
         db.query(Property).filter(Property.id == property_id).update(
-            {Property.last_booked_at: datetime.utcnow()},
+            {Property.last_booked_at: func.now()},
             synchronize_session=False, 
         )
         db.commit()

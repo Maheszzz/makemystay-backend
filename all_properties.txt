@@ -1,0 +1,312 @@
+ID: 239 - Name: Lorven Heights
+ID: 272 - Name: Maruthi manor
+ID: 286 - Name: BGS Nilaya
+ID: 349 - Name: Stay Homes
+ID: 331 - Name: Sushi Residency
+ID: 332 - Name: Sushi Residency
+ID: 326 - Name: Ekta ATS
+ID: 159 - Name: Infinity Premium Homes
+ID: 203 - Name: Infinity Living Pg Coliving
+ID: 350 - Name: Infinity Homes unit 2
+ID: 96 - Name: Signature Luxury Colive
+ID: 163 - Name: Signature Residency - 18
+ID: 106 - Name: Cozy Ladies PG
+ID: 107 - Name: Cozy Rooms Gents PG
+ID: 143 - Name: Cozy Homes
+ID: 294 - Name: Slv cozy corner living
+ID: 214 - Name: Sri Lakshmi happy homes girls pg
+ID: 335 - Name: Lakshmi nivas
+ID: 275 - Name: Hive Coliving
+ID: 189 - Name: Peepal Tree 1BHK
+ID: 190 - Name: Peepal Tree 2BHK
+ID: 153 - Name: Orchid House
+ID: 77 - Name: Cherry Blossom
+ID: 85 - Name: Nesto Aloha Coliving
+ID: 154 - Name: Nesto Amigos Co-Living PG
+ID: 305 - Name: Tec Homes Apartment
+ID: 308 - Name: Tec Homes Apartment 2
+ID: 329 - Name: Your shell
+ID: 195 - Name: Daisy Crest Living
+ID: 141 - Name: Skyra Coliving
+ID: 215 - Name: Halo coliving pg
+ID: 216 - Name: Halo coliving pg unit 2
+ID: 307 - Name: Saanchi Delite Homes
+ID: 247 - Name: Urban Stay Nalurhalli
+ID: 341 - Name: VSS Homes
+ID: 299 - Name: Ekta Infinity Apartments
+ID: 300 - Name: Ekta Studio Homes
+ID: 248 - Name: Urban Living
+ID: 241 - Name: VSR dweel coliving pg
+ID: 242 - Name: Pixel coliving
+ID: 249 - Name: Slink INN Coliving PG
+ID: 250 - Name: Avila co-living
+ID: 253 - Name: AA premium coliving pg
+ID: 254 - Name: AA sparrow nest co-living
+ID: 256 - Name: OSR Premium stay Ladies Pg
+ID: 257 - Name: SS Livings Luxury Ladies Pg
+ID: 3 - Name: Chap & dona coliving
+ID: 69 - Name: Classic Gold House
+ID: 73 - Name: Lavender House
+ID: 78 - Name: Heaven Homes
+ID: 79 - Name: Urban living Homes
+ID: 80 - Name: New living Homes
+ID: 93 - Name: Vasantha Homes
+ID: 95 - Name: Vow Coliving
+ID: 97 - Name: Elite Homes
+ID: 100 - Name: Ronvix
+ID: 103 - Name: Flux Coliving
+ID: 104 - Name: Orion Coliving
+ID: 105 - Name: Flokq coliving
+ID: 109 - Name: Cozeevo Coliving PG
+ID: 112 - Name: Premium Urban living
+ID: 113 - Name: Haveli Coliving
+ID: 120 - Name: Koinn Coliving
+ID: 134 - Name: MR & MRS Colive
+ID: 136 - Name: My Homes
+ID: 139 - Name: Brindavanam Coliving Spaces
+ID: 144 - Name: Lakshmana Durga Homes 1BHK
+ID: 145 - Name: Lakshmana Durga Homes 2BHK
+ID: 149 - Name: Connect coliving prime
+ID: 151 - Name: Whitestone BHK
+ID: 155 - Name: Akshayam Residency
+ID: 158 - Name: Ekta 1RK Studio Room
+ID: 160 - Name: 5 STAR INN CO-LIVING
+ID: 165 - Name: PRO4 Elegant
+ID: 167 - Name: Pro4 Laavish
+ID: 174 - Name: Pro4 Nova
+ID: 177 - Name: Pro4 Regal
+ID: 180 - Name: Pro4 Ville
+ID: 184 - Name: PALMORA PREMIUM GENTS PG
+ID: 187 - Name: Urban Homes
+ID: 188 - Name: We Live coliving pg
+ID: 1 - Name: Ashok PG Colive
+ID: 2 - Name: Heaven coliving pg
+ID: 4 - Name: Urban coliving pg
+ID: 5 - Name: Kings & queens colive(B)
+ID: 8 - Name: At Home premium co living pg
+ID: 65 - Name: Town Park ( Brooklyn) 2BHK
+ID: 66 - Name: Dream Garden 2BHK
+ID: 67 - Name: Godrej Woodscapes 3BHK
+ID: 68 - Name: Premium Residential Plot
+ID: 71 - Name: Daisy House
+ID: 72 - Name: Golden Nest Colive
+ID: 74 - Name: Iris House
+ID: 75 - Name: Blossom House
+ID: 76 - Name: Lotus House
+ID: 82 - Name: Heaven Living New Homes
+ID: 83 - Name: SGR Enclave
+ID: 84 - Name: Mari Gold
+ID: 86 - Name: RoyVibe Living
+ID: 94 - Name: Vasantha Coliving
+ID: 98 - Name: Lavish Homes
+ID: 99 - Name: Atlas Coliving
+ID: 101 - Name: Snugin Coliving
+ID: 102 - Name: SLC BHK 2
+ID: 108 - Name: NSR Luxury Coliving PG
+ID: 110 - Name: Flock 9 Coliving
+ID: 111 - Name: Arcade INN
+ID: 114 - Name: Connect Coliving 2
+ID: 115 - Name: Pro Colive PG
+ID: 116 - Name: Avinya Colive
+ID: 118 - Name: Gina Artize Bommasandra
+ID: 119 - Name: Flechazo Coliving
+ID: 121 - Name: GVS Coliving
+ID: 122 - Name: Livingnest Falcon Colive
+ID: 123 - Name: AA Sparrow nest Colive
+ID: 124 - Name: Arcade INN Ladies PG
+ID: 125 - Name: Astro Colive
+ID: 126 - Name: AA Epsilon Premium Colive
+ID: 127 - Name: Kio Colive PG
+ID: 128 - Name: AA Sparrow Nest Premium Colive
+ID: 129 - Name: Lakshya Coliving
+ID: 130 - Name: KN Coliving
+ID: 131 - Name: JR Luxury Living
+ID: 132 - Name: AA Premium colive
+ID: 133 - Name: MIO Colive
+ID: 135 - Name: Geet Coliving
+ID: 137 - Name: Mass Residency LAV Mansion
+ID: 138 - Name: VSR Coliving PG
+ID: 140 - Name: Raghavendra Arcadian Live in
+ID: 142 - Name: SR Premium Coliving
+ID: 148 - Name: Mariyas living coliving pg
+ID: 150 - Name: URBAN LIVING BHK
+ID: 152 - Name: Urban Living 1 RK & 1BHK
+ID: 156 - Name: Silver storm
+ID: 157 - Name: Earth space Lakeview
+ID: 161 - Name: Sri Latha PG For Co-live
+ID: 162 - Name: Krishna Habitat
+ID: 164 - Name: KNR coliving
+ID: 166 - Name: PRO4 Retreat
+ID: 168 - Name: Pro4 Posh
+ID: 169 - Name: Pro4 Pavillion
+ID: 170 - Name: Pro4 Neeladiri
+ID: 171 - Name: Pro4 Elite A
+ID: 172 - Name: Pro4 Elite B
+ID: 173 - Name: Pro4 Elite C
+ID: 175 - Name: Pro4 Meadows
+ID: 176 - Name: Pro4 Meridian
+ID: 178 - Name: Pro4 Aroona
+ID: 179 - Name: Pro4 Socio
+ID: 181 - Name: Lalitha Homes studio apartment
+ID: 182 - Name: Vaaradhi  coliving pg
+ID: 183 - Name: My stay @Tabun coliving pg
+ID: 185 - Name: V R Tranquil inn
+ID: 186 - Name: Priyanshu coliving pg
+ID: 191 - Name: 778 Lake view residency
+ID: 192 - Name: Sathyadev Coliving PG
+ID: 193 - Name: AVOLON LUXE COLIVING
+ID: 194 - Name: Dream stay Colive
+ID: 196 - Name: RR 28 Coliving PG
+ID: 197 - Name: Nest Homes
+ID: 198 - Name: THRIVE CO-LIVE
+ID: 199 - Name: Trident Coliving
+ID: 200 - Name: Maple Co-living
+ID: 201 - Name: Cool Homes PG For Gents
+ID: 202 - Name: Raja's Gents and coliving pg
+ID: 204 - Name: Park View Residency
+ID: 205 - Name: MG 466 & 469
+ID: 206 - Name: Surya Royal Luxury Flats
+ID: 207 - Name: Sri Hanuman Homes
+ID: 208 - Name: Sri Hanuman Homes
+ID: 209 - Name: Zest in costay coliving pg
+ID: 210 - Name: Next Gen Coliving pg
+ID: 211 - Name: Icon gents pg
+ID: 212 - Name: SL Ladies Pg
+ID: 213 - Name: Lakshitha luxury Ledies pg
+ID: 217 - Name: Jyothis Living Spaces
+ID: 218 - Name: Eden premium studio rooms and eden premium Coliving pg
+ID: 219 - Name: Pixel premium ladies pg
+ID: 220 - Name: PMN  Homes
+ID: 221 - Name: Stay inn
+ID: 222 - Name: AR HOMES
+ID: 223 - Name: Domo Living - Lotus House
+ID: 224 - Name: Domo Living Pearl House
+ID: 225 - Name: Abhishek Co-Living Pg
+ID: 226 - Name: SLV Prime living pg
+ID: 227 - Name: The Nest Coliving pg
+ID: 228 - Name: Vintage PG – Spice Garden
+ID: 229 - Name: Sai Venkateswara colive
+ID: 230 - Name: Livoza premium coliving
+ID: 231 - Name: DEN Homes 1 & 2 BHK
+ID: 232 - Name: Opta coliving pg
+ID: 233 - Name: Elev8 coliving pg
+ID: 234 - Name: Cyra flats 1bhk
+ID: 235 - Name: Sri Venkateshwara Coliving pg
+ID: 236 - Name: MSR Studio Rooms
+ID: 237 - Name: LivX Building
+ID: 238 - Name: THE BROOKLYN INN PREMIUM CO-LIVING/GENTS PG
+ID: 240 - Name: Stay homes
+ID: 243 - Name: OLIVING
+ID: 244 - Name: Elite homes 1RK
+ID: 245 - Name: Elite homes 1BHK
+ID: 246 - Name: EKTA  Homes
+ID: 251 - Name: Lyvn Stay
+ID: 252 - Name: Billekahalli homes
+ID: 255 - Name: Connect Home
+ID: 258 - Name: 7 Hills
+ID: 259 - Name: MK Flats
+ID: 260 - Name: SR comfort PG For Gents
+ID: 261 - Name: Murali Krishna Elite Colive
+ID: 262 - Name: Sri Rama Ladies Pg
+ID: 263 - Name: Sri sai pg for gents
+ID: 264 - Name: Jp royal gents pg
+ID: 265 - Name: Jp platinum coliving pg
+ID: 266 - Name: Livingnest Falcon - Coliving
+ID: 267 - Name: Kyro Coliving pg
+ID: 268 - Name: Velora coliving pg
+ID: 269 - Name: Zest In Ladies Pg
+ID: 270 - Name: Jp Classic Co-living Pg
+ID: 271 - Name: ISHA Grand coliving pg
+ID: 273 - Name: Felix-e
+ID: 274 - Name: White marble homes
+ID: 276 - Name: RM Coliving pg
+ID: 277 - Name: Urban Living-coliving
+ID: 278 - Name: Shree Sudeeksha coliving space
+ID: 279 - Name: Nexus Luxury ladies pg
+ID: 280 - Name: Urbanhaus
+ID: 281 - Name: Elite 4 coliving pg
+ID: 282 - Name: Vasan coliving
+ID: 283 - Name: SREEYA stay IN
+ID: 284 - Name: DEVS Coliving
+ID: 285 - Name: Karan Luxury Co-living
+ID: 287 - Name: Indoor coliving pg
+ID: 288 - Name: Domo Ruby House Coliving pg
+ID: 289 - Name: JKR LADIES PG
+ID: 290 - Name: Oak park co living rooms
+ID: 291 - Name: Palmora Gents Pg 2
+ID: 292 - Name: Mr& Ms coliving pg
+ID: 293 - Name: KINGS & QUEENS CO-LIVING
+ID: 295 - Name: Highland Living PG
+ID: 296 - Name: LOTUS PARADISE COLIVE
+ID: 297 - Name: Royals studio rooms pg
+ID: 301 - Name: Sai Aavarana Residency
+ID: 302 - Name: Balaji Nilaya
+ID: 303 - Name: SRI SRINIVASA RESIDENCY
+ID: 304 - Name: CK CO-LIVING PG
+ID: 306 - Name: Cyra nitya homes
+ID: 309 - Name: JR Echo Home's
+ID: 310 - Name: JR Echo Home's
+ID: 311 - Name: JR Echo Home's
+ID: 312 - Name: Sai Homes 1&2 BHK
+ID: 313 - Name: Nandana Elite PG for Ladies
+ID: 314 - Name: SSR Homes
+ID: 315 - Name: Urban nest Coliving pg
+ID: 316 - Name: Srinivasulu Nilayam
+ID: 317 - Name: D4 Green Oaks
+ID: 318 - Name: Hanvika Coliving pg
+ID: 319 - Name: New Whitestone apartment
+ID: 321 - Name: Rentnstay elegance homez
+ID: 322 - Name: Sree Sampana Enclave
+ID: 323 - Name: Rentnstay Kalpavrusha
+ID: 324 - Name: Rentnstay
+ID: 325 - Name: Sree Sri Homes
+ID: 327 - Name: Yeti Homes
+ID: 328 - Name: Yeti Homes
+ID: 330 - Name: New olive green
+ID: 334 - Name: Vita homes
+ID: 336 - Name: SK Homes
+ID: 337 - Name: Nova Homes AR Enclave
+ID: 338 - Name: Vertex Homes
+ID: 339 - Name: Ekta Coliving PG
+ID: 340 - Name: RDD Residency
+ID: 342 - Name: svs comforts coliving pg
+ID: 343 - Name: The Maski House Premium
+ID: 344 - Name: Konda Homes
+ID: 345 - Name: Nest Homes
+ID: 346 - Name: Nest Homes
+ID: 347 - Name: Thirumala Homes
+ID: 348 - Name: Sanskrithi
+ID: 378 - Name: Liv Co-living
+ID: 371 - Name: Spectra Loft
+ID: 372 - Name: Liv colive
+ID: 373 - Name: AB Coliving Pg
+ID: 374 - Name: Cozy stay
+ID: 375 - Name: Zen Homes
+ID: 376 - Name: Urban nest
+ID: 377 - Name: Heaven Homes
+ID: 369 - Name: Urban Roko homes
+ID: 379 - Name: Lasya Coliving Pg
+ID: 380 - Name: VYBE Homes
+ID: 381 - Name: Karthikey studio apartments
+ID: 387 - Name: Zen Homes 1RK
+ID: 388 - Name: Urban Liv 1 BHK
+ID: 389 - Name: Urban Liv 2 BHK
+ID: 390 - Name: Pride Premier colive
+ID: 391 - Name: Brook & Bay
+ID: 360 - Name: KV Homes
+ID: 351 - Name: Sai Homes
+ID: 352 - Name: BM Raise homes
+ID: 353 - Name: BM Raise homes
+ID: 355 - Name: Vasantha Homes 4
+ID: 356 - Name: Vasantha Homes 4
+ID: 357 - Name: Hara hara  mahadeva queens hub
+ID: 358 - Name: Sri Venkateshwara Homes
+ID: 359 - Name: Courtyard by pravasa
+ID: 370 - Name: Sri Vari TR Homes
+ID: 361 - Name: SKR Nilayam
+ID: 362 - Name: Ultra Luxury HSR Penthouse
+ID: 364 - Name: Ultra Luxury HSR Penthouse - Updated
+ID: 365 - Name: Ultra Luxury HSR Penthouse - Updated
+ID: 366 - Name: Ultra Luxury HSR Penthouse - Updated
+ID: 367 - Name: Ultra Luxury HSR Penthouse - Updated
+ID: 368 - Name: Sumanth Coliving pg
