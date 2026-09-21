@@ -324,7 +324,7 @@ def get_properties(
     from sqlalchemy import or_
 
     # Safety: Enforce hard limit to prevent DB exhaustion / timeouts
-    limit = min(limit, 100)
+    limit = min(limit, 5000)
     
     query = db.query(Property)
     if not list_mode:

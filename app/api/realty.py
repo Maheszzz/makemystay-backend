@@ -328,7 +328,7 @@ def delete_contact(contact_id: int, db: Session = Depends(get_mysql_db), current
 def list_properties(
     skip: int = Query(0, ge=0, description="Number of records to skip"),
     limit: int = Query(
-        24, ge=1, le=100, description="Maximum number of records to return (default 24 for listing pages)"
+        24, ge=1, le=5000, description="Maximum number of records to return (default 24 for listing pages)"
     ),
     category: Optional[PropertyCategoryTab] = Query(
         None,
@@ -535,9 +535,17 @@ def create_property(
         out = realty_repo.create_property(db, payload)
 
         if images_data is not None:
+            has_primary = False
             for idx, img_data in enumerate(images_data):
                 if not isinstance(img_data, dict): continue
+                
                 is_primary = img_data.get("is_primary", False)
+                if is_primary:
+                    if has_primary:
+                        is_primary = False
+                    else:
+                        has_primary = True
+                        
                 sort_order = img_data.get("sort_order", idx)
                 image_url = img_data.get("image_url")
                 if not image_url: continue
@@ -591,11 +599,19 @@ def update_property(
             incoming_ids = []
             deleted_ids = []
             new_photo_count = 0
+            has_primary = False
             
             for idx, img_data in enumerate(images_data):
                 if not isinstance(img_data, dict): continue
                 img_id = img_data.get("id")
+                
                 is_primary = img_data.get("is_primary", False)
+                if is_primary:
+                    if has_primary:
+                        is_primary = False
+                    else:
+                        has_primary = True
+                        
                 sort_order = img_data.get("sort_order", idx)
                 image_url = img_data.get("image_url")
                 if not image_url: continue
