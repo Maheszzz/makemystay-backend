@@ -26,6 +26,102 @@ from app.api.admin.schemas import ClearWhatsAppFlowSessionRequest
 router = APIRouter()
 
 
+# ==================== ANALYTICS ====================
+
+@router.get(
+    "/analytics",
+    summary="Dashboard analytics: lead counts, property inventory, MoM growth",
+)
+async def get_dashboard_analytics(
+    db: Session = Depends(get_mysql_db),
+    _admin=Depends(security.admin_or_employee_required),
+):
+    """
+    Aggregate metrics consumed by AdminDashboard and the Leads page.
+    Intentionally lightweight — no heavy aggregations.
+    """
+    from datetime import date, timedelta
+    from app.repo.admin import get_dashboard_stats
+
+    stats = get_dashboard_stats(db)
+
+    # Property category breakdown
+    cats = {"pg": 0, "rent": 0, "buy": 0, "plot": 0}
+    rows = (
+        db.query(Property.listing_type, func.count(Property.id))
+        .filter(Property.is_deleted.is_(False))
+        .group_by(Property.listing_type)
+        .all()
+    )
+    for lt, cnt in rows:
+        key = (lt or "").lower()
+        if key in cats:
+            cats[key] += cnt
+        else:
+            cats["rent"] += cnt  # fallback bucket
+
+    today = date.today()
+    first_of_month = today.replace(day=1)
+    first_of_last_month = (first_of_month - timedelta(days=1)).replace(day=1)
+
+    props_this_month = (
+        db.query(func.count(Property.id))
+        .filter(
+            Property.is_deleted.is_(False),
+            func.date(Property.created_at) >= first_of_month,
+        )
+        .scalar() or 0
+    )
+    props_last_month = (
+        db.query(func.count(Property.id))
+        .filter(
+            Property.is_deleted.is_(False),
+            func.date(Property.created_at) >= first_of_last_month,
+            func.date(Property.created_at) < first_of_month,
+        )
+        .scalar() or 0
+    )
+
+    return {
+        "total_leads": stats["total_leads"],
+        "today_leads": 0,
+        "failed": 0,
+        "total_properties": stats["total_properties"],
+        "active_properties": stats["active_listings"],
+        "properties_added_this_month": int(props_this_month),
+        "properties_added_last_month": int(props_last_month),
+        "leads_this_month": 0,
+        "leads_last_month": 0,
+        "property_counts": {
+            "all": stats["total_properties"],
+            **cats,
+        },
+    }
+
+
+@router.get(
+    "/analytics/summary",
+    summary="Lead activity summary: today vs yesterday counts and source breakdown",
+)
+async def get_analytics_summary(
+    _admin=Depends(security.admin_or_employee_required),
+):
+    """
+    Lightweight summary consumed by the Leads page sidebar.
+    Lead tracking is not yet implemented; returns safe zero-value defaults.
+    """
+    return {
+        "today_count": 0,
+        "yesterday_count": 0,
+        "growth_percentage": 0.0,
+        "by_source": {},
+        "period": "today",
+    }
+
+
+# ==================== END ANALYTICS ====================
+
+
 def _normalize_phone(phone: str) -> str:
     raw = (phone or "").strip()
     if raw.startswith("whatsapp:"):
