@@ -43,10 +43,8 @@ mysql_engine = create_engine(
     # Fail fast instead of hanging on unreachable/slow DB.
     # This helps the API return an error quickly (before frontend's 30-45s timeout).
     connect_args={
-        "connect_timeout": 5,
-        # PyMySQL: avoid half-open connections (Docker / port-forward / flaky networks).
-        "read_timeout": 30,
-        "write_timeout": 30,
+        "connect_timeout": 10,
+        "ssl_disabled": True,
     },
     # Recycle before common wait_timeout / proxy idle limits (stale pooled connections).
     pool_recycle=300,
