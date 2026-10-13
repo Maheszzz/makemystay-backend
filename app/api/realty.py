@@ -265,16 +265,14 @@ def create_contact(
     try:
         new_contact = realty_repo.create_contact(db, contact.model_dump(by_alias=False))
 
-        # pyrefly: ignore [missing-import]
-        from app.services.contact_notifications import run_contact_notifications
-        
-        # Always use BackgroundTasks to guarantee execution (bypassing Redis worker dependency)
+        from app.services.crm_contact import push_contact_to_crm
+
         background_tasks.add_task(
-            run_contact_notifications,
+            push_contact_to_crm,
             contact.model_dump(by_alias=False),
-            new_contact.id
+            new_contact.id,
         )
-        logger.info(f"Contact #{new_contact.id} queued via FastAPI BackgroundTasks to guarantee execution")
+        logger.info(f"Contact #{new_contact.id} saved; CRM lead push queued")
 
         return new_contact
     except SQLAlchemyError as e:

@@ -147,6 +147,11 @@ class Settings(BaseSettings):
     VERIFY_TOKEN: str = ""
     META_GRAPH_API_VERSION: str = "v18.0"
 
+    # Realty CRM intake for the public contact form.
+    # Empty URL or secret skips the push; the contact is still saved.
+    CRM_WEBHOOK_URL: str = ""
+    CRM_WEBHOOK_SECRET: str = ""
+
     # Webhook
     ZOHO_WEBHOOK_SECRET: str = ""
     # The phone number (with country code, e.g. +91...) to receive Hot Lead / Deal alerts
