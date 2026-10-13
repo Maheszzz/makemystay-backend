@@ -12,3 +12,6 @@ def run():
                 print(f"  Image {img.id} - Primary: {img.is_primary}")
 
 run()
+
+
+

@@ -15,3 +15,7 @@ for p in props:
         for img in images:
             print(f"  Image {img.id} - Primary: {img.is_primary} - URL: {img.image_url}")
 
+
+
+
+
