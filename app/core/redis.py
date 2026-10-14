@@ -1,17 +1,13 @@
 import os
 
 import redis
-from rq import Queue
-
-# Initialize Redis connection
-# In a real environment, you'd get the REDIS_URL from settings
 
 ADMIN_CHANNEL = "admin_events"
-
-# Redis lock key for Housing.com historical recovery (must match Celery task release).
 HISTORICAL_HOUSING_SYNC_LOCK = "lock:historical_sync_housing"
 
 try:
+    from rq import Queue
+
     redis_conn = redis.from_url(
         os.getenv("REDIS_URL", "redis://localhost:6379/0"),
         socket_timeout=2.0,

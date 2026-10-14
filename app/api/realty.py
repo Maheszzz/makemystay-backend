@@ -24,6 +24,7 @@ from app.utils.property_seo_engine import build_property_seo_engine
 from app.utils.s3_client import get_s3_client
 from app.utils.s3_magic_bytes import detect_image_mime_from_s3_range
 from app.services.upload_alerts import emit_upload_event, increment_upload_counter
+from app.services.crm_contact import push_contact_to_crm
 from app.services.property_list_cache import (
     bump_properties_list_cache,
     get_cached_properties_list,
@@ -264,8 +265,6 @@ def create_contact(
     """
     try:
         new_contact = realty_repo.create_contact(db, contact.model_dump(by_alias=False))
-
-        from app.services.crm_contact import push_contact_to_crm
 
         background_tasks.add_task(
             push_contact_to_crm,

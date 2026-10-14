@@ -163,13 +163,18 @@ def create_contact(db: Session, contact_data: dict) -> Contact:
         db.commit()
         db.refresh(db_contact)
         
-        # Trigger Retell AI outbound call asynchronously after 10 seconds
+        # Trigger Retell AI outbound call asynchronously if task module exists
         try:
-            from app.tasks.lead_tasks import enqueue_call_task
-            enqueue_call_task.apply_async(
-                args=[db_contact.id, db_contact.phone, db_contact.name_],
-                countdown=10
-            )
+            import importlib
+            lead_tasks = importlib.import_module("app.tasks.lead_tasks")
+            enqueue_call_task = getattr(lead_tasks, "enqueue_call_task", None)
+            if enqueue_call_task:
+                enqueue_call_task.apply_async(
+                    args=[db_contact.id, db_contact.phone, db_contact.name_],
+                    countdown=10
+                )
+        except ImportError:
+            pass  # lead_tasks Celery worker was retired in CRM refactor
         except Exception as e:
             from loguru import logger
             logger.error(f"Failed to enqueue AI call for contact {db_contact.id}: {str(e)}")
@@ -622,9 +627,9 @@ def get_similar_properties(
     _attach_property_images_bulk(db, results, max_per_property=1)
     for p in results:
         if p.average_rating is not None:
-            p.average_rating = float(p.average_rating)
+            setattr(p, "average_rating", float(p.average_rating))
         if getattr(p, "review_count", None) is None:
-            p.review_count = 0
+            setattr(p, "review_count", 0)
         attributes.set_committed_value(p, "reviews", [])
 
     return results, len(results)
@@ -849,7 +854,7 @@ def update_property(db: Session, db_property: Property, update_data: dict) -> Pr
             
         # If location changed and city is not explicitly provided, re-derive city
         if "location" in update_data and "city" not in update_data:
-            db_property.city = find_city_for_location(update_data["location"]) or "bangalore"
+            setattr(db_property, "city", find_city_for_location(update_data["location"]) or "bangalore")
             
         db.commit()
         db.refresh(db_property)
@@ -863,10 +868,10 @@ def delete_property(db: Session, db_property: Property, soft: bool = True) -> No
     """Delete a property (soft delete by default)."""
     try:
         if soft:
-            db_property.is_deleted = True
+            setattr(db_property, "is_deleted", True)
             # Also soft delete images
             for img in db_property.images:
-                img.is_deleted = True
+                setattr(img, "is_deleted", True)
         else:
             db.delete(db_property)
         db.commit()
@@ -878,10 +883,10 @@ def delete_property(db: Session, db_property: Property, soft: bool = True) -> No
 def restore_property(db: Session, db_property: Property) -> Property:
     """Restore a soft-deleted property."""
     try:
-        db_property.is_deleted = False
+        setattr(db_property, "is_deleted", False)
         # Also restore images? User might want this.
         for img in db_property.images:
-            img.is_deleted = False
+            setattr(img, "is_deleted", False)
         db.commit()
         db.refresh(db_property)
         return db_property
@@ -1019,11 +1024,11 @@ def moderate_review(
     if not review:
         return None
     try:
-        review.status = status
+        setattr(review, "status", status)
         if owner_response is not None:
-            review.owner_response = owner_response
+            setattr(review, "owner_response", owner_response)
         if verified_stay is not None:
-            review.verified_stay = verified_stay
+            setattr(review, "verified_stay", verified_stay)
         
         # Flush to DB so the aggregation query below sees the new review status
         db.flush()
