@@ -9,7 +9,8 @@ except ImportError:
     sentry_sdk = None  # type: ignore[assignment, misc]
 
 from dotenv import load_dotenv
-from fastapi import FastAPI, Request, Depends
+from fastapi import FastAPI, Request, Depends, HTTPException, status
+from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy.orm import Session
 from fastapi.responses import JSONResponse
@@ -337,11 +338,23 @@ async def standardize_response_middleware(request: Request, call_next):
             return response
 
         # 4. Wrap the data
-        wrapped = {
-            "success": True,
-            "data": data,
-            "error": None
-        }
+        is_error = response.status_code >= 400
+        if is_error:
+            if isinstance(data, dict):
+                error_content = data.get("detail") or data.get("error") or data
+            else:
+                error_content = data
+            wrapped = {
+                "success": False,
+                "data": None,
+                "error": error_content,
+            }
+        else:
+            wrapped = {
+                "success": True,
+                "data": data,
+                "error": None,
+            }
         
         # 5. Create new response while preserving original status and headers
         standardized_res = JSONResponse(content=wrapped, status_code=response.status_code)
@@ -356,6 +369,39 @@ async def standardize_response_middleware(request: Request, call_next):
         # Fallback to original response for any issues
         return response
 
+@app.exception_handler(HTTPException)
+async def http_exception_handler(request: Request, exc: HTTPException):
+    """Handle HTTP exceptions with appropriate non-2xx status code and standardized format."""
+    detail = exc.detail
+    if isinstance(detail, dict):
+        error_msg = detail.get("message") or detail.get("error") or str(detail)
+    else:
+        error_msg = str(detail)
+
+    return JSONResponse(
+        status_code=exc.status_code,
+        content={
+            "success": False,
+            "data": None,
+            "error": error_msg,
+        },
+        headers=getattr(exc, "headers", None) or None,
+    )
+
+
+@app.exception_handler(RequestValidationError)
+async def validation_exception_handler(request: Request, exc: RequestValidationError):
+    """Handle request validation errors with 422 Unprocessable Entity."""
+    return JSONResponse(
+        status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+        content={
+            "success": False,
+            "data": None,
+            "error": exc.errors(),
+        },
+    )
+
+
 @app.exception_handler(Exception)
 async def global_exception_handler(request: Request, exc: Exception):
     """Global exception handler for unhandled errors."""
@@ -366,12 +412,19 @@ async def global_exception_handler(request: Request, exc: Exception):
     else:
         logger.error(f"Unhandled exception at {path}: {exc}")
     
+    status_code = exc.status_code if isinstance(exc, HTTPException) else status.HTTP_500_INTERNAL_SERVER_ERROR
+    error_message = (
+        exc.detail
+        if isinstance(exc, HTTPException) and isinstance(exc.detail, str)
+        else (str(exc) if settings.ENV != "production" else "A server error occurred. Please try again later.")
+    )
+
     return JSONResponse(
-        status_code=200, # Use 200 to keep UI stable
+        status_code=status_code,
         content={
             "success": False,
             "data": None,
-            "error": str(exc) if settings.ENV != "production" else "A server error occurred. Please try again later.",
+            "error": error_message,
         },
     )
 
