@@ -1,10 +1,13 @@
-import boto3
-import json
 import os
-from dotenv import load_dotenv
+import sys
+from pathlib import Path
 
-# Load from .env.local if available
-load_dotenv(".env.local")
+import boto3
+
+sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
+from app.core.config import load_app_env  # noqa: E402
+
+load_app_env()
 
 def discover_instances():
     # Use environment variables if present

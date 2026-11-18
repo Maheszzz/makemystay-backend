@@ -2,7 +2,6 @@
 # Build connection URL from individual environment variables
 import urllib.parse
 
-from dotenv import load_dotenv
 from loguru import logger
 from sqlalchemy import create_engine
 from sqlalchemy.orm import declarative_base, sessionmaker
@@ -10,7 +9,6 @@ from sqlalchemy.orm import declarative_base, sessionmaker
 from app.configs.log_config import setup_logger
 
 setup_logger()
-load_dotenv()
 
 
 from app.core.config import settings

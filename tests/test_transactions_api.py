@@ -25,12 +25,18 @@ from types import SimpleNamespace
 # module-load time.  We insert them before any app code is imported.
 # ---------------------------------------------------------------------------
 
+_INSERTED_STUBS = []
+
+
 def _stub(name: str, **attrs) -> types.ModuleType:
+    if name in sys.modules:
+        return sys.modules[name]
     mod = types.ModuleType(name)
     for k, v in attrs.items():
         setattr(mod, k, v)
-    sys.modules.setdefault(name, mod)
-    return sys.modules[name]
+    sys.modules[name] = mod
+    _INSERTED_STUBS.append(name)
+    return mod
 
 
 
@@ -128,9 +134,13 @@ _settings = SimpleNamespace(
     HOUSING_SYNC_INTERVAL_SECONDS=120,
     SQLALCHEMY_ECHO=False,
 )
+_prev_config_mod = sys.modules.get("app.core.config")
 _config_mod = types.ModuleType("app.core.config")
 _config_mod.settings = _settings
-sys.modules["app.core.config"] = _config_mod
+_config_mod.validate_startup_settings = lambda *_a, **_kw: None
+_config_mod.load_app_env = lambda *_a, **_kw: ()
+if "app.core.config" not in sys.modules:
+    sys.modules["app.core.config"] = _config_mod
 
 # ---------------------------------------------------------------------------
 # Bootstrap a minimal in-memory SQLite database and swap out get_db so the
@@ -186,6 +196,14 @@ Payment.__table__.metadata.create_all(bind=_test_engine)
 from fastapi import FastAPI  # noqa: E402
 from fastapi.testclient import TestClient  # noqa: E402
 from app.api.payment import router as payment_router  # noqa: E402
+
+for _stub_name in _INSERTED_STUBS:
+    sys.modules.pop(_stub_name, None)
+
+if _prev_config_mod is None:
+    sys.modules.pop("app.core.config", None)
+else:
+    sys.modules["app.core.config"] = _prev_config_mod
 
 _app = FastAPI()
 _app.include_router(payment_router, prefix="/api/v1")

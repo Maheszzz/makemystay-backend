@@ -1,10 +1,13 @@
-import boto3
-import json
 import os
-from dotenv import load_dotenv
+import sys
+from pathlib import Path
 
-# Load credentials from .env.production
-load_dotenv('.env.production')
+import boto3
+
+sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
+from app.core.config import load_app_env  # noqa: E402
+
+load_app_env()
 
 AWS_ACCESS_KEY_ID = os.getenv('AWS_ACCESS_KEY_ID')
 AWS_SECRET_ACCESS_KEY = os.getenv('AWS_SECRET_ACCESS_KEY')

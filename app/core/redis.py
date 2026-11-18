@@ -1,6 +1,6 @@
-import os
-
 import redis
+
+from app.core.config import settings
 
 ADMIN_CHANNEL = "admin_events"
 HISTORICAL_HOUSING_SYNC_LOCK = "lock:historical_sync_housing"
@@ -9,7 +9,7 @@ try:
     from rq import Queue
 
     redis_conn = redis.from_url(
-        os.getenv("REDIS_URL", "redis://localhost:6379/0"),
+        settings.REDIS_URL or "redis://localhost:6379/0",
         socket_timeout=2.0,
         socket_connect_timeout=2.0
     )

@@ -1,7 +1,50 @@
 import os
-from typing import Optional
+from pathlib import Path
+from typing import Optional, Tuple
 
+from dotenv import load_dotenv
 from pydantic_settings import BaseSettings
+
+_PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent
+
+
+def resolve_env_files() -> Tuple[str, ...]:
+    """
+    Determine which env files to load in increasing priority order.
+
+    - Local development uses `.env` only.
+    - Production (ENV=production, or EC2 where `.env` is absent and `.env.production` exists)
+      loads `.env.production` with higher priority than `.env`.
+    """
+    env_name = (os.getenv("ENV") or "").strip().lower()
+    dot_env = _PROJECT_ROOT / ".env"
+    dot_env_prod = _PROJECT_ROOT / ".env.production"
+
+    if env_name == "production" or (not dot_env.exists() and dot_env_prod.exists()):
+        files = []
+        if dot_env.exists():
+            files.append(str(dot_env))
+        if dot_env_prod.exists():
+            files.append(str(dot_env_prod))
+        return tuple(files) if files else (str(dot_env),)
+
+    return (str(dot_env),)
+
+
+def load_app_env() -> Tuple[str, ...]:
+    """
+    Load centralized environment variables into `os.environ` without overriding
+    already-exported process/PM2/container environment variables.
+    """
+    env_files = resolve_env_files()
+    # Load highest-priority file first with override=False so process env wins -> .env.production -> .env.
+    for env_path in reversed(env_files):
+        if Path(env_path).is_file():
+            load_dotenv(env_path, override=False)
+    return env_files
+
+
+_LOADED_ENV_FILES = load_app_env()
 
 
 class Settings(BaseSettings):
@@ -77,6 +120,7 @@ class Settings(BaseSettings):
     SECRET_KEY: str
     ALGORITHM: str = "HS256"
     ACCESS_TOKEN_EXPIRE_MINUTES: int = 43200
+    REFRESH_TOKEN_EXPIRE_MINUTES: int = 60 * 24 * 7  # 7 days default
 
     # Email
     MAIL_USERNAME: str
@@ -185,18 +229,36 @@ class Settings(BaseSettings):
     ACRES_API_URL: str = "https://www.99acres.com/api/fetch-leads"
     ACRES_SYNC_INTERVAL_SECONDS: int = 120  # default: every 2 minutes
 
-    # Alerting (Slack/Discord/Webhook)
-    # pyrefly: ignore [redefinition]
-    ALERT_WEBHOOK_URL: str = ""
+    # Alerting (Slack/Discord/Webhook) — ALERT_WEBHOOK_URL defined in alerting/AWS section above
 
-    # Load env files in increasing priority (later files override earlier ones).
-    # This makes local development work out-of-the-box (e.g. DB on a different port)
-    # while still supporting environment-specific files when ENV is exported.
-    _env = os.getenv("ENV")
-    _env_files = [".env", ".env.local"]
-    if _env:
-        _env_files.extend([f".env.{_env}", f".env.{_env}.local"])
+    model_config = {"env_file": _LOADED_ENV_FILES, "extra": "allow"}
 
-    model_config = {"env_file": tuple(_env_files), "extra": "allow"}
+
+_PLACEHOLDER_SECRETS = {
+    "replace_with_a_long_random_secret_key",
+    "your_local_db_password",
+    "your_strong_password",
+    "placeholder_password",
+}
+
+
+def validate_startup_settings(cfg: Optional[Settings] = None) -> None:
+    """Validate that required configuration values are present and non-empty at startup."""
+    target = cfg or settings
+    required_non_empty = ("DB_HOST", "DB_USER", "DB_NAME", "SECRET_KEY", "MAIL_SERVER", "MAIL_FROM")
+    missing = [name for name in required_non_empty if not str(getattr(target, name, "") or "").strip()]
+
+    if target.ENV == "production" and not str(target.DB_PASSWORD or "").strip():
+        missing.append("DB_PASSWORD")
+
+    if missing:
+        raise RuntimeError(
+            f"Missing required environment variable(s): {', '.join(missing)}. "
+            "Check .env (local) or server environment configuration."
+        )
+
+    if str(target.SECRET_KEY).strip() in _PLACEHOLDER_SECRETS:
+        raise RuntimeError("SECRET_KEY is still set to an example placeholder value.")
+
 
 settings = Settings()

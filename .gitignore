@@ -1,16 +1,36 @@
-venv
-.env
-__pycache__/
-logs
-.vscode
-.venv
-.env.production
-.env.production.local
-.env.local
+# Virtual environments
+venv/
+.venv/
 
-# Python standard ignores
+# Environment files (keep .env.example tracked)
+.env
+.env.*
+!.env.example
+
+# Python caches & build outputs
+__pycache__/
 *.pyc
 *.pyo
 *.pyd
-*.log
+*.egg-info/
+dist/
+build/
 .pytest_cache/
+
+# Logs, local DBs & runtime artifacts
+logs/
+*.log
+*.db
+receipts/
+
+# Editor & OS files
+.vscode/
+.idea/
+.DS_Store
+
+# Private keys & certificates
+*.pem
+*.key
+*.crt
+*.p12
+deploy/keys/

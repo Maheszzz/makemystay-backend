@@ -25,27 +25,18 @@ ROOT = Path(__file__).resolve().parent.parent
 
 
 def _load_env(production: bool) -> None:
-    """Load DB credentials before any app imports."""
-    from dotenv import load_dotenv
-
-    prod_path = ROOT / ".env.production"
-    if production or prod_path.exists():
-        if not prod_path.exists():
-            print(f"❌ Missing {prod_path}", file=sys.stderr)
-            sys.exit(1)
-        load_dotenv(prod_path, override=True)
+    """Load DB credentials before any app imports via centralized config."""
+    sys.path.insert(0, str(ROOT))
+    if production:
         os.environ["ENV"] = "production"
-        print(f"Using {prod_path}")
-        return
 
-    for candidate in (ROOT / ".env.local", ROOT / ".env"):
-        if candidate.exists():
-            load_dotenv(candidate, override=True)
-            print(f"Using {candidate}")
-            return
+    from app.core.config import load_app_env
 
-    print("❌ No .env.local or .env found. Use --production or ./scripts/run-on-server.sh", file=sys.stderr)
-    sys.exit(1)
+    loaded = load_app_env()
+    if not any((ROOT / Path(p).name).exists() or Path(p).exists() for p in loaded):
+        print("❌ No .env (or server .env.production) found. Copy .env.example to .env or use ./scripts/run-on-server.sh", file=sys.stderr)
+        sys.exit(1)
+    print(f"Using environment loader: {', '.join(loaded)}")
 
 
 def _check_db_reachable() -> None:

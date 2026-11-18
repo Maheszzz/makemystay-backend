@@ -2,16 +2,12 @@ import urllib.parse
 from datetime import datetime
 
 import pytz
-from dotenv import load_dotenv
 from fastapi_mail import ConnectionConfig, FastMail, MessageSchema, MessageType
 from loguru import logger
 
 from app.core.config import settings
 from app.schemas.demo import DemoBookingCreate
 from app.schemas.realty import ContactCreate
-
-# Ensure environment variables are loaded when this module is imported
-load_dotenv()
 
 
 class EmailService:

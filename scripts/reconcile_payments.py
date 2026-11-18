@@ -21,10 +21,9 @@ from datetime import datetime, timedelta, timezone
 # Allow running from repo root without installing the package.
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
-from dotenv import load_dotenv
+from app.core.config import load_app_env
 
-load_dotenv(".env.production")
-load_dotenv(".env")
+load_app_env()
 
 from loguru import logger
 import razorpay

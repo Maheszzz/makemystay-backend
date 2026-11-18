@@ -83,16 +83,17 @@ if [ "${DISK_PCT:-0}" -ge 95 ]; then
 fi
 
 # ===== UPLOAD SOURCE =====
+# Note: .env.production is preserved on EC2 and NOT overwritten from local dev config.
 echo "📦 Uploading source files..."
 rsync -az --delete \
   --exclude='.venv' --exclude='venv' --exclude='__pycache__' \
   --exclude='*.pyc' --exclude='*.egg-info' --exclude='.DS_Store' \
   --exclude='tests/' --exclude='logs/' \
   -e "ssh -i $PEM_KEY -o StrictHostKeyChecking=no -o ConnectTimeout=30" \
-  app alembic scripts alembic.ini requirements.txt .env.production ecosystem.config.js \
+  app alembic scripts alembic.ini requirements.txt ecosystem.config.js \
   $EC2_USER@$EC2_HOST:$REMOTE_DIR/ 2>/dev/null || \
   scp -i "$PEM_KEY" -o StrictHostKeyChecking=no -o ConnectTimeout=30 -r \
-    app alembic scripts alembic.ini requirements.txt .env.production ecosystem.config.js \
+    app alembic scripts alembic.ini requirements.txt ecosystem.config.js \
     $EC2_USER@$EC2_HOST:$REMOTE_DIR/
 
 # Seed runs once (shared DB) on the first host only when RUN_SEED_REVIEWS=1
@@ -131,7 +132,7 @@ pip install --no-cache-dir -r requirements.txt
 
 # Load environment variables for Alembic (same file PM2 uses via env_file)
 if [ ! -f .env.production ]; then
-  echo "❌ Missing .env.production in $REMOTE_DIR — create it on the server or rsync it with deploy."
+  echo "❌ Missing .env.production in $REMOTE_DIR — create and manage it directly on the server."
   exit 1
 fi
 set -a

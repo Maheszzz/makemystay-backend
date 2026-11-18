@@ -79,9 +79,13 @@ _settings = SimpleNamespace(
     HOUSING_SYNC_INTERVAL_SECONDS=120,
     SQLALCHEMY_ECHO=False,
 )
+_prev_config_mod = sys.modules.get("app.core.config")
 _config_mod = types.ModuleType("app.core.config")
 _config_mod.settings = _settings
-sys.modules["app.core.config"] = _config_mod
+_config_mod.validate_startup_settings = lambda *_a, **_kw: None
+_config_mod.load_app_env = lambda *_a, **_kw: ()
+if "app.core.config" not in sys.modules:
+    sys.modules["app.core.config"] = _config_mod
 
 _test_engine = create_engine(
     "sqlite:///:memory:",
@@ -100,6 +104,11 @@ import app.models.realty  # noqa: E402, F401
 from app.models.booking import Booking  # noqa: E402, F401
 from app.models.realty import Property  # noqa: E402
 from app.services.payment_analytics import payment_analytics_series  # noqa: E402
+
+if _prev_config_mod is None:
+    sys.modules.pop("app.core.config", None)
+else:
+    sys.modules["app.core.config"] = _prev_config_mod
 
 Payment.__table__.metadata.create_all(bind=_test_engine)
 

@@ -8,7 +8,6 @@ try:
 except ImportError:
     sentry_sdk = None  # type: ignore[assignment, misc]
 
-from dotenv import load_dotenv
 from fastapi import FastAPI, Request, Depends, HTTPException, status
 from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
@@ -25,7 +24,7 @@ import socket
 from collections import defaultdict
 from time import perf_counter
 
-from app.core.config import settings
+from app.core.config import settings, validate_startup_settings
 from app.core.log_dedupe import should_log_once
 from app.configs.db_config import get_mysql_db
 from app.utils.performance import (
@@ -36,7 +35,6 @@ from app.utils.performance import (
 )
 
 # --- Settings & Logging ---
-load_dotenv()
 # Reload marker (forces dev server reload when env changes) v2
 logging.basicConfig(level=logging.INFO)
 logger.info(f"ENV={settings.ENV}")
@@ -100,6 +98,7 @@ def s3_orphan_cleanup_job():
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Lifecycle manager for the app."""
+    validate_startup_settings(settings)
     logger.info("Starting background scheduler...")
     
     # Run DB init only when enabled (avoids hanging top-level imports)

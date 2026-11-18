@@ -94,21 +94,17 @@ def find_city_for_location(location):
     return None
 
 def get_db_config():
-    # Try to load from .env.production manually
-    config = {}
-    if os.path.exists(".env.production"):
-        with open(".env.production") as f:
-            for line in f:
-                if "=" in line and not line.startswith("#"):
-                    k, v = line.strip().split("=", 1)
-                    config[k] = v
-    
+    sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
+    from app.core.config import load_app_env
+
+    load_app_env()
+
     return {
-        "host": os.environ.get("DB_HOST", config.get("DB_HOST", "127.0.0.1")),
-        "user": os.environ.get("DB_USER", config.get("DB_USER", "root")),
-        "password": os.environ.get("DB_PASSWORD", config.get("DB_PASSWORD", "")),
-        "database": os.environ.get("DB_NAME", config.get("DB_NAME", "makemystay")),
-        "port": int(os.environ.get("DB_PORT", config.get("DB_PORT", "3306"))),
+        "host": os.environ.get("DB_HOST", "127.0.0.1"),
+        "user": os.environ.get("DB_USER", "root"),
+        "password": os.environ.get("DB_PASSWORD", ""),
+        "database": os.environ.get("DB_NAME", "makemystay"),
+        "port": int(os.environ.get("DB_PORT", "3306")),
     }
 
 BACKUP_PATH = os.environ.get("BACKUP_PATH", "/tmp/city_backup.json")

@@ -15,16 +15,23 @@ os.environ.setdefault("MAIL_SERVER", "smtp.example.com")
 os.environ.setdefault("MAIL_FROM_NAME", "Test")
 os.environ.setdefault("SITE_URL", "https://example.com")
 
+import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.pool import StaticPool
 
+import app.api.seo as seo_module
 from app.api.seo import seo_router
 from app.configs.db_config import get_mysql_db
 from app.models.realty import Property, PropertyImage
 from app.configs.db_config import MySQLBase
+
+
+@pytest.fixture(autouse=True)
+def _use_example_site_url(monkeypatch):
+    monkeypatch.setattr(seo_module.settings, "SITE_URL", "https://example.com", raising=False)
 
 
 engine = create_engine(
