@@ -211,57 +211,20 @@ def delete_contact(db: Session, db_contact: Contact) -> None:
 # ==================== PROPERTY REPO ====================
 
 
-LOCALITY_SEARCH_ALIASES: Dict[str, List[str]] = {
-    "sarjapur": ["sarjapur", "sarjapur road"],
-    "sarjapur road": ["sarjapur", "sarjapur road"],
-    "bannerghatta": ["bannerghatta", "bannergatta"],
-    "bannerghatta road": ["bannerghatta", "bannergatta"],
-    "bannergatta": ["bannerghatta", "bannergatta"],
-    "brookefield": ["brookefield", "bookefield"],
-    "bookefield": ["brookefield", "bookefield"],
-    "nagawara": ["nagawara", "nagavara"],
-    "nagavara": ["nagawara", "nagavara"],
-    "veerannapalya": ["veerannapalya", "verannapalya"],
-    "verannapalya": ["veerannapalya", "verannapalya"],
-    "btm": ["btm", "btm layout"],
-    "btm layout": ["btm", "btm layout"],
-    "hsr": ["hsr", "hsr layout"],
-    "hsr layout": ["hsr", "hsr layout"],
-    "electronic city": ["electronic city", "e city", "ecity"],
-    "e city": ["electronic city", "e city", "ecity"],
-    "ecity": ["electronic city", "e city", "ecity"],
-    "halasuru": ["halasuru", "ulsoor"],
-    "ulsoor": ["halasuru", "ulsoor"],
-    "marathahalli": ["marathahalli", "marathalli"],
-    "marathalli": ["marathahalli", "marathalli"],
-    "whitefield": ["whitefield", "whitefeild"],
-    "whitefeild": ["whitefield", "whitefeild"],
-    "kadubeesanahalli": ["kadubeesanahalli", "kadubesanahalli"],
-    "kadubesanahalli": ["kadubeesanahalli", "kadubesanahalli"],
-}
-
-
 def _apply_city_filter(query, city: Optional[str]):
-    """Match city column, Bangalore/Bengaluru in text, hyphenated slugs, and known locality aliases."""
+    """Match city column, Bangalore/Bengaluru in text, and known locality aliases."""
     if not city:
         return query
     c_lower = city.lower().strip()
-    c_spaced = re.sub(r"[-_]+", " ", c_lower).strip()
     conditions = [
         func.lower(func.coalesce(Property.city, "")) == c_lower,
         Property.location.ilike(f"%{city}%"),
     ]
-    if c_spaced and c_spaced != c_lower:
-        conditions.append(func.lower(func.coalesce(Property.city, "")) == c_spaced)
-        conditions.append(Property.location.ilike(f"%{c_spaced}%"))
     if c_lower == "bangalore":
         conditions.append(Property.location.ilike("%bengaluru%"))
-    aliases = LOCALITY_SEARCH_ALIASES.get(c_spaced) or LOCALITY_SEARCH_ALIASES.get(c_lower)
-    if aliases:
-        conditions.extend(Property.location.ilike(f"%{alias}%") for alias in aliases)
     from app.utils.city_mapping import get_localities_for_city
 
-    localities = get_localities_for_city(c_spaced) or get_localities_for_city(c_lower)
+    localities = get_localities_for_city(c_lower)
     if localities:
         conditions.append(or_(*[Property.location.ilike(f"%{loc}%") for loc in localities]))
     return query.filter(or_(*conditions))
