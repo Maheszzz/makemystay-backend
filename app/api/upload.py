@@ -1,3 +1,4 @@
+import re
 import mimetypes
 import uuid
 from typing import Optional
@@ -25,6 +26,19 @@ def _normalize_image_content_type(filename: str, content_type: str) -> str:
         return guessed.lower()
     return "image/jpeg"
 
+# Upper bound for proxied uploads (read fully into memory before S3 put_object).
+MAX_PROXY_UPLOAD_BYTES = 25 * 1024 * 1024
+_SAFE_PROPERTY_ID = re.compile(r"^[A-Za-z0-9_-]{1,64}$")
+_SAFE_EXT = re.compile(r"^[a-z0-9]{1,8}$")
+
+
+def _safe_extension(filename: Optional[str]) -> str:
+    """Return a lowercase alphanumeric extension, defaulting to 'jpg'."""
+    name = filename or ""
+    ext = name.rsplit(".", 1)[-1].lower() if "." in name else ""
+    return ext if _SAFE_EXT.match(ext) else "jpg"
+
+
 @router.get("/uploads/test")
 async def test_upload_router():
     """Verify that the router is correctly registered and reachable."""
@@ -47,8 +61,7 @@ async def proxy_upload_to_s3(
     Absolute Ingestion Fix & Sprint 4 Upload System: Proxy browser upload through backend to eliminate S3 signature/CORS issues.
     Supports images, PDFs, and video thumbnails.
     """
-    print(f"DEBUG: ALL HEADERS RECEIVED: {dict(request.headers)}")
-    logger.info(f"PROXY HIT | auth={request.headers.get('authorization', 'MISSING')[:15]}... | type={request.headers.get('content-type')}")
+    logger.info(f"PROXY HIT | type={request.headers.get('content-type')}")
     logger.info(f"PROXY START | file={file.filename} property_id={property_id} user={current_user.id}")
     
     s3_client = get_s3_client()
@@ -80,10 +93,12 @@ async def proxy_upload_to_s3(
 
     normalized_type = get_normalized_mime(file.filename, file.content_type)
 
-    # 2. Key Generation
+    # 2. Key Generation (sanitize client-controlled parts of the S3 key)
     user_prefix = f"user_{current_user.id}"
-    file_extension = file.filename.split(".")[-1] if "." in file.filename else "jpg"
-    
+    file_extension = _safe_extension(file.filename)
+    if property_id is not None and not _SAFE_PROPERTY_ID.match(str(property_id)):
+        raise HTTPException(status_code=400, detail="Invalid property_id")
+
     if property_id:
         unique_filename = f"properties/{property_id}/{user_prefix}/{uuid.uuid4()}.{file_extension}"
     else:
@@ -92,8 +107,13 @@ async def proxy_upload_to_s3(
     try:
         # 3. Hardened Ingestion: Read into memory and use put_object
         logger.info(f"READING FILE | {file.filename}")
-        contents = await file.read()
+        contents = await file.read(MAX_PROXY_UPLOAD_BYTES + 1)
         logger.info(f"READ COMPLETE | bytes={len(contents)}")
+        if len(contents) > MAX_PROXY_UPLOAD_BYTES:
+            raise HTTPException(
+                status_code=413,
+                detail=f"File too large (max {MAX_PROXY_UPLOAD_BYTES // (1024 * 1024)} MB)",
+            )
 
         if not contents:
             logger.error("Empty file received from client")
@@ -132,6 +152,8 @@ async def proxy_upload_to_s3(
             "status": "success"
         }
 
+    except HTTPException:
+        raise
     except Exception as e:
         logger.error(f"Proxy Upload Failed: {e}")
         raise HTTPException(status_code=500, detail=f"S3 ingestion failed: {str(e)}")
@@ -156,8 +178,10 @@ def generate_upload_url(
         raise HTTPException(status_code=413, detail="File too large")
 
     normalized_type = _normalize_image_content_type(data.filename, data.content_type)
-    file_extension = data.filename.split(".")[-1] if "." in data.filename else "jpg"
+    file_extension = _safe_extension(data.filename)
     user_prefix = f"user_{current_user.id}"
+    if data.property_id is not None and not _SAFE_PROPERTY_ID.match(str(data.property_id)):
+        raise HTTPException(status_code=400, detail="Invalid property_id")
     
     if data.property_id:
         unique_filename = f"properties/{data.property_id}/{user_prefix}/{uuid.uuid4()}.{file_extension}"

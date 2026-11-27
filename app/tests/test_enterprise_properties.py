@@ -29,6 +29,7 @@ class TestEnterpriseProperties(unittest.TestCase):
         """Ensure database tables exist and set up dependency overrides."""
         MySQLBase.metadata.create_all(bind=mysql_engine)
         app.dependency_overrides[security.admin_or_employee_required] = lambda: DummyAdminUser()
+        app.dependency_overrides[security.admin_required] = lambda: DummyAdminUser()
         cls.client = TestClient(app)
         cls.property_id = None
         cls.property_slug = f"ultra-luxury-hsr-penthouse-{uuid.uuid4().hex[:6]}"

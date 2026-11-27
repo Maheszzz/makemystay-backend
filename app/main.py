@@ -25,6 +25,7 @@ from collections import defaultdict
 from time import perf_counter
 
 from app.core.config import settings, validate_startup_settings
+from app.core import security
 from app.core.log_dedupe import should_log_once
 from app.configs.db_config import get_mysql_db
 from app.utils.performance import (
@@ -187,8 +188,8 @@ async def performance_headers_middleware(request: Request, call_next):
 @app.middleware("http")
 async def log_request_headers(request: Request, call_next):
     if "/uploads/binary" in request.url.path:
-        auth = request.headers.get("authorization", "MISSING")
-        logger.info(f"UPLOAD REQ | path={request.url.path} auth={auth[:20]}... | type={request.headers.get('content-type')}")
+        has_auth = bool(request.headers.get("authorization"))
+        logger.info(f"UPLOAD REQ | path={request.url.path} auth_present={has_auth} | type={request.headers.get('content-type')}")
     return await call_next(request)
 
 # CSRF first, then CORS (last add_middleware = outermost in Starlette) so OPTIONS preflights
@@ -487,7 +488,7 @@ async def health():
 
 
 @app.get("/api/v1/whoami", tags=["Health"])
-def whoami():
+def whoami(_user=Depends(security.admin_required)):
     """Debug endpoint to identify the instance."""
     return {
         "hostname": socket.gethostname(),

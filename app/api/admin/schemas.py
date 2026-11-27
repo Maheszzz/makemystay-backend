@@ -1,7 +1,7 @@
 from datetime import datetime
 from typing import List, Optional
 
-from pydantic import BaseModel, Field
+from pydantic import ConfigDict, BaseModel, Field
 
 
 class BulkAssign(BaseModel):
@@ -116,8 +116,7 @@ class EmployeeResponse(BaseModel):
     created_at: Optional[datetime] = None
     updated_at: Optional[datetime] = None
 
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 
 class LeadCsvImportResponse(BaseModel):
@@ -157,8 +156,7 @@ class CsvImportResponse(BaseModel):
     success_rate: Optional[float] = None
     avg_row_latency_ms: Optional[float] = None
 
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 
 class CsvImportRetryQueuedResponse(BaseModel):

@@ -12,6 +12,7 @@ from pydantic import BaseModel, Field
 from app.core.config import settings
 from app.configs.db_config import get_mysql_db
 from app.core import security
+from app.core.rate_limit import limiter
 from app.models.retell_call import RetellCall
 from sqlalchemy.orm import Session
 
@@ -27,7 +28,8 @@ RETELL_API_BASE = "https://api.retellai.com"
 # Create Web Call (Browser Voice Call)
 # -----------------------------------------
 @retell_router.post("/retell/create-web-call")
-async def create_web_call():
+@limiter.limit("3/minute")
+async def create_web_call(request: Request):
     """
     Creates a web call token for browser voice calls.
     """

@@ -2,11 +2,13 @@ import asyncio
 import uuid
 from datetime import datetime, timezone
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Request, status
 from loguru import logger
 from sqlalchemy.orm import Session
 
 from app.core.celery_app import celery_app
+from app.core import security
+from app.core.rate_limit import limiter
 from app.configs.db_config import get_db
 from app.models.demo import DemoBooking
 from app.schemas.demo import (
@@ -28,7 +30,9 @@ def send_demo_email_task(booking_data: dict, meet_link: str):
 
 
 @router.post("/schedule-demo", response_model=ScheduleDemoResponse)
+@limiter.limit("5/minute")
 async def schedule_demo(
+    request: Request,
     booking: DemoBookingCreate,
     db: Session = Depends(get_db),
 ):
@@ -88,8 +92,13 @@ async def schedule_demo(
 
 
 @router.get("/schedule-demo", response_model=list[DemoBookingResponse])
-async def get_all_demos(skip: int = 0, limit: int = 100, db: Session = Depends(get_db)):
-    """Get all scheduled demos (Admin only ideally, but public for now for simplicity)"""
+async def get_all_demos(
+    skip: int = 0,
+    limit: int = 100,
+    db: Session = Depends(get_db),
+    _user=Depends(security.admin_or_employee_required),
+):
+    """Get all scheduled demos (admin/employee only — contains customer contact details)."""
     bookings = (
         db.query(DemoBooking)
         .order_by(DemoBooking.selected_slot.desc())
@@ -98,3 +107,18 @@ async def get_all_demos(skip: int = 0, limit: int = 100, db: Session = Depends(g
         .all()
     )
     return bookings
+
+
+@router.get("/schedule-demo/booked-slots", response_model=list[datetime])
+@limiter.limit("30/minute")
+async def get_booked_demo_slots(request: Request, db: Session = Depends(get_db)):
+    """Public: upcoming booked slot times only (no names, emails or phones)."""
+    now = datetime.now(timezone.utc).replace(tzinfo=None)
+    rows = (
+        db.query(DemoBooking.selected_slot)
+        .filter(DemoBooking.status == "scheduled", DemoBooking.selected_slot >= now)
+        .order_by(DemoBooking.selected_slot.asc())
+        .limit(500)
+        .all()
+    )
+    return [r[0] for r in rows if r[0] is not None]

@@ -4,12 +4,13 @@ Includes CRM Lead capture before premium PDF download.
 """
 
 from typing import List, Optional
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from sqlalchemy import desc
 from sqlalchemy.orm import Session
 
 from app.configs.db_config import get_mysql_db
 from app.core import security
+from app.core.rate_limit import limiter
 from app.models.realty import PropertyImage
 from app.models.realty_enterprise import PropertyDocument, PropertyVideo
 from app.schemas.property_enterprise import (
@@ -60,7 +61,9 @@ def list_property_documents(
 
 
 @router.post("/documents/{doc_id}/download")
+@limiter.limit("10/minute")
 def download_property_document_with_lead_capture(
+    request: Request,
     doc_id: int,
     user_name: str = Query(..., description="User's full name"),
     user_phone: str = Query(..., description="User's phone number"),

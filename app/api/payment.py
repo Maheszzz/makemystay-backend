@@ -11,7 +11,7 @@ import hmac
 import os
 from datetime import datetime, timezone
 from io import BytesIO
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Literal, Optional
 
 import time
 import jinja2
@@ -21,13 +21,16 @@ import httpx
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, BackgroundTasks
 from fastapi.responses import FileResponse
 from loguru import logger
-from pydantic import BaseModel
+
+from pydantic import BaseModel, Field
 from sqlalchemy import func
 from sqlalchemy.orm import Session
 
 from app.configs.db_config import get_db
 from app.core.celery_app import celery_app
 from app.core.config import settings
+from app.core import security
+from app.core.rate_limit import limiter
 from app.models.booking import Booking
 from app.models.payment import Payment
 from app.models.payment_webhook_event import PaymentWebhookEvent
@@ -58,13 +61,38 @@ RAZORPAY_WEBHOOK_SECRET = settings.RAZORPAY_WEBHOOK_SECRET
 client = razorpay.Client(auth=(RAZORPAY_KEY_ID, RAZORPAY_KEY_SECRET))
 
 
+# Fixed service fees (rupees). Mirrors /payments/validate-fee.
+SERVICE_FEE_TABLE: Dict[tuple, int] = {
+    ("PG", "sharing"): 1500,
+    ("COLIVE PG", "sharing"): 1500,
+    ("PG", "private"): 2500,
+    ("COLIVE PG", "private"): 2500,
+    ("1BHK", None): 4000,
+    ("2BHK", None): 6000,
+}
+
+
+def expected_service_fee(property_type: Optional[str], fee_type: Optional[str]) -> Optional[int]:
+    """Return the fixed fee in rupees for a known property/fee type, else None."""
+    if not property_type:
+        return None
+    pt = property_type.strip().upper()
+    ft = (fee_type or "").strip().lower() or None
+    if (pt, ft) in SERVICE_FEE_TABLE:
+        return SERVICE_FEE_TABLE[(pt, ft)]
+    return SERVICE_FEE_TABLE.get((pt, None))
+
+
 class CreateOrderRequest(BaseModel):
-    amount: int  # in paise
-    currency: str = "INR"
-    payment_type: str = "booking"
-    payer_name: Optional[str] = None
-    payer_email: Optional[str] = None
-    payer_phone: Optional[str] = None
+    amount: int = Field(..., gt=0, description="Amount in paise")
+    currency: Literal["INR"] = "INR"
+    payment_type: str = Field("booking", min_length=1, max_length=50, pattern=r"^[a-z_]+$")
+    payer_name: Optional[str] = Field(None, max_length=100)
+    payer_email: Optional[str] = Field(None, max_length=150)
+    payer_phone: Optional[str] = Field(None, max_length=20)
+    # Optional: when sent, the server checks `amount` against the fixed fee table.
+    property_type: Optional[str] = Field(None, max_length=50)
+    service_fee_type: Optional[str] = Field(None, max_length=20)
 
 
 def _map_webhook_event_to_status(event_name: Optional[str]) -> Optional[str]:
@@ -182,7 +210,30 @@ def validate_service_fee(data: ServiceFeeValidationRequest):
 
 
 @router.post("/payments/create-order")
-def create_order(data: CreateOrderRequest, db: Session = Depends(get_db)):
+@limiter.limit("20/minute")
+def create_order(request: Request, data: CreateOrderRequest, db: Session = Depends(get_db)):
+    max_paise = int(settings.PAYMENT_MAX_AMOUNT_INR) * 100
+    if data.amount > max_paise:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Amount exceeds the maximum of INR {settings.PAYMENT_MAX_AMOUNT_INR}",
+        )
+    expected = expected_service_fee(data.property_type, data.service_fee_type)
+    if expected is not None and data.amount != expected * 100:
+        logger.warning(
+            f"Rejected order: amount {data.amount} paise != expected {expected * 100} "
+            f"for {data.property_type}/{data.service_fee_type}"
+        )
+        raise HTTPException(
+            status_code=400,
+            detail=f"Invalid amount for {data.property_type}. Expected INR {expected}.",
+        )
+    if settings.PAYMENT_REQUIRE_FEE_TABLE and data.payment_type == "booking" and expected is None:
+        raise HTTPException(
+            status_code=400,
+            detail="property_type (and service_fee_type for PG) is required for booking payments",
+        )
+
     data_dict = {
         "amount": data.amount,
         "currency": data.currency,
@@ -278,17 +329,10 @@ async def verify_payment(req: Request, db: Session = Depends(get_db)):
         return {"status": "success", "payment_id": razorpay_payment_id}
     # pyrefly: ignore [implicit-import]
     except razorpay.errors.SignatureVerificationError:
-        # Update DB to failed if possible
-        payment = (
-            db.query(Payment).filter(Payment.order_id == razorpay_order_id).first()
-        )
-        if payment:
-            # pyrefly: ignore [bad-assignment]
-            payment.status = "failed"
-            payment.payment_id = razorpay_payment_id
-            payment.signature = razorpay_signature
-            db.commit()
-
+        # Do not mutate the payment row here: this endpoint is public, so an unsigned
+        # request must not be able to flip a pending/successful order to "failed" or
+        # overwrite its payment_id. Genuine failures arrive via the signed webhook.
+        logger.warning(f"Invalid payment signature for order {razorpay_order_id}")
         raise HTTPException(status_code=400, detail="Invalid payment signature")
     except Exception as e:
         logger.error(f"Error verifying payment: {e}")
@@ -781,7 +825,10 @@ def download_receipt(payment_id: str, db: Session = Depends(get_db)):
 
 
 @router.get("/payments", response_model=List[PaymentSchema])
-def get_payments(db: Session = Depends(get_db)):
+def get_payments(
+    db: Session = Depends(get_db),
+    _user=Depends(security.admin_or_employee_required),
+):
     """List all payments."""
     payments = db.query(Payment).order_by(Payment.created_at.desc()).all()
     return payments
@@ -924,6 +971,7 @@ def get_payment_transactions(
         ),
     ),
     db: Session = Depends(get_db),
+    _user=Depends(security.admin_or_employee_required),
 ):
     """
     Return paginated transaction rows shaped for Razorpay-like admin listing.
@@ -1004,6 +1052,7 @@ def get_payment_transaction_detail(
     order_id: str,
     sync_from_gateway: bool = Query(True),
     db: Session = Depends(get_db),
+    _user=Depends(security.admin_or_employee_required),
 ):
     """Single transaction with webhook timeline for admin detail drawer."""
     query = build_payment_transactions_query(db).filter(Payment.order_id == order_id)
@@ -1052,6 +1101,7 @@ def get_webhook_events(
     order_id: Optional[str] = None,
     payment_id: Optional[str] = None,
     db: Session = Depends(get_db),
+    _user=Depends(security.admin_or_employee_required),
 ):
     """
     List Razorpay webhook audit events for debugging.

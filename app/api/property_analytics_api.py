@@ -9,11 +9,13 @@ from sqlalchemy.orm import Session
 
 from app.configs.db_config import get_mysql_db
 from app.core import security
+from app.core.rate_limit import limiter
 from app.models.realty_enterprise import PropertyView, PropertyDownload
 router = APIRouter()
 
 
 @router.post("/properties/{property_id}/track-view")
+@limiter.limit("60/minute")
 def track_property_view(
     property_id: int,
     request: Request,
