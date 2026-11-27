@@ -56,7 +56,7 @@ class Settings(BaseSettings):
     DB_NAME: str
 
     ENV: str = "production"
-    SITE_URL: str = "https://makemystay.co.in"
+    SITE_URL: str = "https://makemystay.ai"
     FRONTEND_REVALIDATE_URL: Optional[str] = None
     FRONTEND_REVALIDATE_SECRET: Optional[str] = None
     SEO_SITEMAP_MAX_URLS: int = 50_000
@@ -112,6 +112,11 @@ class Settings(BaseSettings):
     CLOUDFRONT_PRIVATE_KEY: Optional[str] = None
 
     # Razorpay
+    # Upper bound for a single checkout order (rupees).
+    PAYMENT_MAX_AMOUNT_INR: int = 200_000
+    # When true, "booking" orders must name property_type so the server can enforce the fee table.
+    # Turn on once the public checkout sends property_type / service_fee_type.
+    PAYMENT_REQUIRE_FEE_TABLE: bool = False
     RAZORPAY_KEY_ID: str = ""
     RAZORPAY_KEY_SECRET: str = ""
     RAZORPAY_WEBHOOK_SECRET: str = ""
@@ -119,7 +124,8 @@ class Settings(BaseSettings):
     # Authentication
     SECRET_KEY: str
     ALGORITHM: str = "HS256"
-    ACCESS_TOKEN_EXPIRE_MINUTES: int = 43200
+    # Keep short: the admin panel silently refreshes via /auth/refresh.
+    ACCESS_TOKEN_EXPIRE_MINUTES: int = 60
     REFRESH_TOKEN_EXPIRE_MINUTES: int = 60 * 24 * 7  # 7 days default
 
     # Email

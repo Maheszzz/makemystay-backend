@@ -2,7 +2,7 @@
 
 from typing import List, Optional, Tuple
 
-from fastapi import APIRouter, Depends, HTTPException, Query, BackgroundTasks, Response
+from fastapi import APIRouter, Depends, HTTPException, Query, BackgroundTasks, Request, Response
 from fastapi.responses import JSONResponse
 from app.utils.performance import set_public_cache_headers, PUBLIC_SHORT_CACHE
 from loguru import logger
@@ -11,6 +11,7 @@ from sqlalchemy.orm import Session
 
 from app.configs.db_config import get_mysql_db
 from app.core import security
+from app.core.rate_limit import limiter
 from app.core.config import settings
 from app.core.exceptions import DatabaseError, NotFoundException
 from app.repo import realty as realty_repo
@@ -249,7 +250,9 @@ def get_contact(contact_id: int, db: Session = Depends(get_mysql_db), current_us
 
 
 @realty_router.post("/realty/contacts", response_model=ContactResponse, status_code=201)
+@limiter.limit("10/minute")
 def create_contact(
+    request: Request,
     contact: ContactCreate,
     background_tasks: BackgroundTasks,
     db: Session = Depends(get_mysql_db),
@@ -513,7 +516,7 @@ def get_property_by_slug(
 def create_property(
     property_data: PropertyCreate,
     db: Session = Depends(get_mysql_db),
-    current_admin=Depends(security.admin_required),
+    current_admin=Depends(security.admin_or_employee_required),
 ):
     """
     Create a new property.
@@ -573,7 +576,7 @@ def update_property(
     property_id: int,
     property_data: PropertyUpdate,
     db: Session = Depends(get_mysql_db),
-    current_admin=Depends(security.admin_required),
+    current_admin=Depends(security.admin_or_employee_required),
 ):
     """
     Update an existing property.
@@ -739,7 +742,7 @@ def add_property_image(
     property_id: int,
     image: PropertyImageCreate,
     db: Session = Depends(get_mysql_db),
-    current_admin=Depends(security.admin_required),
+    current_admin=Depends(security.admin_or_employee_required),
 ):
     """
     Add a new image to a property.
@@ -776,7 +779,7 @@ def update_property_image(
     image_id: int,
     image: PropertyImageUpdate,
     db: Session = Depends(get_mysql_db),
-    current_admin=Depends(security.admin_required),
+    current_admin=Depends(security.admin_or_employee_required),
 ):
     """
     Update a property image.
@@ -810,7 +813,7 @@ def update_property_image(
 def delete_property_image(
     image_id: int,
     db: Session = Depends(get_mysql_db),
-    current_admin=Depends(security.admin_required),
+    current_admin=Depends(security.admin_or_employee_required),
 ):
     """
     Delete a property image.
@@ -854,8 +857,9 @@ def list_property_reviews(property_id: int, db: Session = Depends(get_mysql_db))
     response_model=ReviewResponse,
     status_code=201,
 )
+@limiter.limit("5/minute")
 def add_property_review(
-    property_id: int, review: ReviewCreate, db: Session = Depends(get_mysql_db)
+    request: Request, property_id: int, review: ReviewCreate, db: Session = Depends(get_mysql_db)
 ):
     """
     Add a new review to a property.

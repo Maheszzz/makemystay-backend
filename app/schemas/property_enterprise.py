@@ -7,7 +7,7 @@ import re
 from datetime import datetime
 from enum import Enum
 from typing import Any, Dict, List, Optional
-from pydantic import BaseModel, Field, field_validator, model_validator
+from pydantic import ConfigDict, BaseModel, Field, field_validator, model_validator
 
 
 class PropertyStatusEnum(str, Enum):
@@ -46,8 +46,7 @@ class PropertyPricingSchema(BaseModel):
     offer_end_date: Optional[str] = None
     brokerage: Optional[str] = None
 
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 
 class PropertyDocumentSchema(BaseModel):
@@ -65,8 +64,7 @@ class PropertyDocumentSchema(BaseModel):
             raise ValueError("Document URL cannot be empty")
         return v.strip()
 
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 
 class PropertyImageSchema(BaseModel):
@@ -81,9 +79,7 @@ class PropertyImageSchema(BaseModel):
     seo_tags: Optional[str] = None
     sort_order: int = 0
 
-    class Config:
-        from_attributes = True
-        populate_by_name = True
+    model_config = ConfigDict(from_attributes=True, populate_by_name=True)
 
 
 class PropertyVideoSchema(BaseModel):
@@ -105,8 +101,7 @@ class PropertyVideoSchema(BaseModel):
             raise ValueError("Video URL must be a valid HTTP/YouTube URL")
         return v_clean
 
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 
 class AmenityMasterSchema(BaseModel):
@@ -116,8 +111,7 @@ class AmenityMasterSchema(BaseModel):
     category: str
     icon_url: Optional[str] = None
 
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 
 class PropertyAmenitySchema(BaseModel):
@@ -127,8 +121,7 @@ class PropertyAmenitySchema(BaseModel):
     is_custom: bool = False
     amenity: Optional[AmenityMasterSchema] = None
 
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 
 class PropertyNearbyPlaceSchema(BaseModel):
@@ -142,8 +135,7 @@ class PropertyNearbyPlaceSchema(BaseModel):
     latitude: Optional[str] = None
     longitude: Optional[str] = None
 
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 
 class PropertySEOSchema(BaseModel):
@@ -156,9 +148,7 @@ class PropertySEOSchema(BaseModel):
     canonical_url: Optional[str] = None
     schema_markup: Optional[str] = Field(None, alias="schema_json")
 
-    class Config:
-        from_attributes = True
-        populate_by_name = True
+    model_config = ConfigDict(from_attributes=True, populate_by_name=True)
 
 
 class PropertyShareSchema(BaseModel):
@@ -168,8 +158,7 @@ class PropertyShareSchema(BaseModel):
     share_description: Optional[str] = None
     share_image: Optional[str] = None
 
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 
 class PropertyAuditLogSchema(BaseModel):
@@ -182,8 +171,7 @@ class PropertyAuditLogSchema(BaseModel):
     created_at: datetime
     created_by: Optional[str] = None
 
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 
 class PropertyUnitSchema(BaseModel):
@@ -196,8 +184,7 @@ class PropertyUnitSchema(BaseModel):
     deposit_price: Optional[float] = Field(None, ge=0)
     occupant_name: Optional[str] = None
 
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 
 class PropertyTagSchema(BaseModel):
@@ -205,8 +192,7 @@ class PropertyTagSchema(BaseModel):
     tag_name: str
     tag_category: Optional[str] = "General"
 
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 
 # ==================== REQUEST SCHEMAS ====================
@@ -364,5 +350,4 @@ class PropertyDetailResponse(BaseModel):
     audit_logs: Optional[List[PropertyAuditLogSchema]] = None
     metadata_json: Optional[Dict[str, Any]] = None
 
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)

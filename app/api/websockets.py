@@ -1,12 +1,14 @@
 import asyncio
 from typing import List, Optional
 
-from fastapi import APIRouter, WebSocket, WebSocketDisconnect
+from fastapi import APIRouter, WebSocket, WebSocketDisconnect, status
 from loguru import logger
 import redis.asyncio as aioredis
 
 from app.core.config import settings
 from app.core.redis import ADMIN_CHANNEL
+from app.core import security
+from app.configs.db_config import MySQLSessionLocal
 
 ws_router = APIRouter(tags=["WebSockets"])
 
@@ -64,8 +66,31 @@ class ConnectionManager:
 
 manager = ConnectionManager()
 
+def _authorize_ws(websocket: WebSocket) -> bool:
+    """Admin events contain lead/payment details — require an admin/employee JWT.
+
+    Browsers cannot set headers on WebSocket requests, so accept the token from
+    `?token=` or the `access_token` cookie set at login.
+    """
+    token = websocket.query_params.get("token") or websocket.cookies.get("access_token")
+    if not token:
+        return False
+    db = MySQLSessionLocal()
+    try:
+        user = security.get_user_from_token(token, db)
+        return bool(user and user.role in ("admin", "employee"))
+    except Exception as e:
+        logger.error(f"WebSocket auth error: {e}")
+        return False
+    finally:
+        db.close()
+
+
 @ws_router.websocket("/ws/admin")
 async def websocket_admin_endpoint(websocket: WebSocket):
+    if not _authorize_ws(websocket):
+        await websocket.close(code=status.WS_1008_POLICY_VIOLATION)
+        return
     await manager.connect(websocket)
     try:
         while True:

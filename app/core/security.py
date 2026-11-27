@@ -1,4 +1,4 @@
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from typing import Optional
 
 from fastapi import Depends, HTTPException, status, Request
@@ -21,7 +21,7 @@ ACCESS_TOKEN_EXPIRE_MINUTES = settings.ACCESS_TOKEN_EXPIRE_MINUTES
 REFRESH_TOKEN_EXPIRE_MINUTES = getattr(settings, "REFRESH_TOKEN_EXPIRE_MINUTES", 60 * 24 * 7) # 7 days default
 
 from loguru import logger
-logger.info(f"OAUTH2 SECURITY INIT | SECRET_KEY_PREFIX: {SECRET_KEY[:5]}... | ALGORITHM: {ALGORITHM}")
+logger.info(f"OAUTH2 SECURITY INIT | ALGORITHM: {ALGORITHM}")
 
 
 
@@ -39,12 +39,11 @@ def create_access_token(data: dict, expires_delta: Optional[timedelta] = None) -
     """Create a new JWT access token."""
     to_encode = data.copy()
     if expires_delta:
-        expire = datetime.utcnow() + expires_delta
+        expire = datetime.now(timezone.utc) + expires_delta
     else:
-        expire = datetime.utcnow() + timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
+        expire = datetime.now(timezone.utc) + timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
 
     to_encode.update({"exp": expire})
-    logger.info(f"SIGNING TOKEN | key_len={len(SECRET_KEY)} prefix={SECRET_KEY[:5]}")
     encoded_jwt = jwt.encode(to_encode, SECRET_KEY, algorithm=ALGORITHM)
     return encoded_jwt
 
@@ -53,9 +52,9 @@ def create_refresh_token(data: dict, expires_delta: Optional[timedelta] = None) 
     """Create a new JWT refresh token."""
     to_encode = data.copy()
     if expires_delta:
-        expire = datetime.utcnow() + expires_delta
+        expire = datetime.now(timezone.utc) + expires_delta
     else:
-        expire = datetime.utcnow() + timedelta(minutes=REFRESH_TOKEN_EXPIRE_MINUTES)
+        expire = datetime.now(timezone.utc) + timedelta(minutes=REFRESH_TOKEN_EXPIRE_MINUTES)
 
     to_encode.update({"exp": expire, "type": "refresh"})
     encoded_jwt = jwt.encode(to_encode, SECRET_KEY, algorithm=ALGORITHM)
@@ -104,6 +103,9 @@ def get_current_user(
 
     try:
         payload = jwt.decode(access_token, SECRET_KEY, algorithms=[ALGORITHM])
+        # Refresh tokens are long-lived and must only be accepted by /auth/refresh.
+        if payload.get("type") == "refresh":
+            raise credentials_exception
         email: str = payload.get("sub", "")
         if not email:
             raise credentials_exception
@@ -135,3 +137,19 @@ def admin_or_employee_required(current_user=Depends(get_current_user)):
             detail="The user doesn't have enough privileges",
         )
     return current_user
+
+
+def get_user_from_token(token: Optional[str], db: Session):
+    """Resolve a user from a raw access token (used by WebSocket auth). Returns None if invalid."""
+    if not token:
+        return None
+    try:
+        payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
+    except JWTError:
+        return None
+    if payload.get("type") == "refresh":
+        return None
+    email = payload.get("sub") or ""
+    if not email:
+        return None
+    return user_repo.get_user_by_email(db, email=email)

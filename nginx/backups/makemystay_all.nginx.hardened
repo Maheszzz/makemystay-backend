@@ -162,9 +162,21 @@ server {
         add_header Content-Type text/plain;
     }
 
-    # Proxy /api/* to FastAPI backend
+    # Live admin events (WebSocket)
+    location /api/v1/ws/ {
+        proxy_pass http://127.0.0.1:8000;
+        proxy_http_version 1.1;
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection "upgrade";
+        proxy_set_header Host $host;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_read_timeout 3600s;
+    }
+
+    # Proxy /api/* to FastAPI backend (26m: admin uploads PDFs up to 25 MB)
     location /api/ {
-        client_max_body_size 10m;
+        client_max_body_size 26m;
         proxy_pass http://127.0.0.1:8000;
         proxy_set_header Host $host;
         proxy_set_header X-Real-IP $remote_addr;
@@ -211,7 +223,14 @@ server {
     listen 80;
     server_name api.makemystay.ai;
 
-    client_max_body_size 10m;
+    client_max_body_size 26m;
+
+    # Prometheus metrics: internal only
+    location = /metrics {
+        allow 127.0.0.1;
+        deny all;
+        proxy_pass http://127.0.0.1:8000;
+    }
 
     location / {
         proxy_pass http://127.0.0.1:8000;

@@ -214,6 +214,13 @@ from app.configs.db_config import get_db  # noqa: E402
 
 _app.dependency_overrides[get_db] = _override_get_db
 
+# Transaction endpoints are admin-only; authenticate the test client as staff.
+from app.core import security as _security  # noqa: E402
+
+_app.dependency_overrides[_security.admin_or_employee_required] = lambda: type(
+    "StaffUser", (), {"id": 1, "email": "staff@test", "role": "admin"}
+)()
+
 client = TestClient(_app, raise_server_exceptions=True)
 
 

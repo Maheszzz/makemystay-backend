@@ -19,7 +19,7 @@ PUBLIC_STATIC_PATHS = (
 
 
 def normalize_site_url(site_url: str) -> str:
-    value = (site_url or "").strip() or "https://makemystay.co.in"
+    value = (site_url or "").strip() or "https://makemystay.ai"
     if not value.startswith(("http://", "https://")):
         value = f"https://{value}"
     return value.rstrip("/")

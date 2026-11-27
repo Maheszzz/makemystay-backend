@@ -36,7 +36,6 @@ router = APIRouter()
 # ==================== PUBLIC UNIFIED WEBSITE API (SPRINT 10) ====================
 
 @router.get("/public/properties/{slug}", response_model=PropertyDetailResponse)
-@router.get("/realty/properties/by-slug/{type}/{slug}", response_model=PropertyDetailResponse)
 def get_public_property_by_slug(
     slug: str,
     type: Optional[str] = None,
@@ -58,7 +57,6 @@ def get_public_property_by_slug(
 # ==================== ADMIN / ENTERPRISE CMS CRUD (SPRINTS 3, 5, 6, 7) ====================
 
 @router.post("/properties", response_model=PropertyDetailResponse, status_code=201)
-@router.post("/realty/properties", response_model=PropertyDetailResponse, status_code=201)
 @router.post("/enterprise/properties", response_model=PropertyDetailResponse, status_code=201)
 def create_enterprise_property(
     data: CreatePropertyRequest,
@@ -76,7 +74,6 @@ def create_enterprise_property(
 
 
 @router.get("/properties", response_model=List[PropertyDetailResponse])
-@router.get("/realty/properties", response_model=List[PropertyDetailResponse])
 @router.get("/enterprise/properties", response_model=List[PropertyDetailResponse])
 def list_enterprise_properties(
     status: Optional[str] = Query(None, description="Filter by status: draft, pending_review, approved, published, archived"),
@@ -104,7 +101,6 @@ def list_enterprise_properties(
 
 
 @router.get("/properties/{id_or_slug}", response_model=PropertyDetailResponse)
-@router.get("/realty/properties/{id_or_slug}", response_model=PropertyDetailResponse)
 @router.get("/enterprise/properties/{id_or_slug}", response_model=PropertyDetailResponse)
 def get_enterprise_property_detail(
     id_or_slug: str,
@@ -119,7 +115,6 @@ def get_enterprise_property_detail(
 
 
 @router.put("/properties/{property_id}", response_model=PropertyDetailResponse)
-@router.put("/realty/properties/{property_id}", response_model=PropertyDetailResponse)
 @router.put("/enterprise/properties/{property_id}", response_model=PropertyDetailResponse)
 def update_enterprise_property(
     property_id: int,
@@ -139,12 +134,11 @@ def update_enterprise_property(
 
 
 @router.delete("/properties/{property_id}", status_code=204)
-@router.delete("/realty/properties/{property_id}", status_code=204)
 @router.delete("/enterprise/properties/{property_id}", status_code=204)
 def delete_enterprise_property(
     property_id: int,
     db: Session = Depends(get_mysql_db),
-    current_user=Depends(security.admin_or_employee_required),
+    current_user=Depends(security.admin_required),
 ):
     """Soft delete property — data is never permanently erased."""
     soft_delete_property(db, property_id=property_id, current_user_id=current_user.id)
@@ -152,12 +146,11 @@ def delete_enterprise_property(
 
 
 @router.post("/properties/{property_id}/restore", response_model=PropertyDetailResponse)
-@router.post("/realty/properties/{property_id}/restore", response_model=PropertyDetailResponse)
 @router.post("/enterprise/properties/{property_id}/restore", response_model=PropertyDetailResponse)
 def restore_enterprise_property(
     property_id: int,
     db: Session = Depends(get_mysql_db),
-    current_user=Depends(security.admin_or_employee_required),
+    current_user=Depends(security.admin_required),
 ):
     """Restore a soft-deleted property back to draft status."""
     prop = restore_property(db, property_id=property_id, current_user_id=current_user.id)

@@ -21,6 +21,9 @@ build/
 logs/
 *.log
 *.db
+*.sql
+*.sql.gz
+database/backups/
 receipts/
 
 # Editor & OS files
@@ -34,3 +37,7 @@ receipts/
 *.crt
 *.p12
 deploy/keys/
+
+# Local scratch
+scratch/
+scratch.py
