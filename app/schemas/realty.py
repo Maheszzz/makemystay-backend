@@ -8,6 +8,15 @@ from pydantic import BaseModel, EmailStr, Field, field_validator, model_validato
 
 from app.schemas.upload import MAX_IMAGE_UPLOAD_BYTES
 
+
+def _reject_browser_only_url(v):
+    """blob:/data: URLs only exist in the uploader's browser tab; saving one creates a broken image."""
+    if isinstance(v, str) and v.strip().lower().startswith(("blob:", "data:")):
+        raise ValueError(
+            "This image was never uploaded (it is a temporary browser preview). Upload the photo again."
+        )
+    return v
+
 # ==================== ENUMS ====================
 
 
@@ -127,6 +136,11 @@ class PropertyImageBase(BaseModel):
 class PropertyImageCreate(PropertyImageBase):
     """Schema for creating a new property image."""
 
+    @field_validator("image_url")
+    @classmethod
+    def _no_browser_only_url(cls, v: str) -> str:
+        return _reject_browser_only_url(v)
+
 
 class PropertyImageUpdate(BaseModel):
     """Schema for updating an existing property image."""
@@ -135,6 +149,11 @@ class PropertyImageUpdate(BaseModel):
     is_primary: Optional[bool] = None
     sort_order: Optional[int] = Field(None, ge=0)
     file_size: Optional[int] = Field(None, ge=1, le=MAX_IMAGE_UPLOAD_BYTES)
+
+    @field_validator("image_url")
+    @classmethod
+    def _no_browser_only_url(cls, v: Optional[str]) -> Optional[str]:
+        return _reject_browser_only_url(v)
 
 
 class PropertyImageSync(BaseModel):
@@ -146,6 +165,11 @@ class PropertyImageSync(BaseModel):
     is_primary: bool = False
     sort_order: int = 0
     alt_text: Optional[str] = None
+
+    @field_validator("image_url")
+    @classmethod
+    def _no_browser_only_url(cls, v: str) -> str:
+        return _reject_browser_only_url(v)
 
 
 class PropertyImageResponse(PropertyImageBase):

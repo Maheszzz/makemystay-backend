@@ -43,8 +43,9 @@ def get_cloudfront_signed_url(s3_key: str, expires_in_seconds: int = 3600) -> st
     Generates a CloudFront signed URL for a given S3 object key.
     If CloudFront is not configured, falls back to S3 presigned URL (private) or public URL.
     """
-    # If the key is already a full URL, return it
-    if s3_key.startswith("http"):
+    # Full URLs are returned as-is. blob:/data: values are browser-only previews that were
+    # saved by mistake; signing them as S3 keys only produces CloudFront 403s.
+    if not s3_key or s3_key.startswith(("http", "blob:", "data:")):
         return s3_key
 
     domain = settings.CLOUDFRONT_DOMAIN
