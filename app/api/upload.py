@@ -5,6 +5,7 @@ from typing import Optional
 from loguru import logger
 import time
 
+from botocore.exceptions import ClientError, NoCredentialsError, PartialCredentialsError
 from fastapi import APIRouter, Depends, HTTPException, Request, UploadFile, File, Form
 from app.core import security
 from app.core.config import settings
@@ -37,6 +38,35 @@ def _safe_extension(filename: Optional[str]) -> str:
     name = filename or ""
     ext = name.rsplit(".", 1)[-1].lower() if "." in name else ""
     return ext if _SAFE_EXT.match(ext) else "jpg"
+
+
+_CREDENTIAL_ERROR_CODES = {
+    "InvalidAccessKeyId",
+    "SignatureDoesNotMatch",
+    "ExpiredToken",
+    "InvalidToken",
+    "AccessDenied",
+    "AllAccessDisabled",
+}
+
+
+def _storage_http_error(exc: Exception) -> HTTPException:
+    """Map S3 failures to a clear message; credential/config problems are 503, not 500."""
+    if isinstance(exc, (NoCredentialsError, PartialCredentialsError)):
+        return HTTPException(
+            status_code=503,
+            detail="Image storage is not configured on the server (no AWS credentials). Ask an admin to set them.",
+        )
+    if isinstance(exc, ClientError):
+        code = exc.response.get("Error", {}).get("Code", "")
+        if code in _CREDENTIAL_ERROR_CODES:
+            return HTTPException(
+                status_code=503,
+                detail=f"Image storage rejected the server's AWS credentials ({code}). Ask an admin to update them.",
+            )
+        if code == "NoSuchBucket":
+            return HTTPException(status_code=503, detail="Image storage bucket not found. Check S3_BUCKET_NAME on the server.")
+    return HTTPException(status_code=502, detail="Upload to image storage failed. Please try again.")
 
 
 @router.get("/uploads/test")
@@ -117,7 +147,7 @@ async def proxy_upload_to_s3(
 
         if not contents:
             logger.error("Empty file received from client")
-            raise Exception("Empty file received")
+            raise HTTPException(status_code=400, detail="The file is empty")
         
         logger.info(f"S3 PUT START | key={unique_filename}")
         s3_client.put_object(
@@ -156,7 +186,7 @@ async def proxy_upload_to_s3(
         raise
     except Exception as e:
         logger.error(f"Proxy Upload Failed: {e}")
-        raise HTTPException(status_code=500, detail=f"S3 ingestion failed: {str(e)}")
+        raise _storage_http_error(e)
 
 
 @router.post("/uploads/presigned-url", response_model=UploadResponse)
